@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>סידור משמרות</title>
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="12" width="48" height="44" rx="8" fill="%23ffffff"/><rect x="8" y="12" width="48" height="14" rx="8" fill="%231c7c63"/><rect x="8" y="22" width="48" height="34" rx="6" fill="%23ffffff"/><path d="M20 8v10M44 8v10" stroke="%2317201d" stroke-width="5" stroke-linecap="round"/><path d="M18 34h8M30 34h8M42 34h4M18 44h8M30 44h8M42 44h4" stroke="%231c7c63" stroke-width="4" stroke-linecap="round"/></svg>'>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-strong: #edf4f2;
+      --text: #17201d;
+      --muted: #5f6f68;
+      --line: #d8e0dc;
+      --accent: #1c7c63;
+      --accent-dark: #125947;
+      --warn: #b45309;
+      --danger: #b42318;
+      --soft: #e8f3ef;
+      --shadow: 0 16px 45px rgba(24, 43, 37, 0.09);
+      font-family: Arial, "Noto Sans Hebrew", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        linear-gradient(180deg, #eef4f1 0, rgba(246, 247, 249, 0) 360px),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    button, input, textarea, select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 5vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .intro {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.6;
+      max-width: 760px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .result-actions {
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      min-height: 42px;
+      padding: 0 15px;
+      border-radius: 7px;
+      background: var(--accent);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      transition: transform .12s ease, background .12s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      background: var(--accent-dark);
+    }
+
+    .btn.secondary {
+      background: #e7ecea;
+      color: var(--text);
+    }
+
+    .btn.secondary:hover {
+      background: #dce4e0;
+    }
+
+    .btn.danger {
+      background: #f3dddd;
+      color: var(--danger);
+    }
+
+    .btn.danger:hover {
+      background: #ecd0d0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      align-self: start;
+    }
+
+    .panel-header {
+      min-height: 68px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .panel-body {
+      padding: 18px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    input[type="text"], input[type="date"], input[type="number"], textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--text);
+      padding: 10px 11px;
+      min-height: 42px;
+      outline: none;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(28, 124, 99, 0.14);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 142px;
+      line-height: 1.5;
+      direction: rtl;
+    }
+
+    .workers {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+      gap: 12px;
+    }
+
+    .employee-tools {
+      display: grid;
+      grid-template-columns: minmax(150px, 220px) 34px;
+      gap: 8px;
+      margin-bottom: 14px;
+      align-items: end;
+      justify-content: start;
+    }
+
+    .employee-tools input {
+      min-height: 34px;
+      padding: 7px 9px;
+      font-size: 14px;
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      line-height: 1;
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .icon-btn.remove {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      width: 28px;
+      height: 28px;
+      min-height: 28px;
+      border-radius: 6px;
+      background: #f3dddd;
+      color: var(--danger);
+      font-size: 20px;
+      font-weight: 700;
+      z-index: 1;
+    }
+
+    .icon-btn:hover {
+      filter: brightness(0.94);
+    }
+
+    .worker {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+      position: relative;
+    }
+
+    .worker-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 48px 12px 12px;
+      background: #fbfcfb;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .worker-name {
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .toggle-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .worker-options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px 12px 0;
+    }
+
+    .worker textarea {
+      border: 0;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      min-height: 126px;
+    }
+
+    .days {
+      display: grid;
+      gap: 10px;
+    }
+
+    .week-settings {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+
+    .collapsible {
+      margin: 12px 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      overflow: hidden;
+    }
+
+    .collapsible summary {
+      min-height: 42px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--accent-dark);
+      user-select: none;
+    }
+
+    .collapsible-body {
+      padding: 0 12px 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .week-row {
+      display: grid;
+      grid-template-columns: 74px 1fr 1fr;
+      gap: 10px;
+      align-items: end;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .week-number {
+      font-weight: 700;
+      padding-bottom: 11px;
+    }
+
+    .day-row {
+      display: grid;
+      grid-template-columns: 70px 1fr 130px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .day-label {
+      font-weight: 700;
+    }
+
+    .result {
+      margin-top: 18px;
+    }
+
+    .grid > .result {
+      margin-top: 0;
+    }
+
+    .schedule-output {
+      display: grid;
+      gap: 14px;
+    }
+
+    .week-result {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .week-title {
+      padding: 12px 14px;
+      background: var(--panel-strong);
+      font-weight: 700;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .shift-line {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 12px;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--line);
+      align-items: start;
+    }
+
+    .shift-line:last-child {
+      border-bottom: 0;
+    }
+
+    .shift-day {
+      font-weight: 700;
+    }
+
+    .closed {
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--accent-dark);
+      font-size: 12px;
+      margin-inline-start: 6px;
+      vertical-align: middle;
+    }
+
+    .notice {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #f1d6a8;
+      background: #fff8eb;
+      color: #7a4100;
+      line-height: 1.55;
+    }
+
+    .notice.danger {
+      border-color: #f0b8b2;
+      background: #fff0ee;
+      color: var(--danger);
+    }
+
+    .helper {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 8px 0 0;
+    }
+
+    .mini-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .copy-area {
+      width: 100%;
+      min-height: 180px;
+      margin-top: 12px;
+      background: #fbfcfb;
+    }
+
+    @media (max-width: 920px) {
+      .grid, .field-row {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        display: block;
+      }
+
+      .actions {
+        margin-top: 16px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: min(100% - 18px, 1180px);
+        padding-top: 18px;
+      }
+
+      .panel-body, .panel-header {
+        padding-inline: 12px;
+      }
+
+      .worker-head, .worker-options, .day-row, .shift-line, .week-row {
+        grid-template-columns: 1fr;
+      }
+
+      .icon-btn {
+        width: 100%;
+      }
+
+      .employee-tools .icon-btn {
+        width: 34px;
+      }
+
+      .icon-btn.remove {
+        width: 28px;
+      }
+
+      .toggle-line {
+        white-space: normal;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="topbar">
+      <div>
+        <h1>סידור משמרות</h1>
+        <p class="intro">מגדירים תאריכים לכל שבוע, מדביקים אילוצים בעמודה של כל עובד, מסמנים ימים ללא עבודה או חג, ומפיקים סידור עם נייט 1 ונייט 2.</p>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>אילוצים</h2>
+          <span class="badge">מי שאין לו אילוצים לא נכנס לסידור</span>
+        </div>
+        <div class="panel-body">
+          <div class="employee-tools">
+            <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
+            <button class="icon-btn" id="addWorker" type="button" title="הוסף עובד" aria-label="הוסף עובד">+</button>
+          </div>
+          <div id="workers" class="workers"></div>
+        </div>
+      </div>
+
+      <aside class="panel result">
+        <div class="panel-header">
+          <h2>תוצאה</h2>
+          <span class="badge" id="statusBadge">ממתין להרצה</span>
+        </div>
+        <div class="panel-body">
+          <div class="field-row">
+            <div>
+              <label for="startDate">תאריך התחלה ראשוני</label>
+              <input type="date" id="startDate" value="2026-04-19">
+            </div>
+            <div>
+              <label for="weekCount">כמה שבועות לסדר</label>
+              <input type="number" id="weekCount" min="1" max="8" value="2">
+            </div>
+          </div>
+          <div class="mini-actions">
+            <button class="btn secondary" id="buildWeeks" type="button">בנה שבועות</button>
+          </div>
+          <details class="collapsible" id="weekDetails">
+            <summary>הגדרות שבועות וימים מיוחדים</summary>
+            <div class="collapsible-body">
+              <div id="weekSettings" class="week-settings" aria-live="polite"></div>
+              <p class="helper">ימי שישי חסומים אוטומטית. הסידור כולל א׳ עד ה׳ ושבת.</p>
+              <div id="specialDays" class="days" aria-live="polite"></div>
+              <div class="mini-actions">
+                <button class="btn secondary" id="refreshDays" type="button">רענן ימים</button>
+              </div>
+            </div>
+          </details>
+        <div class="actions result-actions">
+          <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+          <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
+          <button class="btn secondary" id="resetDemo" type="button">טען דוגמה</button>
+        </div>
+        <div id="scheduleOutput" class="schedule-output"></div>
+        <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע גרסת טקסט להעתקה"></textarea>
+      </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_WORKERS = [
+      { name: "הוד", min: 3, max: 6, fixedMin: true },
+      { name: "הדס", min: 1, max: 2, onlyNight2: true },
+      { name: "סיואר", aliases: ["סיוואר"], min: 1, max: 2 },
+      { name: "דניאל", min: 1, max: 2 },
+      { name: "שדא", min: 1, max: 2 },
+      { name: "אשרקת", min: 1, max: 2 },
+      { name: "נעמי", min: 1, max: 2 },
+      { name: "יהלי", min: 1, max: 2 }
+    ];
+
+    const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
+    const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
+    const STORAGE_KEY = "shifts-arranger-v1";
+    const state = { special: {} };
+    let WORKERS = loadWorkerDefinitions();
+
+    const workersEl = document.getElementById("workers");
+    const specialDaysEl = document.getElementById("specialDays");
+    const weekSettingsEl = document.getElementById("weekSettings");
+    const startDateEl = document.getElementById("startDate");
+    const weekCountEl = document.getElementById("weekCount");
+    const outputEl = document.getElementById("scheduleOutput");
+    const plainResultEl = document.getElementById("plainResult");
+    const statusBadgeEl = document.getElementById("statusBadge");
+
+    function readSavedData() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch (error) {
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      }
+    }
+
+    function loadWorkerDefinitions() {
+      const saved = readSavedData();
+      if (Array.isArray(saved?.workerDefs) && saved.workerDefs.length) {
+        return saved.workerDefs.map(worker => ({
+          name: worker.name,
+          aliases: worker.aliases || [],
+          min: Number(worker.min) || 1,
+          max: Number(worker.max) || 2,
+          onlyNight2: Boolean(worker.onlyNight2),
+          fixedMin: Boolean(worker.fixedMin)
+        }));
+      }
+      return DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
+    }
+
+    function isoDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function displayDate(date) {
+      return `${date.getDate()}.${date.getMonth() + 1}`;
+    }
+
+    function addDays(date, amount) {
+      const next = new Date(date);
+      next.setDate(next.getDate() + amount);
+      return next;
+    }
+
+    function getWeekConfigs() {
+      const weeks = Number(weekCountEl.value) || 1;
+      const rows = [...document.querySelectorAll(".week-row")];
+      if (rows.length) {
+        return rows.map((row, index) => {
+          const startValue = row.querySelector(".week-start").value;
+          const endValue = row.querySelector(".week-end").value;
+          const fallbackStart = addDays(new Date(`${startDateEl.value}T12:00:00`), index * 7);
+          const start = startValue ? new Date(`${startValue}T12:00:00`) : fallbackStart;
+          const end = endValue ? new Date(`${endValue}T12:00:00`) : addDays(start, 6);
+          return { start, end };
+        });
+      }
+
+      const start = new Date(`${startDateEl.value}T12:00:00`);
+      return Array.from({ length: weeks }, (_, index) => {
+        const weekStart = addDays(start, index * 7);
+        return { start: weekStart, end: addDays(weekStart, 6) };
+      });
+    }
+
+    function renderWeekSettings(savedWeeks) {
+      const weeks = Number(weekCountEl.value) || 1;
+      const current = savedWeeks || getWeekConfigs();
+      const baseStart = new Date(`${startDateEl.value}T12:00:00`);
+
+      weekSettingsEl.innerHTML = Array.from({ length: weeks }, (_, index) => {
+        const start = current[index]?.start instanceof Date ? current[index].start : addDays(baseStart, index * 7);
+        const end = current[index]?.end instanceof Date ? current[index].end : addDays(start, 6);
+        return `
+          <div class="week-row" data-week="${index}">
+            <div class="week-number">שבוע ${index + 1}</div>
+            <div>
+              <label>מתאריך</label>
+              <input type="date" class="week-start" value="${isoDate(start)}">
+            </div>
+            <div>
+              <label>עד תאריך</label>
+              <input type="date" class="week-end" value="${isoDate(end)}">
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function getScheduleDays() {
+      const weekConfigs = getWeekConfigs();
+      const days = [];
+      for (let week = 0; week < weekConfigs.length; week++) {
+        const start = weekConfigs[week].start;
+        for (const dayIndex of SCHEDULE_DAYS) {
+          const date = addDays(start, dayIndex);
+          days.push({
+            date,
+            iso: isoDate(date),
+            dayIndex,
+            dayName: DAY_NAMES[dayIndex],
+            week,
+            closed: dayIndex === 5 || state.special[isoDate(date)]?.closed || false,
+            label: state.special[isoDate(date)]?.label || ""
+          });
+        }
+      }
+      return days;
+    }
+
+    function weekLabel(weekIndex) {
+      const week = getWeekConfigs()[weekIndex];
+      if (!week) return `שבוע ${weekIndex + 1}`;
+      return `מתאריך ${displayDate(week.start)} עד תאריך ${displayDate(week.end)}`;
+    }
+
+    function renderWorkers() {
+      workersEl.innerHTML = WORKERS.map(worker => `
+        <article class="worker" data-worker="${worker.name}">
+          <div class="worker-head">
+            <input type="checkbox" class="active-worker" aria-label="הכנס את ${worker.name} לסידור">
+            <div class="worker-name">${worker.name}</div>
+            <button class="icon-btn remove remove-worker" type="button" title="הסר עובד" aria-label="הסר את ${worker.name}">-</button>
+            <label class="toggle-line">
+              <input type="checkbox" class="night2-only" ${worker.onlyNight2 ? "checked" : ""}>
+              רק נייט 2
+            </label>
+          </div>
+          <div class="worker-options">
+            <div>
+              <label>מינימום בשבוע</label>
+              <input type="number" class="min-shifts" min="0" max="6" value="${worker.min}">
+            </div>
+            <div>
+              <label>מקסימום בשבוע</label>
+              <input type="number" class="max-shifts" min="1" max="6" value="${worker.max}">
+            </div>
+            <div>
+              <label>עדיפות</label>
+              <select class="priority">
+                <option value="normal">רגיל</option>
+                <option value="low">פחות משמרות</option>
+                <option value="high">יותר משמרות</option>
+              </select>
+            </div>
+          </div>
+          <textarea class="constraints" placeholder="תאריך: 19-25&#10;א' - לא יכול&#10;ב' -&#10;ג' -&#10;ד' -&#10;ה' -&#10;שבת -"></textarea>
+        </article>
+      `).join("");
+    }
+
+    function getCurrentWorkerState() {
+      const data = {};
+      document.querySelectorAll(".worker").forEach(card => {
+        data[card.dataset.worker] = {
+          active: card.querySelector(".active-worker").checked,
+          onlyNight2: card.querySelector(".night2-only").checked,
+          min: card.querySelector(".min-shifts").value,
+          max: card.querySelector(".max-shifts").value,
+          priority: card.querySelector(".priority").value,
+          constraints: card.querySelector(".constraints").value
+        };
+      });
+      return data;
+    }
+
+    function applyWorkerState(stateByName) {
+      for (const [name, saved] of Object.entries(stateByName || {})) {
+        const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
+        if (!card) continue;
+        card.querySelector(".active-worker").checked = Boolean(saved.active);
+        card.querySelector(".night2-only").checked = Boolean(saved.onlyNight2);
+        card.querySelector(".min-shifts").value = saved.min ?? 1;
+        card.querySelector(".max-shifts").value = saved.max ?? 2;
+        card.querySelector(".priority").value = saved.priority || "normal";
+        card.querySelector(".constraints").value = saved.constraints || "";
+      }
+    }
+
+    function addWorker() {
+      const input = document.getElementById("newWorkerName");
+      const name = input.value.trim();
+      if (!name) return;
+      if (WORKERS.some(worker => worker.name === name || (worker.aliases || []).includes(name))) {
+        statusBadgeEl.textContent = "העובד כבר קיים";
+        input.select();
+        return;
+      }
+
+      const existingState = getCurrentWorkerState();
+      WORKERS.push({ name, aliases: [], min: 1, max: 2 });
+      renderWorkers();
+      applyWorkerState(existingState);
+
+      const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
+      card.querySelector(".active-worker").checked = true;
+      input.value = "";
+      saveState();
+    }
+
+    function removeWorker(name) {
+      const existingState = getCurrentWorkerState();
+      delete existingState[name];
+      WORKERS = WORKERS.filter(worker => worker.name !== name);
+      renderWorkers();
+      applyWorkerState(existingState);
+      saveState();
+    }
+
+    function renderSpecialDays() {
+      const days = getScheduleDays();
+      specialDaysEl.innerHTML = days.map(day => {
+        const closed = day.closed || false;
+        const label = state.special[day.iso]?.label || "";
+        return `
+          <div class="day-row" data-date="${day.iso}">
+            <div class="day-label">${day.dayName} ${displayDate(day.date)}</div>
+            <select class="special-type">
+              <option value="" ${!closed ? "selected" : ""}>יום עבודה</option>
+              <option value="אין עבודה" ${closed && label === "אין עבודה" ? "selected" : ""}>אין עבודה</option>
+              <option value="ערב חג" ${closed && label === "ערב חג" ? "selected" : ""}>ערב חג</option>
+              <option value="חג" ${closed && label === "חג" ? "selected" : ""}>חג</option>
+            </select>
+            <span class="${closed ? "closed" : ""}">${closed ? "חסום" : "פתוח"}</span>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function normalizeDayName(text) {
+      const clean = text.replace(/['׳״"]/g, "").trim();
+      if (clean.startsWith("ש")) return "שבת";
+      return clean[0] || "";
+    }
+
+    function parseConstraints(text) {
+      const blocked = new Set();
+      const lines = text.split(/\r?\n/);
+      let weekOffset = 0;
+      let sawDate = false;
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+
+        if (/^תאריך\s*:/i.test(line)) {
+          if (sawDate) weekOffset += 1;
+          sawDate = true;
+          continue;
+        }
+
+        const match = line.match(/^([א-ת'׳"]+)\s*[-:]\s*(.*)$/);
+        if (!match) continue;
+
+        const day = normalizeDayName(match[1]);
+        const value = match[2] || "";
+        if (!/לא\s*יכול|לא\s*יכולה|לא\s*זמין|חסום|אין/i.test(value)) continue;
+
+        const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
+        if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
+
+        const week = getWeekConfigs()[weekOffset];
+        const date = week ? addDays(week.start, dayIndex) : addDays(new Date(`${startDateEl.value}T12:00:00`), weekOffset * 7 + dayIndex);
+        blocked.add(isoDate(date));
+      }
+
+      return blocked;
+    }
+
+    function getWorkersData() {
+      return [...document.querySelectorAll(".worker")].map(card => {
+        const name = card.dataset.worker;
+        const constraintsText = card.querySelector(".constraints").value.trim();
+        const manuallyActive = card.querySelector(".active-worker").checked;
+        return {
+          name,
+          active: manuallyActive || constraintsText.length > 0,
+          onlyNight2: card.querySelector(".night2-only").checked,
+          min: Number(card.querySelector(".min-shifts").value) || 0,
+          max: Number(card.querySelector(".max-shifts").value) || 1,
+          priority: card.querySelector(".priority").value,
+          blocked: parseConstraints(constraintsText),
+          weekCounts: {},
+          total: 0,
+          recentDays: []
+        };
+      }).filter(worker => worker.active);
+    }
+
+    function workerScore(worker, day, slot) {
+      const weekCount = worker.weekCounts[day.week] || 0;
+      let score = 0;
+      score += weekCount * 20;
+      score += worker.total * 4;
+      if (worker.name === "הוד" && weekCount < 3) score -= 28;
+      if (worker.priority === "high") score -= 8;
+      if (worker.priority === "low") score += 8;
+      if (worker.recentDays.includes(day.iso)) score += 25;
+      if (slot === 1 && worker.onlyNight2) score += 1000;
+      return score;
+    }
+
+    function chooseWorker(workers, day, slot, alreadyChosen) {
+      const candidates = workers
+        .filter(worker => !alreadyChosen.includes(worker.name))
+        .filter(worker => !worker.blocked.has(day.iso))
+        .filter(worker => !(slot === 1 && worker.onlyNight2))
+        .filter(worker => (worker.weekCounts[day.week] || 0) < worker.max)
+        .sort((a, b) => workerScore(a, day, slot) - workerScore(b, day, slot) || a.name.localeCompare(b.name, "he"));
+
+      return candidates[0] || null;
+    }
+
+    function assign(worker, day) {
+      worker.weekCounts[day.week] = (worker.weekCounts[day.week] || 0) + 1;
+      worker.total += 1;
+      worker.recentDays.push(day.iso);
+      if (worker.recentDays.length > 2) worker.recentDays.shift();
+    }
+
+    function generateSchedule() {
+      const warnings = [];
+      const workers = getWorkersData();
+      const days = getScheduleDays();
+      const schedule = {};
+
+      if (workers.length < 2) {
+        warnings.push("צריך לפחות שני עובדים עם אילוצים/סימון פעיל כדי ליצור סידור.");
+      }
+
+      for (const day of days) {
+        if (!schedule[day.week]) schedule[day.week] = [];
+
+        if (day.closed) {
+          schedule[day.week].push({ day, closed: true });
+          continue;
+        }
+
+        const first = chooseWorker(workers, day, 1, []);
+        if (first) assign(first, day);
+
+        const second = chooseWorker(workers, day, 2, first ? [first.name] : []);
+        if (second) assign(second, day);
+
+        if (!first || !second) {
+          warnings.push(`${day.dayName} ${displayDate(day.date)}: לא נמצאו שני עובדים זמינים לפי האילוצים.`);
+        }
+
+        schedule[day.week].push({ day, first, second });
+      }
+
+      const weekCount = Number(weekCountEl.value) || 1;
+      for (let week = 0; week < weekCount; week++) {
+        for (const worker of workers) {
+          const count = worker.weekCounts[week] || 0;
+          const min = worker.name === "הוד" ? Math.max(worker.min, 3) : worker.min;
+          if (count < min) warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, פחות מהמינימום ${min}.`);
+          if (count > worker.max) warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
+        }
+      }
+
+      return { schedule, warnings, workers };
+    }
+
+    function renderSchedule() {
+      const { schedule, warnings } = generateSchedule();
+      const weekCount = getWeekConfigs().length;
+      const plain = [];
+      let html = "";
+
+      for (let week = 0; week < weekCount; week++) {
+        const label = weekLabel(week);
+        plain.push(label);
+        html += `<section class="week-result"><div class="week-title">${label}</div>`;
+
+        for (const entry of schedule[week] || []) {
+          const dayName = entry.day.dayName === "שבת" ? "ש" : entry.day.dayName;
+          if (entry.closed) {
+            const reason = entry.day.label || "אין עבודה";
+            html += `<div class="shift-line"><div class="shift-day">${dayName}</div><div class="closed">${reason}</div></div>`;
+            plain.push(`${dayName} - ${reason}`);
+            continue;
+          }
+          const first = entry.first?.name || "לא שובץ";
+          const second = entry.second?.name || "לא שובץ";
+          html += `<div class="shift-line"><div class="shift-day">${dayName}</div><div>${first} ו${second}</div></div>`;
+          plain.push(`${dayName} - ${first} ו${second}`);
+        }
+
+        html += `</section>`;
+        plain.push("");
+      }
+
+      if (warnings.length) {
+        html += `<div class="notice danger"><strong>צריך בדיקה:</strong><br>${warnings.map(item => `• ${item}`).join("<br>")}</div>`;
+        plain.push("הערות לבדיקה:");
+        warnings.forEach(item => plain.push(`- ${item}`));
+        statusBadgeEl.textContent = "נוצר עם אזהרות";
+      } else {
+        html += `<div class="notice"><strong>הסידור נוצר בהצלחה.</strong> כללי המינימום/מקסימום והאילוצים מולאו.</div>`;
+        statusBadgeEl.textContent = "נוצר בהצלחה";
+      }
+
+      outputEl.innerHTML = html;
+      plainResultEl.value = plain.join("\n").trim();
+      saveState();
+    }
+
+    function saveState() {
+      const data = {
+        startDate: startDateEl.value,
+        weekCount: weekCountEl.value,
+        special: state.special,
+        workerDefs: WORKERS.map(worker => ({
+          name: worker.name,
+          aliases: worker.aliases || [],
+          min: Number(worker.min) || 1,
+          max: Number(worker.max) || 2,
+          onlyNight2: Boolean(worker.onlyNight2),
+          fixedMin: Boolean(worker.fixedMin)
+        })),
+        weeks: [...document.querySelectorAll(".week-row")].map(row => ({
+          start: row.querySelector(".week-start").value,
+          end: row.querySelector(".week-end").value
+        })),
+        workers: [...document.querySelectorAll(".worker")].map(card => ({
+          name: card.dataset.worker,
+          active: card.querySelector(".active-worker").checked,
+          onlyNight2: card.querySelector(".night2-only").checked,
+          min: card.querySelector(".min-shifts").value,
+          max: card.querySelector(".max-shifts").value,
+          priority: card.querySelector(".priority").value,
+          constraints: card.querySelector(".constraints").value
+        }))
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const data = JSON.parse(raw);
+        startDateEl.value = data.startDate || startDateEl.value;
+        weekCountEl.value = data.weekCount || weekCountEl.value;
+        Object.assign(state.special, data.special || {});
+        if (Array.isArray(data.weeks) && data.weeks.length) {
+          renderWeekSettings(data.weeks.map(week => ({
+            start: new Date(`${week.start}T12:00:00`),
+            end: new Date(`${week.end}T12:00:00`)
+          })));
+        } else {
+          renderWeekSettings();
+        }
+        const workersState = {};
+        for (const saved of data.workers || []) workersState[saved.name] = saved;
+        applyWorkerState(workersState);
+      } catch (error) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+
+    function loadDemo() {
+      WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
+      renderWorkers();
+      startDateEl.value = "2026-04-19";
+      weekCountEl.value = "2";
+      renderWeekSettings();
+      document.querySelectorAll(".constraints").forEach(area => area.value = "");
+      document.querySelectorAll(".active-worker").forEach(box => box.checked = false);
+
+      const samples = {
+        "הוד": "תאריך: 19-25\nא' - \nב' - \nג' - \nד' - \nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
+        "הדס": "תאריך: 19-25\nא' - לא יכולה\nב' - \nג' - \nד' - \nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
+        "סיואר": "תאריך: 19-25\nא' - \nב' - \nג' - לא יכול\nד' - \nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
+        "דניאל": "תאריך: 19-25\nא' - \nב' - \nג' - \nד' - \nה' - לא יכול\nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
+        "שדא": "תאריך: 19-25\nא' - \nב' - לא יכול\nג' - \nד' - \nה' - \nשבת - לא יכול\n\nתאריך: 26-2\nא' -\nב' - לא יכול\nג' - \nד' - \nה' - \nשבת -",
+        "אשרקת": "תאריך: 19-25\nא' - לא יכול\nב' - \nג' - \nד' - לא יכול\nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - לא יכול\nד' - \nה' - \nשבת - לא יכול"
+      };
+
+      for (const [name, text] of Object.entries(samples)) {
+        const card = document.querySelector(`.worker[data-worker="${name}"]`);
+        card.querySelector(".constraints").value = text;
+        card.querySelector(".active-worker").checked = true;
+      }
+
+      Object.keys(state.special).forEach(key => delete state.special[key]);
+      renderSpecialDays();
+      renderSchedule();
+    }
+
+    document.getElementById("buildSchedule").addEventListener("click", renderSchedule);
+    document.getElementById("copyResult").addEventListener("click", async () => {
+      if (!plainResultEl.value.trim()) renderSchedule();
+      try {
+        await navigator.clipboard.writeText(plainResultEl.value);
+        statusBadgeEl.textContent = "הועתק";
+      } catch (error) {
+        plainResultEl.focus();
+        plainResultEl.select();
+        statusBadgeEl.textContent = "אפשר להעתיק ידנית";
+      }
+    });
+    document.getElementById("resetDemo").addEventListener("click", loadDemo);
+    document.getElementById("addWorker").addEventListener("click", addWorker);
+    document.getElementById("newWorkerName").addEventListener("keydown", event => {
+      if (event.key === "Enter") addWorker();
+    });
+    document.getElementById("buildWeeks").addEventListener("click", () => {
+      renderWeekSettings();
+      renderSpecialDays();
+      saveState();
+    });
+    document.getElementById("refreshDays").addEventListener("click", () => {
+      renderSpecialDays();
+      saveState();
+    });
+
+    specialDaysEl.addEventListener("change", event => {
+      if (!event.target.classList.contains("special-type")) return;
+      const row = event.target.closest(".day-row");
+      const iso = row.dataset.date;
+      const value = event.target.value;
+      if (!value) {
+        delete state.special[iso];
+      } else {
+        state.special[iso] = { closed: true, label: value };
+      }
+      renderSpecialDays();
+      saveState();
+    });
+
+    workersEl.addEventListener("click", event => {
+      if (!event.target.classList.contains("remove-worker")) return;
+      const card = event.target.closest(".worker");
+      removeWorker(card.dataset.worker);
+    });
+
+    document.addEventListener("input", event => {
+      if (event.target.closest(".worker") || event.target.closest(".week-row") || event.target === startDateEl || event.target === weekCountEl) {
+        if (event.target.closest(".week-row")) renderSpecialDays();
+        if (event.target === startDateEl || event.target === weekCountEl) {
+          renderWeekSettings();
+          renderSpecialDays();
+        }
+        saveState();
+      }
+    });
+
+    renderWorkers();
+    renderWeekSettings();
+    loadState();
+    renderSpecialDays();
+  </script>
+</body>
+</html>
