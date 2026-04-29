@@ -944,7 +944,14 @@
         warnings.push("צריך לפחות שני עובדים מסומנים כדי ליצור סידור. טקסט בתיבה מסמן אוטומטית, אבל אם הורדת סימון ידנית העובד לא ייכנס.");
       }
 
-      for (const day of days) {
+      const assignmentDays = [...days].sort((a, b) => {
+        if (a.week !== b.week) return a.week - b.week;
+        if (a.dayIndex === 6 && b.dayIndex !== 6) return -1;
+        if (b.dayIndex === 6 && a.dayIndex !== 6) return 1;
+        return a.dayIndex - b.dayIndex;
+      });
+
+      for (const day of assignmentDays) {
         if (!schedule[day.week]) schedule[day.week] = [];
 
         if (day.closed) {
@@ -974,6 +981,10 @@
         }
 
         schedule[day.week].push({ day, first, second });
+      }
+
+      for (const weekEntries of Object.values(schedule)) {
+        weekEntries.sort((a, b) => a.day.dayIndex - b.day.dayIndex);
       }
 
       const weekCount = Number(weekCountEl.value) || 1;
