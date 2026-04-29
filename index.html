@@ -904,12 +904,13 @@
       return score;
     }
 
-    function chooseWorker(workers, day, slot, alreadyChosen) {
+    function chooseWorker(workers, day, slot, alreadyChosen, options = {}) {
+      const allowOverMax = Boolean(options.allowOverMax);
       const candidates = workers
         .filter(worker => !alreadyChosen.includes(worker.name))
         .filter(worker => !worker.blocked.has(day.iso))
         .filter(worker => !(slot === 1 && worker.onlyNight2))
-        .filter(worker => (worker.weekCounts[day.week] || 0) < worker.max)
+        .filter(worker => allowOverMax || (worker.weekCounts[day.week] || 0) < worker.max)
         .sort((a, b) => workerScore(a, day, slot) - workerScore(b, day, slot) || a.name.localeCompare(b.name, "he"));
 
       return candidates[0] || null;
@@ -940,7 +941,7 @@
       }
 
       if (workers.length < 2) {
-        warnings.push("צריך לפחות שני עובדים עם אילוצים/סימון פעיל כדי ליצור סידור.");
+        warnings.push("צריך לפחות שני עובדים מסומנים כדי ליצור סידור. טקסט בתיבה מסמן אוטומטית, אבל אם הורדת סימון ידנית העובד לא ייכנס.");
       }
 
       for (const day of days) {
@@ -951,14 +952,25 @@
           continue;
         }
 
-        const first = chooseWorker(workers, day, 1, []);
+        let relaxed = false;
+        let first = chooseWorker(workers, day, 1, []);
+        if (!first) {
+          first = chooseWorker(workers, day, 1, [], { allowOverMax: true });
+          relaxed = Boolean(first);
+        }
         if (first) assign(first, day);
 
-        const second = chooseWorker(workers, day, 2, first ? [first.name] : []);
+        let second = chooseWorker(workers, day, 2, first ? [first.name] : []);
+        if (!second) {
+          second = chooseWorker(workers, day, 2, first ? [first.name] : [], { allowOverMax: true });
+          relaxed = relaxed || Boolean(second);
+        }
         if (second) assign(second, day);
 
         if (!first || !second) {
           warnings.push(`${day.dayName} ${displayDate(day.date)}: לא נמצאו שני עובדים זמינים לפי האילוצים.`);
+        } else if (relaxed) {
+          warnings.push(`${day.dayName} ${displayDate(day.date)}: שובץ עובד מעל המקסימום השבועי כדי לא להשאיר משמרת ריקה.`);
         }
 
         schedule[day.week].push({ day, first, second });
