@@ -554,6 +554,7 @@
           </details>
         <div class="actions result-actions">
           <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+          <button class="btn secondary" id="refreshSchedule" type="button">רענון</button>
           <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
         </div>
         <div id="scheduleOutput" class="schedule-output"></div>
@@ -578,7 +579,7 @@
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
     const STORAGE_KEY = "shifts-arranger-v2";
-    const state = { special: {} };
+    const state = { special: {}, shuffleSeed: 0 };
     let WORKERS = loadWorkerDefinitions();
 
     const workersEl = document.getElementById("workers");
@@ -873,7 +874,8 @@
           blocked: parseConstraints(constraintsText),
           weekCounts: {},
           total: 0,
-          recentDays: []
+          recentDays: [],
+          saturdayWeeks: []
         };
       }).filter(worker => worker.active);
     }
@@ -887,7 +889,9 @@
       if (worker.priority === "high") score -= 8;
       if (worker.priority === "low") score += 8;
       if (worker.recentDays.includes(day.iso)) score += 25;
+      if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
       if (slot === 1 && worker.onlyNight2) score += 1000;
+      score += Math.random() * state.shuffleSeed;
       return score;
     }
 
@@ -905,6 +909,7 @@
     function assign(worker, day) {
       worker.weekCounts[day.week] = (worker.weekCounts[day.week] || 0) + 1;
       worker.total += 1;
+      if (day.dayIndex === 6 && !worker.saturdayWeeks.includes(day.week)) worker.saturdayWeeks.push(day.week);
       worker.recentDays.push(day.iso);
       if (worker.recentDays.length > 2) worker.recentDays.shift();
     }
@@ -1080,7 +1085,14 @@
       renderSchedule();
     }
 
-    document.getElementById("buildSchedule").addEventListener("click", renderSchedule);
+    document.getElementById("buildSchedule").addEventListener("click", () => {
+      state.shuffleSeed = 0;
+      renderSchedule();
+    });
+    document.getElementById("refreshSchedule").addEventListener("click", () => {
+      state.shuffleSeed = 18;
+      renderSchedule();
+    });
     document.getElementById("copyResult").addEventListener("click", async () => {
       if (!plainResultEl.value.trim()) renderSchedule();
       try {
