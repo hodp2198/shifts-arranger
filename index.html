@@ -555,7 +555,6 @@
         <div class="actions result-actions">
           <button class="btn" id="buildSchedule" type="button">צור סידור</button>
           <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
-          <button class="btn secondary" id="resetDemo" type="button">טען דוגמה</button>
         </div>
         <div id="scheduleOutput" class="schedule-output"></div>
         <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע גרסת טקסט להעתקה"></textarea>
@@ -578,7 +577,7 @@
 
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
-    const STORAGE_KEY = "shifts-arranger-v1";
+    const STORAGE_KEY = "shifts-arranger-v2";
     const state = { special: {} };
     let WORKERS = loadWorkerDefinitions();
 
@@ -736,7 +735,7 @@
               </select>
             </div>
           </div>
-          <textarea class="constraints" placeholder="תאריך: 19-25&#10;א' - לא יכול&#10;ב' -&#10;ג' -&#10;ד' -&#10;ה' -&#10;שבת -"></textarea>
+          <textarea class="constraints" placeholder=""></textarea>
         </article>
       `).join("");
     }
@@ -866,7 +865,7 @@
         const manuallyActive = card.querySelector(".active-worker").checked;
         return {
           name,
-          active: manuallyActive || constraintsText.length > 0,
+          active: manuallyActive,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: Number(card.querySelector(".min-shifts").value) || 0,
           max: Number(card.querySelector(".max-shifts").value) || 1,
@@ -1093,7 +1092,6 @@
         statusBadgeEl.textContent = "אפשר להעתיק ידנית";
       }
     });
-    document.getElementById("resetDemo").addEventListener("click", loadDemo);
     document.getElementById("addWorker").addEventListener("click", addWorker);
     document.getElementById("newWorkerName").addEventListener("keydown", event => {
       if (event.key === "Enter") addWorker();
@@ -1130,6 +1128,9 @@
 
     document.addEventListener("input", event => {
       if (event.target.closest(".worker") || event.target.closest(".week-row") || event.target === startDateEl || event.target === weekCountEl) {
+        if (event.target.classList.contains("constraints") && event.target.value.trim()) {
+          event.target.closest(".worker").querySelector(".active-worker").checked = true;
+        }
         if (event.target.closest(".week-row")) renderSpecialDays();
         if (event.target === startDateEl || event.target === weekCountEl) {
           renderWeekSettings();
