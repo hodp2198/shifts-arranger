@@ -859,6 +859,10 @@
       return blocked;
     }
 
+    function getWorkerMin(worker) {
+      return worker.name === "הוד" ? Math.max(worker.min, 3) : worker.min;
+    }
+
     function getWorkersData() {
       return [...document.querySelectorAll(".worker")].map(card => {
         const name = card.dataset.worker;
@@ -882,13 +886,18 @@
 
     function workerScore(worker, day, slot) {
       const weekCount = worker.weekCounts[day.week] || 0;
+      const min = getWorkerMin(worker);
+      const needed = Math.max(0, min - weekCount);
+      const remainingDays = Math.max(1, day.remainingOpenDays || 1);
       let score = 0;
       score += weekCount * 20;
       score += worker.total * 4;
-      if (worker.name === "הוד" && weekCount < 3) score -= 28;
+      if (needed) score -= (needed / remainingDays) * 30;
       if (worker.priority === "high") score -= 8;
       if (worker.priority === "low") score += 8;
       if (worker.recentDays.includes(day.iso)) score += 25;
+      if (day.dayIndex === 0 && weekCount === 0 && needed < remainingDays) score += 18;
+      if (worker.name === "הוד" && day.dayIndex === 0 && needed < remainingDays) score += 28;
       if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
       if (slot === 1 && worker.onlyNight2) score += 1000;
       score += Math.random() * state.shuffleSeed;
@@ -919,6 +928,16 @@
       const workers = getWorkersData();
       const days = getScheduleDays();
       const schedule = {};
+      const openDaysByWeek = {};
+
+      for (const day of days) {
+        if (!openDaysByWeek[day.week]) openDaysByWeek[day.week] = [];
+        if (!day.closed) openDaysByWeek[day.week].push(day.iso);
+      }
+
+      for (const day of days) {
+        day.remainingOpenDays = (openDaysByWeek[day.week] || []).filter(iso => iso >= day.iso).length;
+      }
 
       if (workers.length < 2) {
         warnings.push("צריך לפחות שני עובדים עם אילוצים/סימון פעיל כדי ליצור סידור.");
@@ -949,7 +968,7 @@
       for (let week = 0; week < weekCount; week++) {
         for (const worker of workers) {
           const count = worker.weekCounts[week] || 0;
-          const min = worker.name === "הוד" ? Math.max(worker.min, 3) : worker.min;
+          const min = getWorkerMin(worker);
           if (count < min) warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, פחות מהמינימום ${min}.`);
           if (count > worker.max) warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
         }
