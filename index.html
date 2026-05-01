@@ -988,6 +988,35 @@
       return candidates[0] || null;
     }
 
+    function canAssign(worker, day, slot, options = {}) {
+      if (!worker || worker.blocked.has(day.iso)) return false;
+      if (slot === 1 && worker.onlyNight2) return false;
+      if (!options.allowOverMax && (worker.weekCounts[day.week] || 0) >= worker.max) return false;
+      return true;
+    }
+
+    function chooseShiftPair(workers, day, options = {}) {
+      let best = null;
+
+      for (const first of workers) {
+        if (!canAssign(first, day, 1, options)) continue;
+        for (const second of workers) {
+          if (second.name === first.name) continue;
+          if (!canAssign(second, day, 2, options)) continue;
+
+          const score = workerScore(first, day, 1)
+            + workerScore(second, day, 2)
+            + Math.random() * (state.shuffleSeed || 14);
+
+          if (!best || score < best.score) {
+            best = { first, second, score };
+          }
+        }
+      }
+
+      return best;
+    }
+
     function assign(worker, day, slot) {
       worker.weekCounts[day.week] = (worker.weekCounts[day.week] || 0) + 1;
       worker.total += 1;
@@ -1161,16 +1190,12 @@
           continue;
         }
 
-        let first = chooseWorker(workers, day, 1, []);
-        if (!first) {
-          first = chooseWorker(workers, day, 1, [], { allowOverMax: true });
-        }
-        if (first) assign(first, day, 1);
+        let pair = chooseShiftPair(workers, day);
+        if (!pair) pair = chooseShiftPair(workers, day, { allowOverMax: true });
 
-        let second = chooseWorker(workers, day, 2, first ? [first.name] : []);
-        if (!second) {
-          second = chooseWorker(workers, day, 2, first ? [first.name] : [], { allowOverMax: true });
-        }
+        const first = pair?.first || null;
+        const second = pair?.second || null;
+        if (first) assign(first, day, 1);
         if (second) assign(second, day, 2);
 
         if (!first || !second) {
