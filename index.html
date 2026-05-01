@@ -848,11 +848,10 @@
         return;
       }
 
-      const existing = card.querySelector(".constraints").value.trim();
-      card.querySelector(".constraints").value = existing ? `${existing}\n\n${text}` : text;
+      card.querySelector(".constraints").value = text;
       card.querySelector(".active-worker").checked = true;
       whatsappTextEl.value = "";
-      intakeStatusEl.textContent = `האילוצים של ${workerName} נקלטו והוא סומן לסידור.`;
+      intakeStatusEl.textContent = `האילוצים של ${workerName} הוחלפו והוא סומן לסידור.`;
       saveState();
     }
 
