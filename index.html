@@ -551,7 +551,6 @@
           </details>
         <div class="actions result-actions">
           <button class="btn" id="buildSchedule" type="button">צור סידור</button>
-          <button class="btn secondary" id="refreshSchedule" type="button">רענון</button>
           <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
         </div>
         <div id="scheduleOutput" class="schedule-output"></div>
@@ -1251,10 +1250,6 @@
     }
 
     document.getElementById("buildSchedule").addEventListener("click", () => {
-      state.shuffleSeed = 0;
-      renderSchedule();
-    });
-    document.getElementById("refreshSchedule").addEventListener("click", () => {
       state.shuffleSeed = 18;
       renderSchedule();
     });
