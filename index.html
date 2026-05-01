@@ -992,6 +992,56 @@
       return warnings;
     }
 
+    function improveMaximums(schedule, workers) {
+      const weekCount = getWeekConfigs().length;
+
+      for (let week = 0; week < weekCount; week++) {
+        let changed = true;
+        while (changed) {
+          changed = false;
+          const overWorkers = workers
+            .filter(worker => (worker.weekCounts[week] || 0) > worker.max)
+            .sort((a, b) => ((b.weekCounts[week] || 0) - b.max) - ((a.weekCounts[week] || 0) - a.max));
+
+          for (const overWorker of overWorkers) {
+            const entries = (schedule[week] || [])
+              .filter(entry => !entry.closed)
+              .filter(entry => entry.first?.name === overWorker.name || entry.second?.name === overWorker.name);
+
+            let best = null;
+            for (const entry of entries) {
+              const overSlot = entry.first?.name === overWorker.name ? 1 : 2;
+              const overKey = overSlot === 1 ? "first" : "second";
+
+              for (const candidate of workers) {
+                if (candidate.name === overWorker.name) continue;
+                if ((candidate.weekCounts[week] || 0) >= candidate.max) continue;
+                if (!canWorkSlot(candidate, entry.day, overSlot, entry)) continue;
+
+                const candidateMin = getWorkerMin(candidate);
+                const underMinBonus = (candidate.weekCounts[week] || 0) < candidateMin ? 80 : 0;
+                const hodCapacityBonus = candidate.name === "הוד" ? 25 : 0;
+                const sameDayPenalty = (candidate.dayCounts[entry.day.dayIndex] || 0) * 15;
+                const slotPenalty = Math.max(0, (candidate.slotCounts[overSlot] || 0) - (candidate.slotCounts[overSlot === 1 ? 2 : 1] || 0)) * 10;
+                const score = underMinBonus + hodCapacityBonus - sameDayPenalty - slotPenalty + Math.random() * (state.shuffleSeed || 6);
+
+                if (!best || score > best.score) {
+                  best = { entry, overKey, overSlot, candidate, score };
+                }
+              }
+            }
+
+            if (best) {
+              unassign(overWorker, best.entry.day, best.overSlot);
+              best.entry[best.overKey] = best.candidate;
+              assign(best.candidate, best.entry.day, best.overSlot);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+
     function generateSchedule() {
       const warnings = [];
       const workers = getWorkersData();
@@ -1056,6 +1106,8 @@
         weekEntries.sort((a, b) => a.day.dayIndex - b.day.dayIndex);
       }
 
+      warnings.push(...improveMinimums(schedule, workers));
+      improveMaximums(schedule, workers);
       warnings.push(...improveMinimums(schedule, workers));
 
       const weekCount = getWeekConfigs().length;
