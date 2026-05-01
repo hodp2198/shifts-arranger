@@ -876,7 +876,9 @@
           weekCounts: {},
           total: 0,
           recentDays: [],
-          saturdayWeeks: []
+          saturdayWeeks: [],
+          dayCounts: {},
+          slotCounts: { 1: 0, 2: 0 }
         };
       }).filter(worker => worker.active);
     }
@@ -893,11 +895,14 @@
       if (worker.priority === "high") score -= 8;
       if (worker.priority === "low") score += 8;
       if (worker.recentDays.includes(day.iso)) score += 25;
+      score += (worker.dayCounts[day.dayIndex] || 0) * 42;
+      if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 36;
+      if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 36;
       if (day.dayIndex === 0 && weekCount === 0 && needed < remainingDays) score += 18;
       if (worker.name === "הוד" && day.dayIndex === 0 && needed < remainingDays) score += 28;
       if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
       if (slot === 1 && worker.onlyNight2) score += 1000;
-      score += Math.random() * state.shuffleSeed;
+      score += Math.random() * (state.shuffleSeed || 8);
       return score;
     }
 
@@ -913,20 +918,22 @@
       return candidates[0] || null;
     }
 
-    function assign(worker, day) {
+    function assign(worker, day, slot) {
       worker.weekCounts[day.week] = (worker.weekCounts[day.week] || 0) + 1;
       worker.total += 1;
+      worker.dayCounts[day.dayIndex] = (worker.dayCounts[day.dayIndex] || 0) + 1;
+      if (slot) worker.slotCounts[slot] = (worker.slotCounts[slot] || 0) + 1;
       if (day.dayIndex === 6 && !worker.saturdayWeeks.includes(day.week)) worker.saturdayWeeks.push(day.week);
       worker.recentDays.push(day.iso);
       if (worker.recentDays.length > 2) worker.recentDays.shift();
     }
 
-    function unassign(worker, day) {
+    function unassign(worker, day, slot) {
       worker.weekCounts[day.week] = Math.max(0, (worker.weekCounts[day.week] || 0) - 1);
       worker.total = Math.max(0, worker.total - 1);
-      if (day.dayIndex === 6 && !Object.values(worker.weekCounts).some((count, week) => Number(week) === day.week && count > 0)) {
-        worker.saturdayWeeks = worker.saturdayWeeks.filter(week => week !== day.week);
-      }
+      worker.dayCounts[day.dayIndex] = Math.max(0, (worker.dayCounts[day.dayIndex] || 0) - 1);
+      if (slot) worker.slotCounts[slot] = Math.max(0, (worker.slotCounts[slot] || 0) - 1);
+      if (day.dayIndex === 6) worker.saturdayWeeks = worker.saturdayWeeks.filter(week => week !== day.week);
     }
 
     function canWorkSlot(worker, day, slot, entry) {
@@ -975,9 +982,9 @@
 
             if (!best) break;
 
-            unassign(best.current, best.entry.day);
+            unassign(best.current, best.entry.day, best.key === "first" ? 1 : 2);
             best.entry[best.key] = worker;
-            assign(worker, best.entry.day);
+            assign(worker, best.entry.day, best.key === "first" ? 1 : 2);
           }
         }
       }
@@ -1005,12 +1012,18 @@
         warnings.push("צריך לפחות שני עובדים מסומנים כדי ליצור סידור. טקסט בתיבה מסמן אוטומטית, אבל אם הורדת סימון ידנית העובד לא ייכנס.");
       }
 
-      const assignmentDays = [...days].sort((a, b) => {
-        if (a.week !== b.week) return a.week - b.week;
-        if (a.dayIndex === 6 && b.dayIndex !== 6) return -1;
-        if (b.dayIndex === 6 && a.dayIndex !== 6) return 1;
-        return a.dayIndex - b.dayIndex;
-      });
+      const assignmentDays = [];
+      for (let week = 0; week < getWeekConfigs().length; week++) {
+        const weekDays = days.filter(day => day.week === week);
+        const saturday = weekDays.filter(day => day.dayIndex === 6);
+        const weekdays = weekDays
+          .filter(day => day.dayIndex !== 6)
+          .sort((a, b) => {
+            if (!state.shuffleSeed) return a.dayIndex - b.dayIndex;
+            return Math.random() - 0.5;
+          });
+        assignmentDays.push(...saturday, ...weekdays);
+      }
 
       for (const day of assignmentDays) {
         if (!schedule[day.week]) schedule[day.week] = [];
@@ -1026,14 +1039,14 @@
           first = chooseWorker(workers, day, 1, [], { allowOverMax: true });
           relaxed = Boolean(first);
         }
-        if (first) assign(first, day);
+        if (first) assign(first, day, 1);
 
         let second = chooseWorker(workers, day, 2, first ? [first.name] : []);
         if (!second) {
           second = chooseWorker(workers, day, 2, first ? [first.name] : [], { allowOverMax: true });
           relaxed = relaxed || Boolean(second);
         }
-        if (second) assign(second, day);
+        if (second) assign(second, day, 2);
 
         if (!first || !second) {
           warnings.push(`${day.dayName} ${displayDate(day.date)}: לא נמצאו שני עובדים זמינים לפי האילוצים.`);
