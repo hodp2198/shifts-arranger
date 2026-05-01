@@ -446,10 +446,7 @@
     }
 
     .copy-area {
-      width: 100%;
-      min-height: 180px;
-      margin-top: 12px;
-      background: #fbfcfb;
+      display: none;
     }
 
     @media (max-width: 920px) {
@@ -924,6 +921,70 @@
       if (worker.recentDays.length > 2) worker.recentDays.shift();
     }
 
+    function unassign(worker, day) {
+      worker.weekCounts[day.week] = Math.max(0, (worker.weekCounts[day.week] || 0) - 1);
+      worker.total = Math.max(0, worker.total - 1);
+      if (day.dayIndex === 6 && !Object.values(worker.weekCounts).some((count, week) => Number(week) === day.week && count > 0)) {
+        worker.saturdayWeeks = worker.saturdayWeeks.filter(week => week !== day.week);
+      }
+    }
+
+    function canWorkSlot(worker, day, slot, entry) {
+      if (!worker || worker.blocked.has(day.iso)) return false;
+      if (slot === 1 && worker.onlyNight2) return false;
+      if (entry.first?.name === worker.name || entry.second?.name === worker.name) return false;
+      return true;
+    }
+
+    function improveMinimums(schedule, workers) {
+      const warnings = [];
+      const weekCount = getWeekConfigs().length;
+
+      for (let week = 0; week < weekCount; week++) {
+        for (const worker of workers) {
+          const min = getWorkerMin(worker);
+          while ((worker.weekCounts[week] || 0) < min) {
+            const entries = (schedule[week] || [])
+              .filter(entry => !entry.closed)
+              .filter(entry => canWorkSlot(worker, entry.day, 1, entry) || canWorkSlot(worker, entry.day, 2, entry));
+
+            let best = null;
+            for (const entry of entries) {
+              const slots = [
+                { key: "first", slot: 1, current: entry.first },
+                { key: "second", slot: 2, current: entry.second }
+              ];
+
+              for (const option of slots) {
+                if (!canWorkSlot(worker, entry.day, option.slot, entry)) continue;
+                if (!option.current) continue;
+
+                const currentMin = getWorkerMin(option.current);
+                const currentCount = option.current.weekCounts[week] || 0;
+                if (currentCount <= currentMin) continue;
+
+                const score = (currentCount - currentMin) * 20
+                  + (option.current.total || 0)
+                  - (entry.day.dayIndex === 6 ? 12 : 0);
+
+                if (!best || score > best.score) {
+                  best = { entry, key: option.key, current: option.current, score };
+                }
+              }
+            }
+
+            if (!best) break;
+
+            unassign(best.current, best.entry.day);
+            best.entry[best.key] = worker;
+            assign(worker, best.entry.day);
+          }
+        }
+      }
+
+      return warnings;
+    }
+
     function generateSchedule() {
       const warnings = [];
       const workers = getWorkersData();
@@ -987,7 +1048,9 @@
         weekEntries.sort((a, b) => a.day.dayIndex - b.day.dayIndex);
       }
 
-      const weekCount = Number(weekCountEl.value) || 1;
+      warnings.push(...improveMinimums(schedule, workers));
+
+      const weekCount = getWeekConfigs().length;
       for (let week = 0; week < weekCount; week++) {
         for (const worker of workers) {
           const count = worker.weekCounts[week] || 0;
@@ -1141,9 +1204,7 @@
         await navigator.clipboard.writeText(plainResultEl.value);
         statusBadgeEl.textContent = "הועתק";
       } catch (error) {
-        plainResultEl.focus();
-        plainResultEl.select();
-        statusBadgeEl.textContent = "אפשר להעתיק ידנית";
+        statusBadgeEl.textContent = "הדפדפן חסם העתקה";
       }
     });
     document.getElementById("addWorker").addEventListener("click", addWorker);
