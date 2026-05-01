@@ -1033,25 +1033,20 @@
           continue;
         }
 
-        let relaxed = false;
         let first = chooseWorker(workers, day, 1, []);
         if (!first) {
           first = chooseWorker(workers, day, 1, [], { allowOverMax: true });
-          relaxed = Boolean(first);
         }
         if (first) assign(first, day, 1);
 
         let second = chooseWorker(workers, day, 2, first ? [first.name] : []);
         if (!second) {
           second = chooseWorker(workers, day, 2, first ? [first.name] : [], { allowOverMax: true });
-          relaxed = relaxed || Boolean(second);
         }
         if (second) assign(second, day, 2);
 
         if (!first || !second) {
           warnings.push(`${day.dayName} ${displayDate(day.date)}: לא נמצאו שני עובדים זמינים לפי האילוצים.`);
-        } else if (relaxed) {
-          warnings.push(`${day.dayName} ${displayDate(day.date)}: שובץ עובד מעל המקסימום השבועי כדי לא להשאיר משמרת ריקה.`);
         }
 
         schedule[day.week].push({ day, first, second });
