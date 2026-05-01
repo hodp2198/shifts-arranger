@@ -212,6 +212,35 @@
       font-size: 14px;
     }
 
+    .whatsapp-intake {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      margin-bottom: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+    }
+
+    .whatsapp-row {
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .whatsapp-intake textarea {
+      min-height: 104px;
+      background: #fff;
+    }
+
+    .intake-status {
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     .icon-btn {
       width: 34px;
       height: 34px;
@@ -473,7 +502,7 @@
         padding-inline: 12px;
       }
 
-      .worker-head, .worker-options, .day-row, .shift-line, .week-row {
+      .worker-head, .worker-options, .day-row, .shift-line, .week-row, .whatsapp-row {
         grid-template-columns: 1fr;
       }
 
@@ -511,6 +540,17 @@
           <span class="badge">מי שאין לו אילוצים לא נכנס לסידור</span>
         </div>
         <div class="panel-body">
+          <div class="whatsapp-intake">
+            <div class="whatsapp-row">
+              <div>
+                <label for="whatsappWorker">קליטת הודעת וואטסאפ לעובד</label>
+                <select id="whatsappWorker"></select>
+              </div>
+              <button class="btn secondary" id="applyWhatsapp" type="button">קלוט אילוצים</button>
+            </div>
+            <textarea id="whatsappText" placeholder="מדביקים כאן הודעת וואטסאפ של עובד"></textarea>
+            <div class="intake-status" id="intakeStatus"></div>
+          </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
             <button class="icon-btn" id="addWorker" type="button" title="הוסף עובד" aria-label="הוסף עובד">+</button>
@@ -586,6 +626,9 @@
     const outputEl = document.getElementById("scheduleOutput");
     const plainResultEl = document.getElementById("plainResult");
     const statusBadgeEl = document.getElementById("statusBadge");
+    const whatsappWorkerEl = document.getElementById("whatsappWorker");
+    const whatsappTextEl = document.getElementById("whatsappText");
+    const intakeStatusEl = document.getElementById("intakeStatus");
 
     function readSavedData() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -735,6 +778,11 @@
           <textarea class="constraints" placeholder=""></textarea>
         </article>
       `).join("");
+      renderWhatsappWorkers();
+    }
+
+    function renderWhatsappWorkers() {
+      whatsappWorkerEl.innerHTML = WORKERS.map(worker => `<option value="${worker.name}">${worker.name}</option>`).join("");
     }
 
     function getCurrentWorkerState() {
@@ -783,6 +831,28 @@
       const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
       card.querySelector(".active-worker").checked = true;
       input.value = "";
+      saveState();
+    }
+
+    function applyWhatsappConstraints() {
+      const workerName = whatsappWorkerEl.value;
+      const text = whatsappTextEl.value.trim();
+      if (!workerName || !text) {
+        intakeStatusEl.textContent = "בחר עובד והדבק הודעת אילוצים.";
+        return;
+      }
+
+      const card = document.querySelector(`.worker[data-worker="${CSS.escape(workerName)}"]`);
+      if (!card) {
+        intakeStatusEl.textContent = "לא נמצא כרטיס לעובד שנבחר.";
+        return;
+      }
+
+      const existing = card.querySelector(".constraints").value.trim();
+      card.querySelector(".constraints").value = existing ? `${existing}\n\n${text}` : text;
+      card.querySelector(".active-worker").checked = true;
+      whatsappTextEl.value = "";
+      intakeStatusEl.textContent = `האילוצים של ${workerName} נקלטו והוא סומן לסידור.`;
       saveState();
     }
 
@@ -1276,6 +1346,7 @@
     document.getElementById("newWorkerName").addEventListener("keydown", event => {
       if (event.key === "Enter") addWorker();
     });
+    document.getElementById("applyWhatsapp").addEventListener("click", applyWhatsappConstraints);
     document.getElementById("buildWeeks").addEventListener("click", () => {
       renderWeekSettings();
       renderSpecialDays();
