@@ -894,14 +894,16 @@
       if (worker.priority === "high") score -= 8;
       if (worker.priority === "low") score += 8;
       if (worker.recentDays.includes(day.iso)) score += 25;
-      score += (worker.dayCounts[day.dayIndex] || 0) * 42;
-      if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 36;
-      if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 36;
+      score += (worker.dayCounts[day.dayIndex] || 0) * 80;
+      if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 85;
+      if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 85;
+      if (worker.name === "הוד" && slot === 1 && (worker.slotCounts[1] || 0) >= (worker.slotCounts[2] || 0)) score += 110;
+      if (worker.name === "הוד" && slot === 2 && (worker.slotCounts[1] || 0) > (worker.slotCounts[2] || 0)) score -= 45;
       if (day.dayIndex === 0 && weekCount === 0 && needed < remainingDays) score += 18;
       if (worker.name === "הוד" && day.dayIndex === 0 && needed < remainingDays) score += 28;
       if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
       if (slot === 1 && worker.onlyNight2) score += 1000;
-      score += Math.random() * (state.shuffleSeed || 8);
+      score += Math.random() * (state.shuffleSeed || 16);
       return score;
     }
 
@@ -969,9 +971,16 @@
                 const currentCount = option.current.weekCounts[week] || 0;
                 if (currentCount <= currentMin) continue;
 
+                const targetDayPenalty = (worker.dayCounts[entry.day.dayIndex] || 0) * 60;
+                const targetSlotPenalty = Math.max(0, (worker.slotCounts[option.slot] || 0) - (worker.slotCounts[option.slot === 1 ? 2 : 1] || 0)) * 70;
+                const hodNightOnePenalty = worker.name === "הוד" && option.slot === 1 ? 90 : 0;
                 const score = (currentCount - currentMin) * 20
                   + (option.current.total || 0)
-                  - (entry.day.dayIndex === 6 ? 12 : 0);
+                  - (entry.day.dayIndex === 6 ? 12 : 0)
+                  - targetDayPenalty
+                  - targetSlotPenalty
+                  - hodNightOnePenalty
+                  + Math.random() * (state.shuffleSeed || 12);
 
                 if (!best || score > best.score) {
                   best = { entry, key: option.key, current: option.current, score };
@@ -1020,9 +1029,10 @@
                 const candidateMin = getWorkerMin(candidate);
                 const underMinBonus = (candidate.weekCounts[week] || 0) < candidateMin ? 80 : 0;
                 const hodCapacityBonus = candidate.name === "הוד" ? 25 : 0;
-                const sameDayPenalty = (candidate.dayCounts[entry.day.dayIndex] || 0) * 15;
-                const slotPenalty = Math.max(0, (candidate.slotCounts[overSlot] || 0) - (candidate.slotCounts[overSlot === 1 ? 2 : 1] || 0)) * 10;
-                const score = underMinBonus + hodCapacityBonus - sameDayPenalty - slotPenalty + Math.random() * (state.shuffleSeed || 6);
+                const sameDayPenalty = (candidate.dayCounts[entry.day.dayIndex] || 0) * 45;
+                const slotPenalty = Math.max(0, (candidate.slotCounts[overSlot] || 0) - (candidate.slotCounts[overSlot === 1 ? 2 : 1] || 0)) * 55;
+                const hodNightOnePenalty = candidate.name === "הוד" && overSlot === 1 ? 70 : 0;
+                const score = underMinBonus + hodCapacityBonus - sameDayPenalty - slotPenalty - hodNightOnePenalty + Math.random() * (state.shuffleSeed || 10);
 
                 if (!best || score > best.score) {
                   best = { entry, overKey, overSlot, candidate, score };
@@ -1250,7 +1260,7 @@
     }
 
     document.getElementById("buildSchedule").addEventListener("click", () => {
-      state.shuffleSeed = 18;
+      state.shuffleSeed = 34;
       renderSchedule();
     });
     document.getElementById("copyResult").addEventListener("click", async () => {
