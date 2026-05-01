@@ -1264,12 +1264,12 @@
         })),
         workers: [...document.querySelectorAll(".worker")].map(card => ({
           name: card.dataset.worker,
-          active: card.querySelector(".active-worker").checked,
+          active: false,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
           priority: card.querySelector(".priority").value,
-          constraints: card.querySelector(".constraints").value
+          constraints: ""
         }))
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1292,7 +1292,9 @@
           renderWeekSettings();
         }
         const workersState = {};
-        for (const saved of data.workers || []) workersState[saved.name] = saved;
+        for (const saved of data.workers || []) {
+          workersState[saved.name] = { ...saved, active: false, constraints: "" };
+        }
         applyWorkerState(workersState);
       } catch (error) {
         localStorage.removeItem(STORAGE_KEY);
