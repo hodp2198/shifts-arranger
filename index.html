@@ -1249,8 +1249,6 @@
 
       if (warnings.length) {
         html += `<div class="notice danger"><strong>צריך בדיקה:</strong><br>${warnings.map(item => `• ${item}`).join("<br>")}</div>`;
-        plain.push("הערות לבדיקה:");
-        warnings.forEach(item => plain.push(`- ${item}`));
         statusBadgeEl.textContent = "נוצר עם אזהרות";
       } else {
         html += `<div class="notice"><strong>הסידור נוצר בהצלחה.</strong> כללי המינימום/מקסימום והאילוצים מולאו.</div>`;
