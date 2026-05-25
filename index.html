@@ -307,7 +307,7 @@
 
     .worker-options {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
       padding: 12px 12px 0;
     }
@@ -578,6 +578,10 @@
           <div class="mini-actions">
             <button class="btn secondary" id="buildWeeks" type="button">בנה שבועות</button>
           </div>
+          <div class="actions result-actions">
+            <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+            <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
+          </div>
           <details class="collapsible" id="weekDetails">
             <summary>הגדרות שבועות וימים מיוחדים</summary>
             <div class="collapsible-body">
@@ -596,10 +600,6 @@
                 <label for="oneTimeRules">אילוצים חד פעמיים</label>
                 <textarea id="oneTimeRules" placeholder=""></textarea>
                 <div class="intake-status">מיועד להערות חריגות שלא חוזרות כל שבוע.</div>
-              </div>
-              <div class="actions result-actions">
-                <button class="btn" id="buildSchedule" type="button">צור סידור</button>
-                <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
               </div>
             </div>
           </details>
@@ -776,14 +776,6 @@
               <label>מקסימום בשבוע</label>
               <input type="number" class="max-shifts" min="1" max="6" value="${worker.max}">
             </div>
-            <div>
-              <label>עדיפות</label>
-              <select class="priority">
-                <option value="normal">רגיל</option>
-                <option value="low">פחות משמרות</option>
-                <option value="high">יותר משמרות</option>
-              </select>
-            </div>
           </div>
           <textarea class="constraints" placeholder=""></textarea>
       </article>
@@ -821,7 +813,6 @@
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
-          priority: card.querySelector(".priority").value,
           constraints: card.querySelector(".constraints").value
         };
       });
@@ -836,7 +827,6 @@
         card.querySelector(".night2-only").checked = Boolean(saved.onlyNight2);
         card.querySelector(".min-shifts").value = saved.min ?? 1;
         card.querySelector(".max-shifts").value = saved.max ?? 2;
-        card.querySelector(".priority").value = saved.priority || "normal";
         card.querySelector(".constraints").value = saved.constraints || "";
       }
     }
@@ -1020,7 +1010,6 @@
           onlyNight2: card.querySelector(".night2-only").checked,
           min: Number(card.querySelector(".min-shifts").value) || 0,
           max: Number(card.querySelector(".max-shifts").value) || 1,
-          priority: card.querySelector(".priority").value,
           blocked: parseConstraints(constraintsText),
           weekCounts: {},
           total: 0,
@@ -1041,8 +1030,6 @@
       score += weekCount * 20;
       score += worker.total * 4;
       if (needed) score -= (needed / remainingDays) * 30;
-      if (worker.priority === "high") score -= 8;
-      if (worker.priority === "low") score += 8;
       if (worker.recentDays.includes(day.iso)) score += 25;
       score += (worker.dayCounts[day.dayIndex] || 0) * 80;
       if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 85;
@@ -1521,7 +1508,6 @@
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
-          priority: card.querySelector(".priority").value,
           constraints: ""
         }))
       };
