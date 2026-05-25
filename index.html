@@ -1046,6 +1046,7 @@
 
     function parseConstraints(text) {
       const blocked = new Set();
+      const preferred = new Set();
       const lines = text.split(/\r?\n/);
       let weekOffset = 0;
       let sawDate = false;
@@ -1066,7 +1067,9 @@
 
         const day = normalizeDayName(match[1]);
         const value = match[2] || "";
-        if (!isUnavailableText(value)) continue;
+        const unavailable = isUnavailableText(value);
+        const wanted = isPreferredText(value);
+        if (!unavailable && !wanted) continue;
 
         const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
         if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
@@ -1077,14 +1080,19 @@
         const baseStart = getBaseStartDate();
         const date = week ? addDays(week.start, dayIndex) : (baseStart ? addDays(baseStart, weekOffset * 7 + dayIndex) : null);
         if (!date) continue;
-        blocked.add(isoDate(date));
+        if (unavailable) blocked.add(isoDate(date));
+        if (wanted && !unavailable) preferred.add(isoDate(date));
       }
 
-      return blocked;
+      return { blocked, preferred };
     }
 
     function isUnavailableText(text) {
       return /לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(text);
+    }
+
+    function isPreferredText(text) {
+      return /רוצה|מעדיף|מעדיפה|עדיפות/i.test(text);
     }
 
     function getWorkerMin(worker) {
@@ -1101,6 +1109,7 @@
       return [...document.querySelectorAll(".worker")].map(card => {
         const name = card.dataset.worker;
         const constraintsText = card.querySelector(".constraints").value.trim();
+        const parsedConstraints = parseConstraints(constraintsText);
         const manuallyActive = card.querySelector(".active-worker").checked;
         const oneTimeActive = oneTimeRulesEl.value.includes(name);
         return {
@@ -1109,7 +1118,8 @@
           onlyNight2: card.querySelector(".night2-only").checked,
           min: Number(card.querySelector(".min-shifts").value) || 0,
           max: Number(card.querySelector(".max-shifts").value) || 1,
-          blocked: parseConstraints(constraintsText),
+          blocked: parsedConstraints.blocked,
+          preferred: parsedConstraints.preferred,
           weekCounts: {},
           total: 0,
           recentDays: [],
@@ -1145,6 +1155,7 @@
         score += weekCount * 100;
       }
       score += worker.total * 10;
+      if (worker.preferred?.has(day.iso)) score -= 950;
       if (worker.recentDays.includes(day.iso)) score += 25;
       score += (worker.dayCounts[day.dayIndex] || 0) * 80;
       if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 85;
@@ -1249,6 +1260,7 @@
               for (const option of slots) {
                 if (!canWorkSlot(worker, entry.day, option.slot, entry)) continue;
                 if (!option.current) continue;
+                if (option.current.preferred?.has(entry.day.iso)) continue;
 
                 const currentMin = getWorkerMin(option.current);
                 const currentCount = option.current.weekCounts[week] || 0;
@@ -1303,6 +1315,7 @@
             for (const entry of entries) {
               const overSlot = entry.first?.name === overWorker.name ? 1 : 2;
               const overKey = overSlot === 1 ? "first" : "second";
+              if (overWorker.preferred?.has(entry.day.iso)) continue;
 
               for (const candidate of workers) {
                 if (candidate.name === overWorker.name) continue;
@@ -1358,6 +1371,7 @@
             for (const entry of entries) {
               const overSlot = entry.first?.name === overWorker.name ? 1 : 2;
               const overKey = overSlot === 1 ? "first" : "second";
+              if (overWorker.preferred?.has(entry.day.iso)) continue;
 
               for (const candidate of workers) {
                 if (candidate.name === overWorker.name) continue;
@@ -1369,9 +1383,11 @@
                 const candidateNeed = Math.max(0, getWorkerMin(candidate) - candidateCount);
                 const candidateTargetNeed = Math.max(0, getWorkerTarget(candidate, week) - candidateCount);
                 const scarcityBonus = Math.max(0, 3 - (candidate.availableDaysByWeek?.[week] || 6)) * 85;
+                const preferredBonus = candidate.preferred?.has(entry.day.iso) ? 900 : 0;
                 const score = candidateNeed * 700
                   + candidateTargetNeed * 120
                   + scarcityBonus
+                  + preferredBonus
                   - (candidate.dayCounts[entry.day.dayIndex] || 0) * 70
                   - (candidate.slotCounts[overSlot] || 0) * 35
                   + Math.random() * (state.shuffleSeed || 10);
