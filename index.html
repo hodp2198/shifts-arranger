@@ -593,24 +593,16 @@
             <summary>ייבוא אילוצים וחריגים</summary>
             <div class="collapsible-body">
               <div class="whatsapp-intake">
-                <label for="excelPaste">הדבקת טבלת Excel</label>
-                <textarea id="excelPaste" placeholder="אפשר להעתיק טווח מאקסל ולהדביק כאן"></textarea>
-                <div class="mini-actions">
-                  <button class="btn secondary" id="applyExcelPaste" type="button">קלוט הדבקה</button>
-                </div>
-                <div class="intake-status" id="excelPasteStatus"></div>
-              </div>
-              <div class="whatsapp-intake">
                 <label for="oneTimeRules">אילוצים חד פעמיים</label>
                 <textarea id="oneTimeRules" placeholder=""></textarea>
                 <div class="intake-status">מיועד להערות חריגות שלא חוזרות כל שבוע.</div>
               </div>
+              <div class="actions result-actions">
+                <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+                <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
+              </div>
             </div>
           </details>
-        <div class="actions result-actions">
-          <button class="btn" id="buildSchedule" type="button">צור סידור</button>
-          <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
-        </div>
         <div id="scheduleOutput" class="schedule-output"></div>
         <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע גרסת טקסט להעתקה"></textarea>
       </div>
@@ -646,8 +638,6 @@
     const statusBadgeEl = document.getElementById("statusBadge");
     const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
     const bulkExcelStatusEl = document.getElementById("bulkExcelStatus");
-    const excelPasteEl = document.getElementById("excelPaste");
-    const excelPasteStatusEl = document.getElementById("excelPasteStatus");
     const oneTimeRulesEl = document.getElementById("oneTimeRules");
 
     function readSavedData() {
@@ -897,17 +887,6 @@
 
       statusEl.textContent = `נקלטו ${imported} עמודות עובדים.`;
       saveState();
-    }
-
-    function handleExcelPaste() {
-      const text = excelPasteEl.value.trim();
-      if (!text) {
-        excelPasteStatusEl.textContent = "הדבק כאן טווח מאקסל לפני קליטה.";
-        return;
-      }
-
-      const rows = text.split(/\r?\n/).map(line => line.split("\t"));
-      importRowsMatrix(rows, excelPasteStatusEl);
     }
 
     function handleBulkExcelNotes() {
@@ -1543,7 +1522,6 @@
       if (event.key === "Enter") addWorker();
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
-    document.getElementById("applyExcelPaste").addEventListener("click", handleExcelPaste);
     document.getElementById("buildWeeks").addEventListener("click", () => {
       renderWeekSettings();
       renderSpecialDays();
