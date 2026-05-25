@@ -578,10 +578,6 @@
           <div class="mini-actions">
             <button class="btn secondary" id="buildWeeks" type="button">בנה שבועות</button>
           </div>
-          <div class="actions result-actions">
-            <button class="btn" id="buildSchedule" type="button">צור סידור</button>
-            <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
-          </div>
           <details class="collapsible" id="weekDetails">
             <summary>הגדרות שבועות וימים מיוחדים</summary>
             <div class="collapsible-body">
@@ -604,6 +600,11 @@
             </div>
           </details>
         <div id="scheduleOutput" class="schedule-output"></div>
+        <div class="actions result-actions">
+          <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+          <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
+        </div>
+        <div id="scheduleWarnings"></div>
         <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע גרסת טקסט להעתקה"></textarea>
       </div>
       </aside>
@@ -634,6 +635,7 @@
     const startDateEl = document.getElementById("startDate");
     const weekCountEl = document.getElementById("weekCount");
     const outputEl = document.getElementById("scheduleOutput");
+    const warningsEl = document.getElementById("scheduleWarnings");
     const plainResultEl = document.getElementById("plainResult");
     const statusBadgeEl = document.getElementById("statusBadge");
     const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
@@ -1256,6 +1258,46 @@
       return changes;
     }
 
+    function fixBlockedEntries(schedule, workers, warnings) {
+      let changes = 0;
+
+      for (const weekEntries of Object.values(schedule)) {
+        for (const entry of weekEntries) {
+          if (entry.closed) continue;
+
+          const slots = [
+            { key: "first", slot: 1, otherKey: "second" },
+            { key: "second", slot: 2, otherKey: "first" }
+          ];
+
+          for (const item of slots) {
+            const worker = entry[item.key];
+            if (!worker || !worker.blocked.has(entry.day.iso)) continue;
+
+            const otherName = entry[item.otherKey]?.name;
+            unassign(worker, entry.day, item.slot);
+            entry[item.key] = null;
+
+            let replacement = chooseWorker(workers, entry.day, item.slot, otherName ? [otherName] : []);
+            if (!replacement) replacement = chooseWorker(workers, entry.day, item.slot, otherName ? [otherName] : [], { allowOverMax: true });
+
+            if (replacement) {
+              const exceedsMax = (replacement.weekCounts[entry.day.week] || 0) >= replacement.max;
+              entry[item.key] = replacement;
+              assign(replacement, entry.day, item.slot);
+              warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} חסום/ה לפי האילוצים, הוחלף/ה ב-${replacement.name}${exceedsMax ? " מעל המקסימום כי לא הייתה אפשרות אחרת" : ""}.`);
+            } else {
+              warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} חסום/ה לפי האילוצים ולא נמצא מחליף זמין.`);
+            }
+
+            changes += 1;
+          }
+        }
+      }
+
+      return changes;
+    }
+
     function dayIndexFromText(text) {
       if (/ראשון|א['׳]?/.test(text)) return 0;
       if (/שני|ב['׳]?/.test(text)) return 1;
@@ -1430,9 +1472,11 @@
         const minChanges = improveMinimums(schedule, workers);
         const maxChanges = improveMaximums(schedule, workers);
         const duplicateChanges = fixDuplicateEntries(schedule, workers);
-        if (!minChanges && !maxChanges && !duplicateChanges) break;
+        const blockedChanges = fixBlockedEntries(schedule, workers, warnings);
+        if (!minChanges && !maxChanges && !duplicateChanges && !blockedChanges) break;
       }
       fixDuplicateEntries(schedule, workers);
+      fixBlockedEntries(schedule, workers, warnings);
 
       const weekCount = getWeekConfigs().length;
       for (let week = 0; week < weekCount; week++) {
@@ -1488,10 +1532,10 @@
       }
 
       if (warnings.length) {
-        html += `<div class="notice danger"><strong>צריך בדיקה:</strong><br>${warnings.map(item => `• ${item}`).join("<br>")}</div>`;
+        warningsEl.innerHTML = `<div class="notice danger"><strong>צריך בדיקה:</strong><br>${warnings.map(item => `• ${item}`).join("<br>")}</div>`;
         statusBadgeEl.textContent = "נוצר עם אזהרות";
       } else {
-        html += `<div class="notice"><strong>הסידור נוצר בהצלחה.</strong> כללי המינימום/מקסימום והאילוצים מולאו.</div>`;
+        warningsEl.innerHTML = `<div class="notice"><strong>הסידור נוצר בהצלחה.</strong> כללי המינימום/מקסימום והאילוצים מולאו.</div>`;
         statusBadgeEl.textContent = "נוצר בהצלחה";
       }
 
