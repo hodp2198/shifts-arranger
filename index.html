@@ -1543,8 +1543,8 @@
           const count = metric.weekCounts[week] || 0;
           const min = getWorkerMin(worker);
           const target = getWorkerTarget(worker, week);
-          if (count < min) score += (min - count) * 7000;
-          if (count > worker.max) score += (count - worker.max) * 9000;
+          if (count < min) score += (min - count) * 100000;
+          if (count > worker.max) score += (count - worker.max) * 120000;
           if (count > target) score += (count - target) * (worker.name === "הוד" ? 2100 : 1600);
           if (count === 0 && (worker.availableDaysByWeek?.[week] || 0) === 1) score += 1400;
 
@@ -1564,6 +1564,12 @@
       return score;
     }
 
+    function countWorkerInScheduleWeek(schedule, worker, week) {
+      return (schedule[week] || []).filter(entry => (
+        !entry.closed && (entry.first?.name === worker.name || entry.second?.name === worker.name)
+      )).length;
+    }
+
     function optimizeScheduleMix(schedule, workers) {
       let changes = 0;
       let currentScore = scheduleQualityScore(schedule, workers);
@@ -1580,10 +1586,13 @@
           ]) {
             const current = entry[option.key];
             if (!current) continue;
+            const currentCount = countWorkerInScheduleWeek(schedule, current, entry.day.week);
+            if (currentCount <= getWorkerMin(current)) continue;
             if (current.preferred?.has(entry.day.iso) && (current.weekCounts[entry.day.week] || 0) <= current.max) continue;
 
             for (const candidate of workers) {
               if (candidate.name === current.name) continue;
+              if (countWorkerInScheduleWeek(schedule, candidate, entry.day.week) >= candidate.max) continue;
               if (!canWorkSlot(candidate, entry.day, option.slot, entry)) continue;
 
               entry[option.key] = candidate;
@@ -1837,6 +1846,15 @@
         if (!minChanges && !maxChanges && !targetChanges && !mixChanges && !duplicateChanges && !blockedChanges) break;
       }
       optimizeScheduleMix(schedule, workers);
+      for (let pass = 0; pass < 4; pass++) {
+        rebuildWorkerStats(schedule, workers);
+        const maxChanges = improveMaximums(schedule, workers);
+        rebuildWorkerStats(schedule, workers);
+        const minChanges = improveMinimums(schedule, workers);
+        rebuildWorkerStats(schedule, workers);
+        const mixChanges = optimizeScheduleMix(schedule, workers);
+        if (!maxChanges && !minChanges && !mixChanges) break;
+      }
       fixDuplicateEntries(schedule, workers);
       fixBlockedEntries(schedule, workers, warnings);
       rebuildWorkerStats(schedule, workers);
