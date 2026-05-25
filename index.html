@@ -979,7 +979,7 @@
 
         const day = normalizeDayName(match[1]);
         const value = match[2] || "";
-        if (!/לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(value)) continue;
+        if (!isUnavailableText(value)) continue;
 
         const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
         if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
@@ -992,6 +992,10 @@
       }
 
       return blocked;
+    }
+
+    function isUnavailableText(text) {
+      return /לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(text);
     }
 
     function getWorkerMin(worker) {
@@ -1027,15 +1031,22 @@
       const needed = Math.max(0, min - weekCount);
       const remainingDays = Math.max(1, day.remainingOpenDays || 1);
       let score = 0;
-      score += weekCount * 20;
-      score += worker.total * 4;
-      if (needed) score -= (needed / remainingDays) * 30;
+      if (needed) {
+        score -= 1200;
+        score -= needed * 90;
+        score += weekCount * 95;
+      } else {
+        score += 650;
+        score += (weekCount - min) * 180;
+        score += weekCount * 80;
+      }
+      score += worker.total * 10;
       if (worker.recentDays.includes(day.iso)) score += 25;
       score += (worker.dayCounts[day.dayIndex] || 0) * 80;
       if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 85;
       if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 85;
       if (day.dayIndex === 0 && weekCount === 0 && needed < remainingDays) score += 18;
-      if (worker.name === "הוד" && day.dayIndex === 0 && needed < remainingDays) score += 28;
+      if (worker.name === "הוד" && !needed) score += 170;
       if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
       if (slot === 1 && worker.onlyNight2) score += 1000;
       score += Math.random() * (state.shuffleSeed || 16);
@@ -1051,7 +1062,8 @@
         .filter(worker => allowOverMax || (worker.weekCounts[day.week] || 0) < worker.max)
         .sort((a, b) => workerScore(a, day, slot) - workerScore(b, day, slot) || a.name.localeCompare(b.name, "he"));
 
-      return candidates[0] || null;
+      const underMinimum = candidates.filter(worker => (worker.weekCounts[day.week] || 0) < getWorkerMin(worker));
+      return (underMinimum[0] || candidates[0] || null);
     }
 
     function canAssign(worker, day, slot, options = {}) {
@@ -1284,6 +1296,7 @@
       const addRule = (text, defaultWorkerName) => {
         const clean = String(text || "").trim();
         if (!clean) return;
+        if (isUnavailableText(clean)) return;
 
         const workersInRule = defaultWorkerName
           ? workers.find(item => item.name === defaultWorkerName)
@@ -1371,6 +1384,8 @@
         const forcedRules = oneTimeRules.filter(rule => rule.iso === day.iso);
         let forcedFirst = forcedRules.find(rule => rule.slot === 1)?.worker || null;
         let forcedSecond = forcedRules.find(rule => rule.slot === 2)?.worker || null;
+        if (forcedFirst && !canAssign(forcedFirst, day, 1, { allowOverMax: true })) forcedFirst = null;
+        if (forcedSecond && !canAssign(forcedSecond, day, 2, { allowOverMax: true })) forcedSecond = null;
 
         for (const rule of forcedRules.filter(item => !item.slot)) {
           if (!forcedSecond && canAssign(rule.worker, day, 2, { allowOverMax: true })) forcedSecond = rule.worker;
