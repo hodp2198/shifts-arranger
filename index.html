@@ -763,10 +763,14 @@
       return null;
     }
 
-    function applyWeekDatesFromRows(rows) {
+    function applyWeekDatesFromRows(rows, sourceWorkerName = "הוד") {
       const startsByIso = new Map();
+      const headers = rows[0] || [];
+      const sourceIndex = headers.findIndex(header => normalizeWorkerName(header) === normalizeWorkerName(sourceWorkerName));
+      if (sourceIndex < 0) return 0;
 
-      rows.flat().forEach(cell => {
+      rows.slice(1).forEach(row => {
+        const cell = row[sourceIndex];
         const text = String(cell || "").trim();
         if (!isConstraintWeekHeader(text)) return;
         const start = parseWeekStartFromHeader(text);
@@ -911,7 +915,7 @@
     function importRowsMatrix(rows, statusEl) {
       const headers = rows[0] || [];
       let imported = 0;
-      const importedWeeks = applyWeekDatesFromRows(rows);
+      const importedWeeks = applyWeekDatesFromRows(rows, "הוד");
 
       headers.forEach((header, columnIndex) => {
         const name = String(header || "").trim();
@@ -932,7 +936,7 @@
         imported += 1;
       });
 
-      statusEl.textContent = `נקלטו ${imported} עמודות עובדים${importedWeeks ? ` ועודכנו ${importedWeeks} שבועות לפי התאריכים בטבלה` : ""}.`;
+      statusEl.textContent = `נקלטו ${imported} עמודות עובדים${importedWeeks ? ` ועודכנו ${importedWeeks} שבועות לפי התאריכים של הוד` : ""}.`;
       saveState();
     }
 
