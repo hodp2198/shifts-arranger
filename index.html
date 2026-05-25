@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>סידור משמרות</title>
   <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="12" width="48" height="44" rx="8" fill="%23ffffff"/><rect x="8" y="12" width="48" height="14" rx="8" fill="%231c7c63"/><rect x="8" y="22" width="48" height="34" rx="6" fill="%23ffffff"/><path d="M20 8v10M44 8v10" stroke="%2317201d" stroke-width="5" stroke-linecap="round"/><path d="M18 34h8M30 34h8M42 34h4M18 44h8M30 44h8M42 44h4" stroke="%231c7c63" stroke-width="4" stroke-linecap="round"/></svg>'>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
       --bg: #f6f7f9;
@@ -594,16 +593,6 @@
             <summary>ייבוא אילוצים וחריגים</summary>
             <div class="collapsible-body">
               <div class="whatsapp-intake">
-                <div class="whatsapp-row">
-                  <div>
-                    <label for="excelFile">העלאת Excel אילוצים</label>
-                    <input type="file" id="excelFile" accept=".xlsx,.xls,.csv">
-                  </div>
-                  <button class="btn secondary" id="clearExcelInput" type="button">נקה קובץ</button>
-                </div>
-                <div class="intake-status" id="excelStatus">השורה העליונה צריכה להיות שמות עובדים. כל עמודה תיקלט לעובד המתאים.</div>
-              </div>
-              <div class="whatsapp-intake">
                 <label for="excelPaste">הדבקת טבלת Excel</label>
                 <textarea id="excelPaste" placeholder="אפשר להעתיק טווח מאקסל ולהדביק כאן"></textarea>
                 <div class="mini-actions">
@@ -613,7 +602,7 @@
               </div>
               <div class="whatsapp-intake">
                 <label for="oneTimeRules">אילוצים חד פעמיים</label>
-                <textarea id="oneTimeRules" placeholder="לדוגמה: אלון רק ראשון 31/5 נייט 2 חייב לקבל"></textarea>
+                <textarea id="oneTimeRules" placeholder=""></textarea>
                 <div class="intake-status">מיועד להערות חריגות שלא חוזרות כל שבוע.</div>
               </div>
             </div>
@@ -657,8 +646,6 @@
     const statusBadgeEl = document.getElementById("statusBadge");
     const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
     const bulkExcelStatusEl = document.getElementById("bulkExcelStatus");
-    const excelFileEl = document.getElementById("excelFile");
-    const excelStatusEl = document.getElementById("excelStatus");
     const excelPasteEl = document.getElementById("excelPaste");
     const excelPasteStatusEl = document.getElementById("excelPasteStatus");
     const oneTimeRulesEl = document.getElementById("oneTimeRules");
@@ -883,25 +870,6 @@
       card.querySelector(".active-worker").checked = true;
       input.value = "";
       saveState();
-    }
-
-    async function handleExcelUpload() {
-      const file = excelFileEl.files?.[0];
-      if (!file) return;
-      if (!window.XLSX) {
-        excelStatusEl.textContent = "ספריית קריאת Excel עדיין לא נטענה. רענן את הדף ונסה שוב.";
-        return;
-      }
-
-      try {
-        const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-        importRowsMatrix(rows, excelStatusEl);
-      } catch (error) {
-        excelStatusEl.textContent = "לא הצלחתי לקרוא את הקובץ. ודא שזה קובץ Excel תקין.";
-      }
     }
 
     function importRowsMatrix(rows, statusEl) {
@@ -1575,11 +1543,6 @@
       if (event.key === "Enter") addWorker();
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
-    excelFileEl.addEventListener("change", handleExcelUpload);
-    document.getElementById("clearExcelInput").addEventListener("click", () => {
-      excelFileEl.value = "";
-      excelStatusEl.textContent = "השורה העליונה צריכה להיות שמות עובדים. כל עמודה תיקלט לעובד המתאים.";
-    });
     document.getElementById("applyExcelPaste").addEventListener("click", handleExcelPaste);
     document.getElementById("buildWeeks").addEventListener("click", () => {
       renderWeekSettings();
