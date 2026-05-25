@@ -541,15 +541,13 @@
         </div>
         <div class="panel-body">
           <div class="whatsapp-intake">
-            <div class="whatsapp-row">
-              <div>
-                <label for="bulkExcelNotes">הדבקת הערות מאקסל</label>
-                <div class="intake-status">העתק מאקסל טווח שבו השורה הראשונה היא שמות עובדים, והעמודות הן האילוצים.</div>
-              </div>
-              <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
-            </div>
+            <label for="bulkExcelNotes">הדבקת הערות מאקסל</label>
+            <div class="intake-status">העתק מאקסל טווח שבו השורה הראשונה היא שמות עובדים, והעמודות הן האילוצים.</div>
             <textarea id="bulkExcelNotes" placeholder="מדביקים כאן טווח שהועתק מאקסל"></textarea>
             <div class="intake-status" id="bulkExcelStatus"></div>
+            <div class="mini-actions">
+              <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
+            </div>
           </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
