@@ -568,7 +568,7 @@
           <div class="field-row">
             <div>
               <label for="startDate">תאריך התחלה ראשוני</label>
-              <input type="date" id="startDate">
+              <input type="text" id="startDate" inputmode="numeric" placeholder="31/5">
             </div>
             <div>
               <label for="weekCount">כמה שבועות לסדר</label>
@@ -679,6 +679,31 @@
       return `${date.getDate()}.${date.getMonth() + 1}`;
     }
 
+    function editDateValue(date) {
+      return `${date.getDate()}/${date.getMonth() + 1}`;
+    }
+
+    function parseUiDate(value, fallbackYear) {
+      const text = String(value || "").trim();
+      if (!text) return null;
+
+      const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (isoMatch) {
+        return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]), 12);
+      }
+
+      const match = text.match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?$/);
+      if (!match) return null;
+
+      const day = Number(match[1]);
+      const month = Number(match[2]);
+      let year = match[3] ? Number(match[3]) : fallbackYear;
+      if (!year) year = new Date().getFullYear();
+      if (year < 100) year += 2000;
+
+      return new Date(year, month - 1, day, 12);
+    }
+
     function addDays(date, amount) {
       const next = new Date(date);
       next.setDate(next.getDate() + amount);
@@ -686,7 +711,7 @@
     }
 
     function getBaseStartDate() {
-      return startDateEl.value ? new Date(`${startDateEl.value}T12:00:00`) : null;
+      return parseUiDate(startDateEl.value);
     }
 
     function getWeekConfigs() {
@@ -698,9 +723,9 @@
           const startValue = row.querySelector(".week-start").value;
           const endValue = row.querySelector(".week-end").value;
           const fallbackStart = baseStart ? addDays(baseStart, index * 7) : null;
-          const start = startValue ? new Date(`${startValue}T12:00:00`) : fallbackStart;
+          const start = parseUiDate(startValue, baseStart?.getFullYear()) || fallbackStart;
           if (!start) return null;
-          const end = endValue ? new Date(`${endValue}T12:00:00`) : addDays(start, 6);
+          const end = parseUiDate(endValue, start.getFullYear()) || addDays(start, 6);
           return { start, end };
         }).filter(Boolean);
       }
@@ -721,20 +746,21 @@
         return;
       }
       const current = savedWeeks || getWeekConfigs();
+      const fallbackBase = baseStart || current[0]?.start;
 
       weekSettingsEl.innerHTML = Array.from({ length: weeks }, (_, index) => {
-        const start = current[index]?.start instanceof Date ? current[index].start : addDays(baseStart, index * 7);
+        const start = current[index]?.start instanceof Date ? current[index].start : addDays(fallbackBase, index * 7);
         const end = current[index]?.end instanceof Date ? current[index].end : addDays(start, 6);
         return `
           <div class="week-row" data-week="${index}">
             <div class="week-number">שבוע ${index + 1}</div>
             <div>
               <label>מתאריך</label>
-              <input type="date" class="week-start" value="${isoDate(start)}">
+              <input type="text" class="week-start" inputmode="numeric" value="${editDateValue(start)}">
             </div>
             <div>
               <label>עד תאריך</label>
-              <input type="date" class="week-end" value="${isoDate(end)}">
+              <input type="text" class="week-end" inputmode="numeric" value="${editDateValue(end)}">
             </div>
           </div>
         `;
@@ -781,7 +807,7 @@
       const starts = [...startsByIso.values()].sort((a, b) => a - b);
       if (!starts.length) return 0;
 
-      startDateEl.value = isoDate(starts[0]);
+      startDateEl.value = editDateValue(starts[0]);
       weekCountEl.value = String(Math.max(Number(weekCountEl.value) || 1, starts.length));
       renderWeekSettings(starts.map(start => ({ start, end: addDays(start, 6) })));
       renderSpecialDays();
@@ -1048,7 +1074,9 @@
         if (weekOffset === null) continue;
 
         const week = weekConfigs[weekOffset];
-        const date = week ? addDays(week.start, dayIndex) : addDays(new Date(`${startDateEl.value}T12:00:00`), weekOffset * 7 + dayIndex);
+        const baseStart = getBaseStartDate();
+        const date = week ? addDays(week.start, dayIndex) : (baseStart ? addDays(baseStart, weekOffset * 7 + dayIndex) : null);
+        if (!date) continue;
         blocked.add(isoDate(date));
       }
 
@@ -1609,8 +1637,13 @@
     }
 
     function saveState() {
+      const startDate = getBaseStartDate();
+      const saveDateValue = value => {
+        const date = parseUiDate(value, startDate?.getFullYear());
+        return date ? isoDate(date) : "";
+      };
       const data = {
-        startDate: startDateEl.value,
+        startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
         special: state.special,
         workerDefs: WORKERS.map(worker => ({
@@ -1622,8 +1655,8 @@
           fixedMin: Boolean(worker.fixedMin)
         })),
         weeks: [...document.querySelectorAll(".week-row")].map(row => ({
-          start: row.querySelector(".week-start").value,
-          end: row.querySelector(".week-end").value
+          start: saveDateValue(row.querySelector(".week-start").value),
+          end: saveDateValue(row.querySelector(".week-end").value)
         })),
         workers: [...document.querySelectorAll(".worker")].map(card => ({
           name: card.dataset.worker,
@@ -1642,14 +1675,19 @@
       if (!raw) return;
       try {
         const data = JSON.parse(raw);
-        const savedStartDate = data.startDate && data.startDate !== "2026-04-19" ? data.startDate : "";
-        startDateEl.value = savedStartDate;
+        let savedStartDate = data.startDate || "";
+        if (savedStartDate === "2026-04-19" && !localStorage.getItem("cleared-default-start-date-v1")) {
+          savedStartDate = "";
+          localStorage.setItem("cleared-default-start-date-v1", "1");
+        }
+        const startDate = parseUiDate(savedStartDate);
+        startDateEl.value = startDate ? editDateValue(startDate) : "";
         weekCountEl.value = data.weekCount || weekCountEl.value;
         Object.assign(state.special, data.special || {});
-        if (savedStartDate && Array.isArray(data.weeks) && data.weeks.length) {
+        if (startDate && Array.isArray(data.weeks) && data.weeks.length) {
           renderWeekSettings(data.weeks.map(week => ({
-            start: new Date(`${week.start}T12:00:00`),
-            end: new Date(`${week.end}T12:00:00`)
+            start: parseUiDate(week.start, startDate.getFullYear()),
+            end: parseUiDate(week.end, startDate.getFullYear())
           })));
         } else {
           renderWeekSettings();
@@ -1667,7 +1705,7 @@
     function loadDemo() {
       WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
       renderWorkers();
-      startDateEl.value = "2026-04-19";
+      startDateEl.value = "19/4";
       weekCountEl.value = "2";
       renderWeekSettings();
       document.querySelectorAll(".constraints").forEach(area => area.value = "");
