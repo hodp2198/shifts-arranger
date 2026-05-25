@@ -544,13 +544,13 @@
           <div class="whatsapp-intake">
             <div class="whatsapp-row">
               <div>
-                <label for="whatsappWorker">קליטת הודעת וואטסאפ לעובד</label>
-                <select id="whatsappWorker"></select>
+                <label for="bulkExcelNotes">הדבקת הערות מאקסל</label>
+                <div class="intake-status">העתק מאקסל טווח שבו השורה הראשונה היא שמות עובדים, והעמודות הן האילוצים.</div>
               </div>
-              <button class="btn secondary" id="applyWhatsapp" type="button">קלוט אילוצים</button>
+              <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
             </div>
-            <textarea id="whatsappText" placeholder="מדביקים כאן הודעת וואטסאפ של עובד"></textarea>
-            <div class="intake-status" id="intakeStatus"></div>
+            <textarea id="bulkExcelNotes" placeholder="מדביקים כאן טווח שהועתק מאקסל"></textarea>
+            <div class="intake-status" id="bulkExcelStatus"></div>
           </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
@@ -655,9 +655,8 @@
     const outputEl = document.getElementById("scheduleOutput");
     const plainResultEl = document.getElementById("plainResult");
     const statusBadgeEl = document.getElementById("statusBadge");
-    const whatsappWorkerEl = document.getElementById("whatsappWorker");
-    const whatsappTextEl = document.getElementById("whatsappText");
-    const intakeStatusEl = document.getElementById("intakeStatus");
+    const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
+    const bulkExcelStatusEl = document.getElementById("bulkExcelStatus");
     const excelFileEl = document.getElementById("excelFile");
     const excelStatusEl = document.getElementById("excelStatus");
     const excelPasteEl = document.getElementById("excelPaste");
@@ -810,13 +809,8 @@
             </div>
           </div>
           <textarea class="constraints" placeholder=""></textarea>
-        </article>
+      </article>
       `).join("");
-      renderWhatsappWorkers();
-    }
-
-    function renderWhatsappWorkers() {
-      whatsappWorkerEl.innerHTML = WORKERS.map(worker => `<option value="${worker.name}">${worker.name}</option>`).join("");
     }
 
     function normalizeWorkerName(name) {
@@ -891,27 +885,6 @@
       saveState();
     }
 
-    function applyWhatsappConstraints() {
-      const workerName = whatsappWorkerEl.value;
-      const text = whatsappTextEl.value.trim();
-      if (!workerName || !text) {
-        intakeStatusEl.textContent = "בחר עובד והדבק הודעת אילוצים.";
-        return;
-      }
-
-      const card = document.querySelector(`.worker[data-worker="${CSS.escape(workerName)}"]`);
-      if (!card) {
-        intakeStatusEl.textContent = "לא נמצא כרטיס לעובד שנבחר.";
-        return;
-      }
-
-      card.querySelector(".constraints").value = text;
-      card.querySelector(".active-worker").checked = true;
-      whatsappTextEl.value = "";
-      intakeStatusEl.textContent = `האילוצים של ${workerName} הוחלפו והוא סומן לסידור.`;
-      saveState();
-    }
-
     async function handleExcelUpload() {
       const file = excelFileEl.files?.[0];
       if (!file) return;
@@ -967,6 +940,17 @@
 
       const rows = text.split(/\r?\n/).map(line => line.split("\t"));
       importRowsMatrix(rows, excelPasteStatusEl);
+    }
+
+    function handleBulkExcelNotes() {
+      const text = bulkExcelNotesEl.value.trim();
+      if (!text) {
+        bulkExcelStatusEl.textContent = "הדבק כאן טווח מאקסל לפני קליטה.";
+        return;
+      }
+
+      const rows = text.split(/\r?\n/).map(line => line.split("\t"));
+      importRowsMatrix(rows, bulkExcelStatusEl);
     }
 
     function removeWorker(name) {
@@ -1557,7 +1541,7 @@
     document.getElementById("newWorkerName").addEventListener("keydown", event => {
       if (event.key === "Enter") addWorker();
     });
-    document.getElementById("applyWhatsapp").addEventListener("click", applyWhatsappConstraints);
+    document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
     excelFileEl.addEventListener("change", handleExcelUpload);
     document.getElementById("clearExcelInput").addEventListener("click", () => {
       excelFileEl.value = "";
