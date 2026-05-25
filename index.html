@@ -552,21 +552,6 @@
             <textarea id="whatsappText" placeholder="מדביקים כאן הודעת וואטסאפ של עובד"></textarea>
             <div class="intake-status" id="intakeStatus"></div>
           </div>
-          <div class="whatsapp-intake">
-            <div class="whatsapp-row">
-              <div>
-                <label for="excelFile">העלאת Excel אילוצים</label>
-                <input type="file" id="excelFile" accept=".xlsx,.xls,.csv">
-              </div>
-              <button class="btn secondary" id="clearExcelInput" type="button">נקה קובץ</button>
-            </div>
-            <div class="intake-status" id="excelStatus">השורה העליונה צריכה להיות שמות עובדים. כל עמודה תיקלט לעובד המתאים.</div>
-          </div>
-          <div class="whatsapp-intake">
-            <label for="oneTimeRules">אילוצים חד פעמיים</label>
-            <textarea id="oneTimeRules" placeholder="לדוגמה: אלון רק ראשון 31/5 נייט 2 חייב לקבל"></textarea>
-            <div class="intake-status">מיועד להערות חריגות שלא חוזרות כל שבוע.</div>
-          </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
             <button class="icon-btn" id="addWorker" type="button" title="הוסף עובד" aria-label="הוסף עובד">+</button>
@@ -602,6 +587,34 @@
               <div id="specialDays" class="days" aria-live="polite"></div>
               <div class="mini-actions">
                 <button class="btn secondary" id="refreshDays" type="button">רענן ימים</button>
+              </div>
+            </div>
+          </details>
+          <details class="collapsible" id="importDetails">
+            <summary>ייבוא אילוצים וחריגים</summary>
+            <div class="collapsible-body">
+              <div class="whatsapp-intake">
+                <div class="whatsapp-row">
+                  <div>
+                    <label for="excelFile">העלאת Excel אילוצים</label>
+                    <input type="file" id="excelFile" accept=".xlsx,.xls,.csv">
+                  </div>
+                  <button class="btn secondary" id="clearExcelInput" type="button">נקה קובץ</button>
+                </div>
+                <div class="intake-status" id="excelStatus">השורה העליונה צריכה להיות שמות עובדים. כל עמודה תיקלט לעובד המתאים.</div>
+              </div>
+              <div class="whatsapp-intake">
+                <label for="excelPaste">הדבקת טבלת Excel</label>
+                <textarea id="excelPaste" placeholder="אפשר להעתיק טווח מאקסל ולהדביק כאן"></textarea>
+                <div class="mini-actions">
+                  <button class="btn secondary" id="applyExcelPaste" type="button">קלוט הדבקה</button>
+                </div>
+                <div class="intake-status" id="excelPasteStatus"></div>
+              </div>
+              <div class="whatsapp-intake">
+                <label for="oneTimeRules">אילוצים חד פעמיים</label>
+                <textarea id="oneTimeRules" placeholder="לדוגמה: אלון רק ראשון 31/5 נייט 2 חייב לקבל"></textarea>
+                <div class="intake-status">מיועד להערות חריגות שלא חוזרות כל שבוע.</div>
               </div>
             </div>
           </details>
@@ -647,6 +660,8 @@
     const intakeStatusEl = document.getElementById("intakeStatus");
     const excelFileEl = document.getElementById("excelFile");
     const excelStatusEl = document.getElementById("excelStatus");
+    const excelPasteEl = document.getElementById("excelPaste");
+    const excelPasteStatusEl = document.getElementById("excelPasteStatus");
     const oneTimeRulesEl = document.getElementById("oneTimeRules");
 
     function readSavedData() {
@@ -910,33 +925,48 @@
         const workbook = XLSX.read(buffer, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-        const headers = rows[0] || [];
-        let imported = 0;
-
-        headers.forEach((header, columnIndex) => {
-          const name = String(header || "").trim();
-          if (!name) return;
-          const worker = ensureWorker(name);
-          if (!worker) return;
-
-          const text = rows
-            .slice(1)
-            .map(row => String(row[columnIndex] || "").trim())
-            .filter(Boolean)
-            .join("\n");
-
-          const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
-          if (!card) return;
-          card.querySelector(".constraints").value = text;
-          card.querySelector(".active-worker").checked = Boolean(text);
-          imported += 1;
-        });
-
-        excelStatusEl.textContent = `נקלטו ${imported} עמודות עובדים מהקובץ.`;
-        saveState();
+        importRowsMatrix(rows, excelStatusEl);
       } catch (error) {
         excelStatusEl.textContent = "לא הצלחתי לקרוא את הקובץ. ודא שזה קובץ Excel תקין.";
       }
+    }
+
+    function importRowsMatrix(rows, statusEl) {
+      const headers = rows[0] || [];
+      let imported = 0;
+
+      headers.forEach((header, columnIndex) => {
+        const name = String(header || "").trim();
+        if (!name) return;
+        const worker = ensureWorker(name);
+        if (!worker) return;
+
+        const text = rows
+          .slice(1)
+          .map(row => String(row[columnIndex] || "").trim())
+          .filter(Boolean)
+          .join("\n");
+
+        const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
+        if (!card) return;
+        card.querySelector(".constraints").value = text;
+        card.querySelector(".active-worker").checked = Boolean(text);
+        imported += 1;
+      });
+
+      statusEl.textContent = `נקלטו ${imported} עמודות עובדים.`;
+      saveState();
+    }
+
+    function handleExcelPaste() {
+      const text = excelPasteEl.value.trim();
+      if (!text) {
+        excelPasteStatusEl.textContent = "הדבק כאן טווח מאקסל לפני קליטה.";
+        return;
+      }
+
+      const rows = text.split(/\r?\n/).map(line => line.split("\t"));
+      importRowsMatrix(rows, excelPasteStatusEl);
     }
 
     function removeWorker(name) {
@@ -1533,6 +1563,7 @@
       excelFileEl.value = "";
       excelStatusEl.textContent = "השורה העליונה צריכה להיות שמות עובדים. כל עמודה תיקלט לעובד המתאים.";
     });
+    document.getElementById("applyExcelPaste").addEventListener("click", handleExcelPaste);
     document.getElementById("buildWeeks").addEventListener("click", () => {
       renderWeekSettings();
       renderSpecialDays();
