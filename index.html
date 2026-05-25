@@ -741,6 +741,49 @@
       }).join("");
     }
 
+    function parseWeekStartFromHeader(text) {
+      const line = String(text || "").trim();
+      if (!line) return null;
+
+      const year = getBaseStartDate()?.getFullYear() || new Date().getFullYear();
+      const dateMatches = [...line.matchAll(/(\d{1,2})[./](\d{1,2})/g)];
+      if (dateMatches.length) {
+        const day = Number(dateMatches[0][1]);
+        const month = Number(dateMatches[0][2]);
+        return new Date(year, month - 1, day, 12);
+      }
+
+      const startWithEndMonth = line.match(/(\d{1,2})\s*[-–]\s*\d{1,2}[./](\d{1,2})/);
+      if (startWithEndMonth) {
+        const day = Number(startWithEndMonth[1]);
+        const month = Number(startWithEndMonth[2]);
+        return new Date(year, month - 1, day, 12);
+      }
+
+      return null;
+    }
+
+    function applyWeekDatesFromRows(rows) {
+      const startsByIso = new Map();
+
+      rows.flat().forEach(cell => {
+        const text = String(cell || "").trim();
+        if (!isConstraintWeekHeader(text)) return;
+        const start = parseWeekStartFromHeader(text);
+        if (!start) return;
+        startsByIso.set(isoDate(start), start);
+      });
+
+      const starts = [...startsByIso.values()].sort((a, b) => a - b);
+      if (!starts.length) return 0;
+
+      startDateEl.value = isoDate(starts[0]);
+      weekCountEl.value = String(Math.max(Number(weekCountEl.value) || 1, starts.length));
+      renderWeekSettings(starts.map(start => ({ start, end: addDays(start, 6) })));
+      renderSpecialDays();
+      return starts.length;
+    }
+
     function getScheduleDays() {
       const weekConfigs = getWeekConfigs();
       const days = [];
@@ -868,6 +911,7 @@
     function importRowsMatrix(rows, statusEl) {
       const headers = rows[0] || [];
       let imported = 0;
+      const importedWeeks = applyWeekDatesFromRows(rows);
 
       headers.forEach((header, columnIndex) => {
         const name = String(header || "").trim();
@@ -888,7 +932,7 @@
         imported += 1;
       });
 
-      statusEl.textContent = `נקלטו ${imported} עמודות עובדים.`;
+      statusEl.textContent = `נקלטו ${imported} עמודות עובדים${importedWeeks ? ` ועודכנו ${importedWeeks} שבועות לפי התאריכים בטבלה` : ""}.`;
       saveState();
     }
 
