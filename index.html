@@ -568,7 +568,7 @@
           <div class="field-row">
             <div>
               <label for="startDate">תאריך התחלה ראשוני</label>
-              <input type="date" id="startDate" value="2026-04-19">
+              <input type="date" id="startDate">
             </div>
             <div>
               <label for="weekCount">כמה שבועות לסדר</label>
@@ -685,21 +685,28 @@
       return next;
     }
 
+    function getBaseStartDate() {
+      return startDateEl.value ? new Date(`${startDateEl.value}T12:00:00`) : null;
+    }
+
     function getWeekConfigs() {
       const weeks = Number(weekCountEl.value) || 1;
       const rows = [...document.querySelectorAll(".week-row")];
+      const baseStart = getBaseStartDate();
       if (rows.length) {
         return rows.map((row, index) => {
           const startValue = row.querySelector(".week-start").value;
           const endValue = row.querySelector(".week-end").value;
-          const fallbackStart = addDays(new Date(`${startDateEl.value}T12:00:00`), index * 7);
+          const fallbackStart = baseStart ? addDays(baseStart, index * 7) : null;
           const start = startValue ? new Date(`${startValue}T12:00:00`) : fallbackStart;
+          if (!start) return null;
           const end = endValue ? new Date(`${endValue}T12:00:00`) : addDays(start, 6);
           return { start, end };
-        });
+        }).filter(Boolean);
       }
 
-      const start = new Date(`${startDateEl.value}T12:00:00`);
+      const start = getBaseStartDate();
+      if (!start) return [];
       return Array.from({ length: weeks }, (_, index) => {
         const weekStart = addDays(start, index * 7);
         return { start: weekStart, end: addDays(weekStart, 6) };
@@ -708,8 +715,12 @@
 
     function renderWeekSettings(savedWeeks) {
       const weeks = Number(weekCountEl.value) || 1;
+      const baseStart = getBaseStartDate();
+      if (!baseStart && !savedWeeks?.length) {
+        weekSettingsEl.innerHTML = `<p class="helper">בחר תאריך התחלה ואז לחץ על בנה שבועות.</p>`;
+        return;
+      }
       const current = savedWeeks || getWeekConfigs();
-      const baseStart = new Date(`${startDateEl.value}T12:00:00`);
 
       weekSettingsEl.innerHTML = Array.from({ length: weeks }, (_, index) => {
         const start = current[index]?.start instanceof Date ? current[index].start : addDays(baseStart, index * 7);
@@ -1389,6 +1400,11 @@
       const schedule = {};
       const openDaysByWeek = {};
 
+      if (!days.length) {
+        warnings.push("בחר תאריך התחלה ראשוני ובנה שבועות לפני יצירת סידור.");
+        return { schedule, warnings, workers };
+      }
+
       for (const day of days) {
         if (!openDaysByWeek[day.week]) openDaysByWeek[day.week] = [];
         if (!day.closed) openDaysByWeek[day.week].push(day.iso);
@@ -1578,10 +1594,11 @@
       if (!raw) return;
       try {
         const data = JSON.parse(raw);
-        startDateEl.value = data.startDate || startDateEl.value;
+        const savedStartDate = data.startDate && data.startDate !== "2026-04-19" ? data.startDate : "";
+        startDateEl.value = savedStartDate;
         weekCountEl.value = data.weekCount || weekCountEl.value;
         Object.assign(state.special, data.special || {});
-        if (Array.isArray(data.weeks) && data.weeks.length) {
+        if (savedStartDate && Array.isArray(data.weeks) && data.weeks.length) {
           renderWeekSettings(data.weeks.map(week => ({
             start: new Date(`${week.start}T12:00:00`),
             end: new Date(`${week.end}T12:00:00`)
