@@ -1091,6 +1091,12 @@
       return worker.name === "הוד" ? Math.max(worker.min, 3) : worker.min;
     }
 
+    function getWorkerTarget(worker, week) {
+      const availableDays = worker.availableDaysByWeek?.[week] ?? worker.max;
+      if (worker.name === "הוד") return Math.min(worker.max, Math.max(getWorkerMin(worker), Math.min(availableDays, 3)));
+      return Math.min(worker.max, Math.max(getWorkerMin(worker), Math.min(availableDays, 2)));
+    }
+
     function getWorkersData() {
       return [...document.querySelectorAll(".worker")].map(card => {
         const name = card.dataset.worker;
@@ -1109,6 +1115,7 @@
           recentDays: [],
           saturdayWeeks: [],
           dayCounts: {},
+          availableDaysByWeek: {},
           slotCounts: { 1: 0, 2: 0 }
         };
       }).filter(worker => worker.active);
@@ -1117,25 +1124,33 @@
     function workerScore(worker, day, slot) {
       const weekCount = worker.weekCounts[day.week] || 0;
       const min = getWorkerMin(worker);
+      const target = getWorkerTarget(worker, day.week);
       const needed = Math.max(0, min - weekCount);
-      const remainingDays = Math.max(1, day.remainingOpenDays || 1);
+      const targetNeeded = Math.max(0, target - weekCount);
+      const availableDays = worker.availableDaysByWeek?.[day.week] ?? 6;
       let score = 0;
       if (needed) {
-        score -= 1200;
-        score -= needed * 90;
+        score -= 1800;
+        score -= needed * 160;
         score += weekCount * 95;
+        score -= Math.max(0, 4 - availableDays) * 220;
+      } else if (targetNeeded) {
+        score -= 650;
+        score -= targetNeeded * 80;
+        score += weekCount * 120;
+        score -= Math.max(0, 3 - availableDays) * 170;
       } else {
-        score += 650;
-        score += (weekCount - min) * 180;
-        score += weekCount * 80;
+        score += 900;
+        score += (weekCount - target) * 260;
+        score += weekCount * 100;
       }
       score += worker.total * 10;
       if (worker.recentDays.includes(day.iso)) score += 25;
       score += (worker.dayCounts[day.dayIndex] || 0) * 80;
       if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 85;
       if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 85;
-      if (day.dayIndex === 0 && weekCount === 0 && needed < remainingDays) score += 18;
-      if (worker.name === "הוד" && !needed) score += 170;
+      if (day.dayIndex === 0 && weekCount === 0 && !targetNeeded) score += 18;
+      if (worker.name === "הוד" && weekCount >= getWorkerTarget(worker, day.week)) score += 320;
       if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
       if (slot === 1 && worker.onlyNight2) score += 1000;
       score += Math.random() * (state.shuffleSeed || 16);
@@ -1152,7 +1167,8 @@
         .sort((a, b) => workerScore(a, day, slot) - workerScore(b, day, slot) || a.name.localeCompare(b.name, "he"));
 
       const underMinimum = candidates.filter(worker => (worker.weekCounts[day.week] || 0) < getWorkerMin(worker));
-      return (underMinimum[0] || candidates[0] || null);
+      const underTarget = candidates.filter(worker => (worker.weekCounts[day.week] || 0) < getWorkerTarget(worker, day.week));
+      return (underMinimum[0] || underTarget[0] || candidates[0] || null);
     }
 
     function canAssign(worker, day, slot, options = {}) {
@@ -1314,6 +1330,66 @@
               changed = true;
               changes += 1;
             }
+          }
+        }
+      }
+
+      return changes;
+    }
+
+    function improveTargets(schedule, workers) {
+      const weekCount = getWeekConfigs().length;
+      let changes = 0;
+
+      for (let week = 0; week < weekCount; week++) {
+        let changed = true;
+        while (changed) {
+          changed = false;
+          const overTargetWorkers = workers
+            .filter(worker => (worker.weekCounts[week] || 0) > getWorkerTarget(worker, week))
+            .sort((a, b) => ((b.weekCounts[week] || 0) - getWorkerTarget(b, week)) - ((a.weekCounts[week] || 0) - getWorkerTarget(a, week)));
+
+          for (const overWorker of overTargetWorkers) {
+            const entries = (schedule[week] || [])
+              .filter(entry => !entry.closed)
+              .filter(entry => entry.first?.name === overWorker.name || entry.second?.name === overWorker.name);
+
+            let best = null;
+            for (const entry of entries) {
+              const overSlot = entry.first?.name === overWorker.name ? 1 : 2;
+              const overKey = overSlot === 1 ? "first" : "second";
+
+              for (const candidate of workers) {
+                if (candidate.name === overWorker.name) continue;
+                if ((candidate.weekCounts[week] || 0) >= candidate.max) continue;
+                if ((candidate.weekCounts[week] || 0) >= getWorkerTarget(candidate, week)) continue;
+                if (!canWorkSlot(candidate, entry.day, overSlot, entry)) continue;
+
+                const candidateCount = candidate.weekCounts[week] || 0;
+                const candidateNeed = Math.max(0, getWorkerMin(candidate) - candidateCount);
+                const candidateTargetNeed = Math.max(0, getWorkerTarget(candidate, week) - candidateCount);
+                const scarcityBonus = Math.max(0, 3 - (candidate.availableDaysByWeek?.[week] || 6)) * 85;
+                const score = candidateNeed * 700
+                  + candidateTargetNeed * 120
+                  + scarcityBonus
+                  - (candidate.dayCounts[entry.day.dayIndex] || 0) * 70
+                  - (candidate.slotCounts[overSlot] || 0) * 35
+                  + Math.random() * (state.shuffleSeed || 10);
+
+                if (!best || score > best.score) {
+                  best = { entry, overKey, overSlot, candidate, score };
+                }
+              }
+            }
+
+            if (!best) continue;
+
+            unassign(overWorker, best.entry.day, best.overSlot);
+            best.entry[best.overKey] = best.candidate;
+            assign(best.candidate, best.entry.day, best.overSlot);
+            changed = true;
+            changes += 1;
+            break;
           }
         }
       }
@@ -1493,6 +1569,17 @@
       const oneTimeRules = collectOneTimeRules(workers, days);
       applyOnlyRules(workers, days, oneTimeRules);
 
+      for (const worker of workers) {
+        worker.availableDaysByWeek = {};
+        for (let week = 0; week < getWeekConfigs().length; week++) {
+          worker.availableDaysByWeek[week] = days
+            .filter(day => day.week === week && !day.closed)
+            .filter(day => !worker.blocked.has(day.iso))
+            .filter(day => !(worker.onlyNight2 && day.closed))
+            .length;
+        }
+      }
+
       if (workers.length < 2) {
         warnings.push("צריך לפחות שני עובדים מסומנים כדי ליצור סידור. טקסט בתיבה מסמן אוטומטית, אבל אם הורדת סימון ידנית העובד לא ייכנס.");
       }
@@ -1563,9 +1650,10 @@
       for (let pass = 0; pass < 6; pass++) {
         const minChanges = improveMinimums(schedule, workers);
         const maxChanges = improveMaximums(schedule, workers);
+        const targetChanges = improveTargets(schedule, workers);
         const duplicateChanges = fixDuplicateEntries(schedule, workers);
         const blockedChanges = fixBlockedEntries(schedule, workers, warnings);
-        if (!minChanges && !maxChanges && !duplicateChanges && !blockedChanges) break;
+        if (!minChanges && !maxChanges && !targetChanges && !duplicateChanges && !blockedChanges) break;
       }
       fixDuplicateEntries(schedule, workers);
       fixBlockedEntries(schedule, workers, warnings);
