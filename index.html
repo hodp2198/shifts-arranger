@@ -1271,25 +1271,49 @@
 
       const dayIndex = dayIndexFromText(text);
       if (dayIndex === null) return null;
-      return days.find(item => item.dayIndex === dayIndex)?.iso || null;
+      const matches = days.filter(item => item.dayIndex === dayIndex);
+      if (/הבא|הבאה/.test(text)) return matches[1]?.iso || matches[0]?.iso || null;
+      return matches[0]?.iso || null;
     }
 
     function collectOneTimeRules(workers, days) {
       const rules = [];
+      const hodWorker = workers.find(item => item.name === "הוד");
+      const workerNamesInText = text => {
+        const names = workers.filter(item => text.includes(item.name));
+        if ((/\bאני\b|איתי|אתי/.test(text)) && hodWorker && !names.some(item => item.name === hodWorker.name)) {
+          names.push(hodWorker);
+        }
+        return names;
+      };
+
       const addRule = (text, defaultWorkerName) => {
         const clean = String(text || "").trim();
-        if (!clean || !/חייב|רק|נייט/i.test(clean)) return;
+        if (!clean) return;
 
-        const worker = defaultWorkerName
+        const workersInRule = defaultWorkerName
           ? workers.find(item => item.name === defaultWorkerName)
-          : workers.find(item => clean.includes(item.name));
-        if (!worker) return;
+            ? [workers.find(item => item.name === defaultWorkerName)]
+            : []
+          : workerNamesInText(clean);
+        if (!workersInRule.length) return;
 
         const iso = isoFromRuleText(clean, days);
         if (!iso) return;
 
         const slot = /נייט\s*1/.test(clean) ? 1 : (/נייט\s*2/.test(clean) ? 2 : null);
-        rules.push({ worker, iso, slot, only: /רק/.test(clean) });
+        const only = /רק/.test(clean);
+
+        if (slot) {
+          const slottedWorker = workersInRule.find(worker => worker.name !== "הוד") || workersInRule[0];
+          rules.push({ worker: slottedWorker, iso, slot, only });
+          workersInRule
+            .filter(worker => worker.name !== slottedWorker.name)
+            .forEach(worker => rules.push({ worker, iso, slot: slot === 1 ? 2 : 1, only: false }));
+          return;
+        }
+
+        workersInRule.forEach(worker => rules.push({ worker, iso, slot: null, only }));
       };
 
       oneTimeRulesEl.value.split(/\r?\n/).forEach(line => addRule(line));
