@@ -1234,6 +1234,30 @@
       if (day.dayIndex === 6) worker.saturdayWeeks = worker.saturdayWeeks.filter(week => week !== day.week);
     }
 
+    function resetWorkerStats(workers) {
+      workers.forEach(worker => {
+        worker.weekCounts = {};
+        worker.total = 0;
+        worker.recentDays = [];
+        worker.saturdayWeeks = [];
+        worker.dayCounts = {};
+        worker.slotCounts = { 1: 0, 2: 0 };
+      });
+    }
+
+    function rebuildWorkerStats(schedule, workers) {
+      resetWorkerStats(workers);
+      const entries = Object.values(schedule)
+        .flat()
+        .filter(entry => !entry.closed)
+        .sort((a, b) => a.day.iso.localeCompare(b.day.iso));
+
+      entries.forEach(entry => {
+        if (entry.first) assign(entry.first, entry.day, 1);
+        if (entry.second) assign(entry.second, entry.day, 2);
+      });
+    }
+
     function canWorkSlot(worker, day, slot, entry) {
       if (!worker || worker.blocked.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
@@ -1482,6 +1506,127 @@
       return changes;
     }
 
+    function scheduleQualityScore(schedule, workers) {
+      const metrics = new Map(workers.map(worker => [worker.name, {
+        worker,
+        weekCounts: {},
+        slotCounts: { 1: 0, 2: 0 },
+        daysByWeek: {},
+        preferredHits: 0
+      }]));
+
+      for (const entry of Object.values(schedule).flat()) {
+        if (entry.closed) continue;
+        [
+          { worker: entry.first, slot: 1 },
+          { worker: entry.second, slot: 2 }
+        ].forEach(item => {
+          if (!item.worker) return;
+          const metric = metrics.get(item.worker.name);
+          metric.weekCounts[entry.day.week] = (metric.weekCounts[entry.day.week] || 0) + 1;
+          metric.slotCounts[item.slot] = (metric.slotCounts[item.slot] || 0) + 1;
+          if (!metric.daysByWeek[entry.day.week]) metric.daysByWeek[entry.day.week] = [];
+          metric.daysByWeek[entry.day.week].push(entry.day.dayIndex);
+          if (item.worker.preferred?.has(entry.day.iso)) metric.preferredHits += 1;
+        });
+      }
+
+      let score = 0;
+      const weekCount = getWeekConfigs().length;
+      for (const metric of metrics.values()) {
+        const worker = metric.worker;
+        for (let week = 0; week < weekCount; week++) {
+          const count = metric.weekCounts[week] || 0;
+          const min = getWorkerMin(worker);
+          const target = getWorkerTarget(worker, week);
+          if (count < min) score += (min - count) * 7000;
+          if (count > worker.max) score += (count - worker.max) * 9000;
+          if (count > target) score += (count - target) * (worker.name === "הוד" ? 2100 : 1600);
+          if (count === 0 && (worker.availableDaysByWeek?.[week] || 0) === 1) score += 1400;
+
+          const days = [...new Set(metric.daysByWeek[week] || [])].sort((a, b) => a - b);
+          for (let index = 1; index < days.length; index++) {
+            const gap = days[index] - days[index - 1];
+            if (gap === 1) score += 1900;
+            else if (gap === 2) score += 600;
+          }
+        }
+
+        const slotDiff = Math.abs((metric.slotCounts[1] || 0) - (metric.slotCounts[2] || 0));
+        score += Math.max(0, slotDiff - 1) * 1300;
+        score -= metric.preferredHits * 1100;
+      }
+
+      return score;
+    }
+
+    function optimizeScheduleMix(schedule, workers) {
+      let changes = 0;
+      let currentScore = scheduleQualityScore(schedule, workers);
+
+      for (let pass = 0; pass < 90; pass++) {
+        let best = null;
+
+        for (const entry of Object.values(schedule).flat()) {
+          if (entry.closed) continue;
+
+          for (const option of [
+            { key: "first", slot: 1, otherKey: "second" },
+            { key: "second", slot: 2, otherKey: "first" }
+          ]) {
+            const current = entry[option.key];
+            if (!current) continue;
+            if (current.preferred?.has(entry.day.iso) && (current.weekCounts[entry.day.week] || 0) <= current.max) continue;
+
+            for (const candidate of workers) {
+              if (candidate.name === current.name) continue;
+              if (!canWorkSlot(candidate, entry.day, option.slot, entry)) continue;
+
+              entry[option.key] = candidate;
+              const nextScore = scheduleQualityScore(schedule, workers);
+              entry[option.key] = current;
+
+              if (nextScore < currentScore - 25 && (!best || nextScore < best.score)) {
+                best = { entry, key: option.key, candidate, score: nextScore };
+              }
+            }
+          }
+
+          if (entry.first && entry.second && !entry.first.onlyNight2) {
+            const first = entry.first;
+            const second = entry.second;
+            entry.first = second;
+            entry.second = first;
+            const swapIsValid = canWorkSlot(entry.first, entry.day, 1, { first: null, second: entry.second })
+              && canWorkSlot(entry.second, entry.day, 2, { first: entry.first, second: null });
+            const nextScore = swapIsValid ? scheduleQualityScore(schedule, workers) : Infinity;
+            entry.first = first;
+            entry.second = second;
+
+            if (nextScore < currentScore - 25 && (!best || nextScore < best.score)) {
+              best = { entry, swap: true, score: nextScore };
+            }
+          }
+        }
+
+        if (!best) break;
+
+        if (best.swap) {
+          const first = best.entry.first;
+          best.entry.first = best.entry.second;
+          best.entry.second = first;
+        } else {
+          best.entry[best.key] = best.candidate;
+        }
+
+        currentScore = best.score;
+        changes += 1;
+      }
+
+      rebuildWorkerStats(schedule, workers);
+      return changes;
+    }
+
     function dayIndexFromText(text) {
       if (/ראשון|א['׳]?/.test(text)) return 0;
       if (/שני|ב['׳]?/.test(text)) return 1;
@@ -1682,12 +1827,15 @@
         const minChanges = improveMinimums(schedule, workers);
         const maxChanges = improveMaximums(schedule, workers);
         const targetChanges = improveTargets(schedule, workers);
+        const mixChanges = optimizeScheduleMix(schedule, workers);
         const duplicateChanges = fixDuplicateEntries(schedule, workers);
         const blockedChanges = fixBlockedEntries(schedule, workers, warnings);
-        if (!minChanges && !maxChanges && !targetChanges && !duplicateChanges && !blockedChanges) break;
+        if (!minChanges && !maxChanges && !targetChanges && !mixChanges && !duplicateChanges && !blockedChanges) break;
       }
+      optimizeScheduleMix(schedule, workers);
       fixDuplicateEntries(schedule, workers);
       fixBlockedEntries(schedule, workers, warnings);
+      rebuildWorkerStats(schedule, workers);
 
       const weekCount = getWeekConfigs().length;
       for (let week = 0; week < weekCount; week++) {
