@@ -935,18 +935,51 @@
       return clean[0] || "";
     }
 
+    function isConstraintWeekHeader(line) {
+      return /^תאריך\s*[:\-/]?/i.test(line)
+        || /^שבוע\s+של\s+\d{1,2}[./]\d{1,2}/i.test(line)
+        || /^\d{1,2}[./]\d{1,2}\s*[-–]\s*\d{1,2}(?:[./]\d{1,2})?/i.test(line)
+        || /^\d{1,2}\s*[-–]\s*\d{1,2}[./]\d{1,2}/i.test(line);
+    }
+
+    function resolveConstraintWeekOffset(line, currentOffset, sawDate, weekConfigs) {
+      const dateMatches = [...line.matchAll(/(\d{1,2})[./](\d{1,2})/g)];
+      if (dateMatches.length) {
+        const day = Number(dateMatches[0][1]);
+        const month = Number(dateMatches[0][2]);
+        const matchedWeek = weekConfigs.findIndex(week => (
+          week.start.getDate() === day && week.start.getMonth() + 1 === month
+        ));
+        return matchedWeek >= 0 ? matchedWeek : null;
+      }
+
+      const startWithEndMonth = line.match(/(\d{1,2})\s*[-–]\s*\d{1,2}[./](\d{1,2})/);
+      if (startWithEndMonth) {
+        const day = Number(startWithEndMonth[1]);
+        const month = Number(startWithEndMonth[2]);
+        const matchedWeek = weekConfigs.findIndex(week => (
+          week.start.getDate() === day && week.start.getMonth() + 1 === month
+        ));
+        return matchedWeek >= 0 ? matchedWeek : null;
+      }
+
+      const baseOffset = Number.isInteger(currentOffset) ? currentOffset : -1;
+      return sawDate ? baseOffset + 1 : 0;
+    }
+
     function parseConstraints(text) {
       const blocked = new Set();
       const lines = text.split(/\r?\n/);
       let weekOffset = 0;
       let sawDate = false;
+      const weekConfigs = getWeekConfigs();
 
       for (const rawLine of lines) {
         const line = rawLine.trim();
         if (!line) continue;
 
-        if (/^תאריך\s*:/i.test(line)) {
-          if (sawDate) weekOffset += 1;
+        if (isConstraintWeekHeader(line)) {
+          weekOffset = resolveConstraintWeekOffset(line, weekOffset, sawDate, weekConfigs);
           sawDate = true;
           continue;
         }
@@ -961,7 +994,9 @@
         const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
         if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
 
-        const week = getWeekConfigs()[weekOffset];
+        if (weekOffset === null) continue;
+
+        const week = weekConfigs[weekOffset];
         const date = week ? addDays(week.start, dayIndex) : addDays(new Date(`${startDateEl.value}T12:00:00`), weekOffset * 7 + dayIndex);
         blocked.add(isoDate(date));
       }
@@ -1082,7 +1117,8 @@
     function canWorkSlot(worker, day, slot, entry) {
       if (!worker || worker.blocked.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
-      if (entry.first?.name === worker.name || entry.second?.name === worker.name) return false;
+      if (slot !== 1 && entry.first?.name === worker.name) return false;
+      if (slot !== 2 && entry.second?.name === worker.name) return false;
       return true;
     }
 
@@ -1191,6 +1227,30 @@
               changes += 1;
             }
           }
+        }
+      }
+
+      return changes;
+    }
+
+    function fixDuplicateEntries(schedule, workers) {
+      let changes = 0;
+
+      for (const weekEntries of Object.values(schedule)) {
+        for (const entry of weekEntries) {
+          if (entry.closed || !entry.first || !entry.second) continue;
+          if (entry.first.name !== entry.second.name) continue;
+
+          const duplicate = entry.second;
+          const replacement = chooseWorker(workers, entry.day, 2, [entry.first.name], { allowOverMax: true });
+          unassign(duplicate, entry.day, 2);
+          if (entry.day.dayIndex === 6 && entry.first?.name === duplicate.name && !duplicate.saturdayWeeks.includes(entry.day.week)) {
+            duplicate.saturdayWeeks.push(entry.day.week);
+          }
+
+          entry.second = replacement;
+          if (replacement) assign(replacement, entry.day, 2);
+          changes += 1;
         }
       }
 
@@ -1332,18 +1392,26 @@
 
         let pair = null;
         if (forcedFirst || forcedSecond) {
+          if (forcedFirst && forcedSecond && forcedFirst.name === forcedSecond.name) {
+            forcedSecond = null;
+          }
           const used = [forcedFirst?.name, forcedSecond?.name].filter(Boolean);
           const first = forcedFirst || chooseWorker(workers, day, 1, used, { allowOverMax: true });
           if (first && !used.includes(first.name)) used.push(first.name);
-          const second = forcedSecond || chooseWorker(workers, day, 2, used, { allowOverMax: true });
+          const second = forcedSecond && !used.includes(forcedSecond.name)
+            ? forcedSecond
+            : chooseWorker(workers, day, 2, used, { allowOverMax: true });
           pair = { first, second };
         } else {
           pair = chooseShiftPair(workers, day);
           if (!pair) pair = chooseShiftPair(workers, day, { allowOverMax: true });
         }
 
-        const first = pair?.first || null;
-        const second = pair?.second || null;
+        let first = pair?.first || null;
+        let second = pair?.second || null;
+        if (first && second && first.name === second.name) {
+          second = chooseWorker(workers, day, 2, [first.name], { allowOverMax: true });
+        }
         if (first) assign(first, day, 1);
         if (second) assign(second, day, 2);
 
@@ -1361,7 +1429,8 @@
       for (let pass = 0; pass < 6; pass++) {
         const minChanges = improveMinimums(schedule, workers);
         const maxChanges = improveMaximums(schedule, workers);
-        if (!minChanges && !maxChanges) break;
+        const duplicateChanges = fixDuplicateEntries(schedule, workers);
+        if (!minChanges && !maxChanges && !duplicateChanges) break;
       }
 
       const weekCount = getWeekConfigs().length;
