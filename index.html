@@ -1140,13 +1140,14 @@
     }
 
     function improveMinimums(schedule, workers) {
-      const warnings = [];
+      let changes = 0;
       const weekCount = getWeekConfigs().length;
 
       for (let week = 0; week < weekCount; week++) {
         for (const worker of workers) {
           const min = getWorkerMin(worker);
           while ((worker.weekCounts[week] || 0) < min) {
+            if ((worker.weekCounts[week] || 0) >= worker.max) break;
             const entries = (schedule[week] || [])
               .filter(entry => !entry.closed)
               .filter(entry => canWorkSlot(worker, entry.day, 1, entry) || canWorkSlot(worker, entry.day, 2, entry));
@@ -1186,15 +1187,17 @@
             unassign(best.current, best.entry.day, best.key === "first" ? 1 : 2);
             best.entry[best.key] = worker;
             assign(worker, best.entry.day, best.key === "first" ? 1 : 2);
+            changes += 1;
           }
         }
       }
 
-      return warnings;
+      return changes;
     }
 
     function improveMaximums(schedule, workers) {
       const weekCount = getWeekConfigs().length;
+      let changes = 0;
 
       for (let week = 0; week < weekCount; week++) {
         let changed = true;
@@ -1221,10 +1224,11 @@
 
                 const candidateMin = getWorkerMin(candidate);
                 const underMinBonus = (candidate.weekCounts[week] || 0) < candidateMin ? 80 : 0;
-                const hodCapacityBonus = candidate.name === "הוד" ? 25 : 0;
+                const capacityBonus = Math.max(0, candidate.max - (candidate.weekCounts[week] || 0)) * 18;
+                const hodCapacityBonus = candidate.name === "הוד" ? 70 : 0;
                 const sameDayPenalty = (candidate.dayCounts[entry.day.dayIndex] || 0) * 45;
                 const slotPenalty = Math.max(0, (candidate.slotCounts[overSlot] || 0) - (candidate.slotCounts[overSlot === 1 ? 2 : 1] || 0)) * 55;
-                const score = underMinBonus + hodCapacityBonus - sameDayPenalty - slotPenalty + Math.random() * (state.shuffleSeed || 10);
+                const score = underMinBonus + capacityBonus + hodCapacityBonus - sameDayPenalty - slotPenalty + Math.random() * (state.shuffleSeed || 10);
 
                 if (!best || score > best.score) {
                   best = { entry, overKey, overSlot, candidate, score };
@@ -1237,10 +1241,13 @@
               best.entry[best.overKey] = best.candidate;
               assign(best.candidate, best.entry.day, best.overSlot);
               changed = true;
+              changes += 1;
             }
           }
         }
       }
+
+      return changes;
     }
 
     function dayIndexFromText(text) {
@@ -1380,9 +1387,11 @@
         weekEntries.sort((a, b) => a.day.dayIndex - b.day.dayIndex);
       }
 
-      warnings.push(...improveMinimums(schedule, workers));
-      improveMaximums(schedule, workers);
-      warnings.push(...improveMinimums(schedule, workers));
+      for (let pass = 0; pass < 6; pass++) {
+        const minChanges = improveMinimums(schedule, workers);
+        const maxChanges = improveMaximums(schedule, workers);
+        if (!minChanges && !maxChanges) break;
+      }
 
       const weekCount = getWeekConfigs().length;
       for (let week = 0; week < weekCount; week++) {
