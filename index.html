@@ -1395,12 +1395,10 @@
           if (forcedFirst && forcedSecond && forcedFirst.name === forcedSecond.name) {
             forcedSecond = null;
           }
-          const used = [forcedFirst?.name, forcedSecond?.name].filter(Boolean);
-          const first = forcedFirst || chooseWorker(workers, day, 1, used, { allowOverMax: true });
-          if (first && !used.includes(first.name)) used.push(first.name);
-          const second = forcedSecond && !used.includes(forcedSecond.name)
-            ? forcedSecond
-            : chooseWorker(workers, day, 2, used, { allowOverMax: true });
+          const usedForFirst = forcedSecond ? [forcedSecond.name] : [];
+          const first = forcedFirst || chooseWorker(workers, day, 1, usedForFirst, { allowOverMax: true });
+          const usedForSecond = first ? [first.name] : [];
+          const second = forcedSecond || chooseWorker(workers, day, 2, usedForSecond, { allowOverMax: true });
           pair = { first, second };
         } else {
           pair = chooseShiftPair(workers, day);
@@ -1432,8 +1430,20 @@
         const duplicateChanges = fixDuplicateEntries(schedule, workers);
         if (!minChanges && !maxChanges && !duplicateChanges) break;
       }
+      fixDuplicateEntries(schedule, workers);
 
       const weekCount = getWeekConfigs().length;
+      for (let week = 0; week < weekCount; week++) {
+        for (const entry of schedule[week] || []) {
+          if (entry.closed || !entry.first || !entry.second) continue;
+          if (entry.first.name !== entry.second.name) continue;
+
+          unassign(entry.second, entry.day, 2);
+          entry.second = null;
+          warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: נמנעה כפילות של אותו עובד באותה משמרת.`);
+        }
+      }
+
       for (let week = 0; week < weekCount; week++) {
         for (const worker of workers) {
           const count = worker.weekCounts[week] || 0;
@@ -1466,7 +1476,7 @@
             continue;
           }
           const first = entry.first?.name || "לא שובץ";
-          const second = entry.second?.name || "לא שובץ";
+          const second = entry.second?.name && entry.second.name !== entry.first?.name ? entry.second.name : "לא שובץ";
           html += `<div class="shift-line"><div class="shift-day">${dayName}</div><div>${first} ו${second}</div></div>`;
           plain.push(`${dayName} - ${first} ו${second}`);
         }
