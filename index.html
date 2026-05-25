@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>סידור משמרות</title>
   <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="12" width="48" height="44" rx="8" fill="%23ffffff"/><rect x="8" y="12" width="48" height="14" rx="8" fill="%231c7c63"/><rect x="8" y="22" width="48" height="34" rx="6" fill="%23ffffff"/><path d="M20 8v10M44 8v10" stroke="%2317201d" stroke-width="5" stroke-linecap="round"/><path d="M18 34h8M30 34h8M42 34h4M18 44h8M30 44h8M42 44h4" stroke="%231c7c63" stroke-width="4" stroke-linecap="round"/></svg>'>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
       --bg: #f6f7f9;
@@ -551,6 +552,21 @@
             <textarea id="whatsappText" placeholder="מדביקים כאן הודעת וואטסאפ של עובד"></textarea>
             <div class="intake-status" id="intakeStatus"></div>
           </div>
+          <div class="whatsapp-intake">
+            <div class="whatsapp-row">
+              <div>
+                <label for="excelFile">העלאת Excel אילוצים</label>
+                <input type="file" id="excelFile" accept=".xlsx,.xls,.csv">
+              </div>
+              <button class="btn secondary" id="clearExcelInput" type="button">נקה קובץ</button>
+            </div>
+            <div class="intake-status" id="excelStatus">השורה העליונה צריכה להיות שמות עובדים. כל עמודה תיקלט לעובד המתאים.</div>
+          </div>
+          <div class="whatsapp-intake">
+            <label for="oneTimeRules">אילוצים חד פעמיים</label>
+            <textarea id="oneTimeRules" placeholder="לדוגמה: אלון רק ראשון 31/5 נייט 2 חייב לקבל"></textarea>
+            <div class="intake-status">מיועד להערות חריגות שלא חוזרות כל שבוע.</div>
+          </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
             <button class="icon-btn" id="addWorker" type="button" title="הוסף עובד" aria-label="הוסף עובד">+</button>
@@ -629,6 +645,9 @@
     const whatsappWorkerEl = document.getElementById("whatsappWorker");
     const whatsappTextEl = document.getElementById("whatsappText");
     const intakeStatusEl = document.getElementById("intakeStatus");
+    const excelFileEl = document.getElementById("excelFile");
+    const excelStatusEl = document.getElementById("excelStatus");
+    const oneTimeRulesEl = document.getElementById("oneTimeRules");
 
     function readSavedData() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -785,6 +804,29 @@
       whatsappWorkerEl.innerHTML = WORKERS.map(worker => `<option value="${worker.name}">${worker.name}</option>`).join("");
     }
 
+    function normalizeWorkerName(name) {
+      return String(name || "").replace(/\s+/g, "").trim();
+    }
+
+    function findWorkerByName(name) {
+      const normalized = normalizeWorkerName(name);
+      return WORKERS.find(worker => normalizeWorkerName(worker.name) === normalized || (worker.aliases || []).some(alias => normalizeWorkerName(alias) === normalized));
+    }
+
+    function ensureWorker(name) {
+      const cleanName = String(name || "").trim();
+      if (!cleanName) return null;
+      const existing = findWorkerByName(cleanName);
+      if (existing) return existing;
+
+      const existingState = getCurrentWorkerState();
+      const worker = { name: cleanName, aliases: [], min: 1, max: 2 };
+      WORKERS.push(worker);
+      renderWorkers();
+      applyWorkerState(existingState);
+      return worker;
+    }
+
     function getCurrentWorkerState() {
       const data = {};
       document.querySelectorAll(".worker").forEach(card => {
@@ -817,7 +859,7 @@
       const input = document.getElementById("newWorkerName");
       const name = input.value.trim();
       if (!name) return;
-      if (WORKERS.some(worker => worker.name === name || (worker.aliases || []).includes(name))) {
+      if (findWorkerByName(name)) {
         statusBadgeEl.textContent = "העובד כבר קיים";
         input.select();
         return;
@@ -853,6 +895,48 @@
       whatsappTextEl.value = "";
       intakeStatusEl.textContent = `האילוצים של ${workerName} הוחלפו והוא סומן לסידור.`;
       saveState();
+    }
+
+    async function handleExcelUpload() {
+      const file = excelFileEl.files?.[0];
+      if (!file) return;
+      if (!window.XLSX) {
+        excelStatusEl.textContent = "ספריית קריאת Excel עדיין לא נטענה. רענן את הדף ונסה שוב.";
+        return;
+      }
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        const headers = rows[0] || [];
+        let imported = 0;
+
+        headers.forEach((header, columnIndex) => {
+          const name = String(header || "").trim();
+          if (!name) return;
+          const worker = ensureWorker(name);
+          if (!worker) return;
+
+          const text = rows
+            .slice(1)
+            .map(row => String(row[columnIndex] || "").trim())
+            .filter(Boolean)
+            .join("\n");
+
+          const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
+          if (!card) return;
+          card.querySelector(".constraints").value = text;
+          card.querySelector(".active-worker").checked = Boolean(text);
+          imported += 1;
+        });
+
+        excelStatusEl.textContent = `נקלטו ${imported} עמודות עובדים מהקובץ.`;
+        saveState();
+      } catch (error) {
+        excelStatusEl.textContent = "לא הצלחתי לקרוא את הקובץ. ודא שזה קובץ Excel תקין.";
+      }
     }
 
     function removeWorker(name) {
@@ -911,7 +995,7 @@
 
         const day = normalizeDayName(match[1]);
         const value = match[2] || "";
-        if (!/לא\s*יכול|לא\s*יכולה|לא\s*זמין|חסום|אין/i.test(value)) continue;
+        if (!/לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(value)) continue;
 
         const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
         if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
@@ -933,9 +1017,10 @@
         const name = card.dataset.worker;
         const constraintsText = card.querySelector(".constraints").value.trim();
         const manuallyActive = card.querySelector(".active-worker").checked;
+        const oneTimeActive = oneTimeRulesEl.value.includes(name);
         return {
           name,
-          active: manuallyActive,
+          active: manuallyActive || oneTimeActive,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: Number(card.querySelector(".min-shifts").value) || 0,
           max: Number(card.querySelector(".max-shifts").value) || 1,
@@ -1144,6 +1229,65 @@
       }
     }
 
+    function dayIndexFromText(text) {
+      if (/ראשון|א['׳]?/.test(text)) return 0;
+      if (/שני|ב['׳]?/.test(text)) return 1;
+      if (/שלישי|ג['׳]?/.test(text)) return 2;
+      if (/רביעי|ד['׳]?/.test(text)) return 3;
+      if (/חמישי|ה['׳]?/.test(text)) return 4;
+      if (/שבת|ש['׳]?/.test(text)) return 6;
+      return null;
+    }
+
+    function isoFromRuleText(text, days) {
+      const dateMatch = text.match(/(\d{1,2})[./-](\d{1,2})/);
+      if (dateMatch) {
+        const day = Number(dateMatch[1]);
+        const month = Number(dateMatch[2]);
+        const match = days.find(item => item.date.getDate() === day && item.date.getMonth() + 1 === month);
+        if (match) return match.iso;
+      }
+
+      const dayIndex = dayIndexFromText(text);
+      if (dayIndex === null) return null;
+      return days.find(item => item.dayIndex === dayIndex)?.iso || null;
+    }
+
+    function collectOneTimeRules(workers, days) {
+      const rules = [];
+      const addRule = (text, defaultWorkerName) => {
+        const clean = String(text || "").trim();
+        if (!clean || !/חייב|רק|נייט/i.test(clean)) return;
+
+        const worker = defaultWorkerName
+          ? workers.find(item => item.name === defaultWorkerName)
+          : workers.find(item => clean.includes(item.name));
+        if (!worker) return;
+
+        const iso = isoFromRuleText(clean, days);
+        if (!iso) return;
+
+        const slot = /נייט\s*1/.test(clean) ? 1 : (/נייט\s*2/.test(clean) ? 2 : null);
+        rules.push({ worker, iso, slot, only: /רק/.test(clean) });
+      };
+
+      oneTimeRulesEl.value.split(/\r?\n/).forEach(line => addRule(line));
+      document.querySelectorAll(".worker").forEach(card => {
+        const workerName = card.dataset.worker;
+        card.querySelector(".constraints").value.split(/\r?\n/).forEach(line => addRule(line, workerName));
+      });
+
+      return rules;
+    }
+
+    function applyOnlyRules(workers, days, rules) {
+      for (const rule of rules.filter(item => item.only)) {
+        for (const day of days) {
+          if (day.iso !== rule.iso) rule.worker.blocked.add(day.iso);
+        }
+      }
+    }
+
     function generateSchedule() {
       const warnings = [];
       const workers = getWorkersData();
@@ -1159,6 +1303,9 @@
       for (const day of days) {
         day.remainingOpenDays = (openDaysByWeek[day.week] || []).filter(iso => iso >= day.iso).length;
       }
+
+      const oneTimeRules = collectOneTimeRules(workers, days);
+      applyOnlyRules(workers, days, oneTimeRules);
 
       if (workers.length < 2) {
         warnings.push("צריך לפחות שני עובדים מסומנים כדי ליצור סידור. טקסט בתיבה מסמן אוטומטית, אבל אם הורדת סימון ידנית העובד לא ייכנס.");
@@ -1182,8 +1329,26 @@
           continue;
         }
 
-        let pair = chooseShiftPair(workers, day);
-        if (!pair) pair = chooseShiftPair(workers, day, { allowOverMax: true });
+        const forcedRules = oneTimeRules.filter(rule => rule.iso === day.iso);
+        let forcedFirst = forcedRules.find(rule => rule.slot === 1)?.worker || null;
+        let forcedSecond = forcedRules.find(rule => rule.slot === 2)?.worker || null;
+
+        for (const rule of forcedRules.filter(item => !item.slot)) {
+          if (!forcedSecond && canAssign(rule.worker, day, 2, { allowOverMax: true })) forcedSecond = rule.worker;
+          else if (!forcedFirst && canAssign(rule.worker, day, 1, { allowOverMax: true })) forcedFirst = rule.worker;
+        }
+
+        let pair = null;
+        if (forcedFirst || forcedSecond) {
+          const used = [forcedFirst?.name, forcedSecond?.name].filter(Boolean);
+          const first = forcedFirst || chooseWorker(workers, day, 1, used, { allowOverMax: true });
+          if (first && !used.includes(first.name)) used.push(first.name);
+          const second = forcedSecond || chooseWorker(workers, day, 2, used, { allowOverMax: true });
+          pair = { first, second };
+        } else {
+          pair = chooseShiftPair(workers, day);
+          if (!pair) pair = chooseShiftPair(workers, day, { allowOverMax: true });
+        }
 
         const first = pair?.first || null;
         const second = pair?.second || null;
@@ -1363,6 +1528,11 @@
       if (event.key === "Enter") addWorker();
     });
     document.getElementById("applyWhatsapp").addEventListener("click", applyWhatsappConstraints);
+    excelFileEl.addEventListener("change", handleExcelUpload);
+    document.getElementById("clearExcelInput").addEventListener("click", () => {
+      excelFileEl.value = "";
+      excelStatusEl.textContent = "השורה העליונה צריכה להיות שמות עובדים. כל עמודה תיקלט לעובד המתאים.";
+    });
     document.getElementById("buildWeeks").addEventListener("click", () => {
       renderWeekSettings();
       renderSpecialDays();
