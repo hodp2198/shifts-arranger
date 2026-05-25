@@ -1136,15 +1136,18 @@
       const needed = Math.max(0, min - weekCount);
       const targetNeeded = Math.max(0, target - weekCount);
       const availableDays = worker.availableDaysByWeek?.[day.week] ?? 6;
+      const remainingForWorker = day.remainingByWorker?.[worker.name] ?? availableDays;
+      const urgency = remainingForWorker <= needed ? 1 : (remainingForWorker <= needed + 1 ? 0.55 : 0.16);
       let score = 0;
       if (needed) {
-        score -= 1800;
-        score -= needed * 160;
+        score -= 1800 * urgency;
+        score -= needed * 160 * urgency;
         score += weekCount * 95;
         score -= Math.max(0, 4 - availableDays) * 220;
       } else if (targetNeeded) {
-        score -= 650;
-        score -= targetNeeded * 80;
+        const targetUrgency = remainingForWorker <= targetNeeded + 1 ? 0.8 : 0.25;
+        score -= 650 * targetUrgency;
+        score -= targetNeeded * 80 * targetUrgency;
         score += weekCount * 120;
         score -= Math.max(0, 3 - availableDays) * 170;
       } else {
@@ -1154,10 +1157,14 @@
       }
       score += worker.total * 10;
       if (worker.preferred?.has(day.iso)) score -= 950;
-      if (worker.recentDays.includes(day.iso)) score += 25;
+      const lastIso = worker.recentDays[worker.recentDays.length - 1];
+      const lastDistance = lastIso ? Math.abs((new Date(`${day.iso}T12:00:00`) - new Date(`${lastIso}T12:00:00`)) / 86400000) : null;
+      if (worker.recentDays.includes(day.iso)) score += 80;
+      if (lastDistance === 1) score += 520;
+      if (lastDistance === 2) score += 220;
       score += (worker.dayCounts[day.dayIndex] || 0) * 80;
-      if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 85;
-      if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 85;
+      if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 190;
+      if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 190;
       if (day.dayIndex === 0 && weekCount === 0 && !targetNeeded) score += 18;
       if (worker.name === "הוד" && weekCount >= getWorkerTarget(worker, day.week)) score += 320;
       if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
@@ -1578,6 +1585,7 @@
 
       for (const day of days) {
         day.remainingOpenDays = (openDaysByWeek[day.week] || []).filter(iso => iso >= day.iso).length;
+        day.remainingByWorker = {};
       }
 
       const oneTimeRules = collectOneTimeRules(workers, days);
@@ -1590,6 +1598,15 @@
             .filter(day => day.week === week && !day.closed)
             .filter(day => !worker.blocked.has(day.iso))
             .filter(day => !(worker.onlyNight2 && day.closed))
+            .length;
+        }
+      }
+
+      for (const day of days) {
+        for (const worker of workers) {
+          day.remainingByWorker[worker.name] = days
+            .filter(item => item.week === day.week && item.iso >= day.iso && !item.closed)
+            .filter(item => !worker.blocked.has(item.iso))
             .length;
         }
       }
