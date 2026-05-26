@@ -1676,7 +1676,10 @@
           best.entry.first = best.entry.second;
           best.entry.second = first;
         } else {
+          const current = best.entry[best.key];
+          if (current) unassign(current, best.entry.day, best.key === "first" ? 1 : 2);
           best.entry[best.key] = best.candidate;
+          assign(best.candidate, best.entry.day, best.key === "first" ? 1 : 2);
         }
 
         currentScore = best.score;
@@ -1889,6 +1892,30 @@
       rebuildWorkerStats(schedule, workers);
     }
 
+    function fillMissingSlots(schedule, workers) {
+      let changes = 0;
+
+      for (const entry of Object.values(schedule).flat()) {
+        if (entry.closed) continue;
+
+        for (const option of [
+          { key: "first", slot: 1, otherKey: "second" },
+          { key: "second", slot: 2, otherKey: "first" }
+        ]) {
+          if (entry[option.key]) continue;
+          const otherName = entry[option.otherKey]?.name;
+          const replacement = chooseWorker(workers, entry.day, option.slot, otherName ? [otherName] : []);
+          if (!replacement) continue;
+
+          entry[option.key] = replacement;
+          assign(replacement, entry.day, option.slot);
+          changes += 1;
+        }
+      }
+
+      return changes;
+    }
+
     function generateSchedule() {
       const warnings = [];
       const workers = getWorkersData();
@@ -2025,6 +2052,7 @@
       fixBlockedEntries(schedule, workers, warnings);
       enforceOneTimeRules(schedule, workers, oneTimeRules, warnings);
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
+      fillMissingSlots(schedule, workers);
       rebuildWorkerStats(schedule, workers);
 
       const weekCount = getWeekConfigs().length;
@@ -2038,6 +2066,9 @@
           warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: נמנעה כפילות של אותו עובד באותה משמרת.`);
         }
       }
+      rebuildWorkerStats(schedule, workers);
+      enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
+      fillMissingSlots(schedule, workers);
       rebuildWorkerStats(schedule, workers);
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
 
