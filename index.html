@@ -1122,7 +1122,6 @@
     }
 
     function getWorkerMin(worker) {
-      if (worker.name === "הוד" && worker.min <= 3) return 3;
       if (FLEXIBLE_RESERVE_WORKERS.has(worker.name) && worker.min <= 1) return 0;
       return worker.min;
     }
@@ -1130,7 +1129,6 @@
     function getWorkerTarget(worker, week) {
       const availableDays = worker.availableDaysByWeek?.[week] ?? worker.max;
       if (FLEXIBLE_RESERVE_WORKERS.has(worker.name) && getWorkerMin(worker) === 0) return 0;
-      if (worker.name === "הוד") return Math.min(worker.max, Math.max(getWorkerMin(worker), Math.min(availableDays, 3)));
       return Math.min(worker.max, Math.max(getWorkerMin(worker), Math.min(availableDays, 2)));
     }
 
@@ -1184,6 +1182,10 @@
       const targetNeeded = Math.max(0, target - weekCount);
       const availableDays = worker.availableDaysByWeek?.[day.week] ?? 6;
       const remainingForWorker = day.remainingByWorker?.[worker.name] ?? availableDays;
+      const openDaysInWeek = day.openDaysInWeek || 6;
+      const elapsedOpenDays = Math.max(1, openDaysInWeek - day.remainingOpenDays + 1);
+      const expectedAfterToday = target ? target * (elapsedOpenDays / openDaysInWeek) : 0;
+      const projectedCount = weekCount + 1;
       const urgency = remainingForWorker <= needed ? 1 : (remainingForWorker <= needed + 1 ? 0.55 : 0.16);
       let score = 0;
       if (needed) {
@@ -1209,11 +1211,13 @@
       if (worker.recentDays.includes(day.iso)) score += 80;
       if (lastDistance === 1) score += 520;
       if (lastDistance === 2) score += 220;
-      score += (worker.dayCounts[day.dayIndex] || 0) * 80;
+      if (projectedCount > expectedAfterToday + 0.35 && !worker.preferred?.has(day.iso)) {
+        score += (projectedCount - expectedAfterToday) * 1250;
+      }
+      score += (worker.dayCounts[day.dayIndex] || 0) * 420;
       if (slot === 1) score += Math.max(0, (worker.slotCounts[1] || 0) - (worker.slotCounts[2] || 0)) * 190;
       if (slot === 2) score += Math.max(0, (worker.slotCounts[2] || 0) - (worker.slotCounts[1] || 0)) * 190;
       if (day.dayIndex === 0 && weekCount === 0 && !targetNeeded) score += 18;
-      if (worker.name === "הוד" && weekCount >= getWorkerTarget(worker, day.week)) score += 320;
       if (day.dayIndex === 6 && worker.saturdayWeeks.includes(day.week - 1)) score += 140;
       if (slot === 1 && worker.onlyNight2) score += 1000;
       score += Math.random() * (state.shuffleSeed || 16);
@@ -1553,6 +1557,7 @@
     }
 
     function scheduleQualityScore(schedule, workers) {
+      let score = 0;
       const metrics = new Map(workers.map(worker => [worker.name, {
         worker,
         weekCounts: {},
@@ -1578,7 +1583,6 @@
         });
       }
 
-      let score = 0;
       const weekCount = getWeekConfigs().length;
       for (const metric of metrics.values()) {
         const worker = metric.worker;
@@ -1588,7 +1592,7 @@
           const target = getWorkerTarget(worker, week);
           if (count < min) score += (min - count) * 100000;
           if (count > worker.max) score += (count - worker.max) * 120000;
-          if (count > target) score += (count - target) * (worker.name === "הוד" ? 2100 : 1600);
+          if (count > target) score += (count - target) * 1800;
           if (count === 0 && (worker.availableDaysByWeek?.[week] || 0) === 1) score += 1400;
 
           const days = [...new Set(metric.daysByWeek[week] || [])].sort((a, b) => a - b);
@@ -1903,6 +1907,7 @@
       }
 
       for (const day of days) {
+        day.openDaysInWeek = (openDaysByWeek[day.week] || []).length;
         day.remainingOpenDays = (openDaysByWeek[day.week] || []).filter(iso => iso >= day.iso).length;
         day.remainingByWorker = {};
       }
