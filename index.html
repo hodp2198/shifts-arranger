@@ -615,18 +615,27 @@
 
   <script>
     const DEFAULT_WORKERS = [
-      { name: "הוד", min: 3, max: 6, fixedMin: true },
+      { name: "הוד", min: 3, max: 3, fixedMin: true },
       { name: "הדס", min: 1, max: 2, onlyNight2: true },
       { name: "סיואר", aliases: ["סיוואר"], min: 1, max: 2 },
       { name: "דניאל", min: 1, max: 2 },
       { name: "שדא", min: 1, max: 2 },
       { name: "אשרקת", min: 1, max: 2 },
       { name: "נעמי", min: 1, max: 2 },
-      { name: "יהלי", min: 1, max: 2 }
+      { name: "יהלי", min: 0, max: 2 },
+      { name: "אלון", min: 0, max: 2 }
     ];
 
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
+    const FLEXIBLE_RESERVE_WORKERS = new Set(["אלון", "יהלי"]);
+    const LEARNED_PAIR_PREFERENCES = [
+      { dayIndex: 0, names: ["סיואר", "שדא"], bonus: 420 },
+      { dayIndex: 1, names: ["סיואר", "הדס"], bonus: 500 },
+      { dayIndex: 2, names: ["דניאל", "הדס"], bonus: 480 },
+      { dayIndex: 4, names: ["דניאל", "סיואר"], bonus: 640 },
+      { dayIndex: 6, names: ["דניאל", "אשרקת"], bonus: 500 }
+    ];
     const STORAGE_KEY = "shifts-arranger-v2";
     const state = { special: {}, shuffleSeed: 0 };
     let WORKERS = loadWorkerDefinitions();
@@ -657,17 +666,26 @@
 
     function loadWorkerDefinitions() {
       const saved = readSavedData();
-      if (Array.isArray(saved?.workerDefs) && saved.workerDefs.length) {
-        return saved.workerDefs.map(worker => ({
-          name: worker.name,
+      const normalizeWorker = worker => {
+        const name = worker.name;
+        return {
+          name,
           aliases: worker.aliases || [],
-          min: Number(worker.min) || 1,
+          min: Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
           max: Number(worker.max) || 2,
           onlyNight2: Boolean(worker.onlyNight2),
           fixedMin: Boolean(worker.fixedMin)
-        }));
+        };
+      };
+
+      if (Array.isArray(saved?.workerDefs) && saved.workerDefs.length) {
+        const byName = new Map(saved.workerDefs.map(worker => [worker.name, normalizeWorker(worker)]));
+        DEFAULT_WORKERS.forEach(worker => {
+          if (!byName.has(worker.name)) byName.set(worker.name, normalizeWorker(worker));
+        });
+        return [...byName.values()];
       }
-      return DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
+      return DEFAULT_WORKERS.map(normalizeWorker);
     }
 
     function isoDate(date) {
@@ -960,7 +978,7 @@
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
         if (!card) return;
         card.querySelector(".constraints").value = text;
-        card.querySelector(".active-worker").checked = Boolean(text);
+        card.querySelector(".active-worker").checked = hasMeaningfulWorkerInput(text);
         imported += 1;
       });
 
@@ -975,7 +993,13 @@
         return;
       }
 
-      const rows = text.split(/\r?\n/).map(line => line.split("\t"));
+      const lines = text.split(/\r?\n/);
+      const notesIndex = lines.findIndex(line => line.trim() === "הערות");
+      const tableLines = notesIndex >= 0 ? lines.slice(0, notesIndex) : lines;
+      const noteLines = notesIndex >= 0 ? lines.slice(notesIndex + 1).map(line => line.trim()).filter(Boolean) : [];
+      oneTimeRulesEl.value = noteLines.join("\n");
+
+      const rows = tableLines.map(line => line.split("\t"));
       importRowsMatrix(rows, bulkExcelStatusEl);
     }
 
@@ -1098,13 +1122,29 @@
     }
 
     function getWorkerMin(worker) {
-      return worker.name === "הוד" ? Math.max(worker.min, 3) : worker.min;
+      if (worker.name === "הוד" && worker.min <= 3) return 3;
+      if (FLEXIBLE_RESERVE_WORKERS.has(worker.name) && worker.min <= 1) return 0;
+      return worker.min;
     }
 
     function getWorkerTarget(worker, week) {
       const availableDays = worker.availableDaysByWeek?.[week] ?? worker.max;
+      if (FLEXIBLE_RESERVE_WORKERS.has(worker.name) && getWorkerMin(worker) === 0) return 0;
       if (worker.name === "הוד") return Math.min(worker.max, Math.max(getWorkerMin(worker), Math.min(availableDays, 3)));
       return Math.min(worker.max, Math.max(getWorkerMin(worker), Math.min(availableDays, 2)));
+    }
+
+    function learnedPairBonus(first, second, day) {
+      if (!first || !second) return 0;
+      return LEARNED_PAIR_PREFERENCES
+        .filter(item => item.dayIndex === day.dayIndex)
+        .filter(item => item.names.includes(first.name) && item.names.includes(second.name))
+        .reduce((total, item) => total + item.bonus, 0);
+    }
+
+    function hasMeaningfulWorkerInput(text) {
+      const lines = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      return lines.some(line => isUnavailableText(line) || isPreferredText(line));
     }
 
     function getWorkersData() {
@@ -1113,10 +1153,13 @@
         const constraintsText = card.querySelector(".constraints").value.trim();
         const parsedConstraints = parseConstraints(constraintsText);
         const manuallyActive = card.querySelector(".active-worker").checked;
-        const oneTimeActive = oneTimeRulesEl.value.includes(name);
+        const mentionedAsHod = name === "הוד" && (/\bאני\b|איתי|אתי/.test(oneTimeRulesEl.value));
+        const oneTimeActive = oneTimeRulesEl.value.includes(name) || mentionedAsHod;
+        const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText);
         return {
           name,
-          active: manuallyActive || oneTimeActive,
+          active: (manuallyActive && hasWorkerInput) || oneTimeActive,
+          oneTimeOnly: oneTimeActive && !hasWorkerInput,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: Number(card.querySelector(".min-shifts").value) || 0,
           max: Number(card.querySelector(".max-shifts").value) || 1,
@@ -1209,6 +1252,7 @@
 
           const score = workerScore(first, day, 1)
             + workerScore(second, day, 2)
+            - learnedPairBonus(first, second, day)
             + Math.random() * (state.shuffleSeed || 14);
 
           if (!best || score < best.score) {
@@ -1358,10 +1402,9 @@
                 const candidateMin = getWorkerMin(candidate);
                 const underMinBonus = (candidate.weekCounts[week] || 0) < candidateMin ? 80 : 0;
                 const capacityBonus = Math.max(0, candidate.max - (candidate.weekCounts[week] || 0)) * 18;
-                const hodCapacityBonus = candidate.name === "הוד" ? 70 : 0;
                 const sameDayPenalty = (candidate.dayCounts[entry.day.dayIndex] || 0) * 45;
                 const slotPenalty = Math.max(0, (candidate.slotCounts[overSlot] || 0) - (candidate.slotCounts[overSlot === 1 ? 2 : 1] || 0)) * 55;
-                const score = underMinBonus + capacityBonus + hodCapacityBonus - sameDayPenalty - slotPenalty + Math.random() * (state.shuffleSeed || 10);
+                const score = underMinBonus + capacityBonus - sameDayPenalty - slotPenalty + Math.random() * (state.shuffleSeed || 10);
 
                 if (!best || score > best.score) {
                   best = { entry, overKey, overSlot, candidate, score };
@@ -1455,7 +1498,7 @@
           if (entry.first.name !== entry.second.name) continue;
 
           const duplicate = entry.second;
-          const replacement = chooseWorker(workers, entry.day, 2, [entry.first.name], { allowOverMax: true });
+          const replacement = chooseWorker(workers, entry.day, 2, [entry.first.name]);
           unassign(duplicate, entry.day, 2);
           if (entry.day.dayIndex === 6 && entry.first?.name === duplicate.name && !duplicate.saturdayWeeks.includes(entry.day.week)) {
             duplicate.saturdayWeeks.push(entry.day.week);
@@ -1490,8 +1533,7 @@
             unassign(worker, entry.day, item.slot);
             entry[item.key] = null;
 
-            let replacement = chooseWorker(workers, entry.day, item.slot, otherName ? [otherName] : []);
-            if (!replacement) replacement = chooseWorker(workers, entry.day, item.slot, otherName ? [otherName] : [], { allowOverMax: true });
+            const replacement = chooseWorker(workers, entry.day, item.slot, otherName ? [otherName] : []);
 
             if (replacement) {
               const exceedsMax = (replacement.weekCounts[entry.day.week] || 0) >= replacement.max;
@@ -1521,6 +1563,7 @@
 
       for (const entry of Object.values(schedule).flat()) {
         if (entry.closed) continue;
+        score -= learnedPairBonus(entry.first, entry.second, entry.day) * 1.25;
         [
           { worker: entry.first, slot: 1 },
           { worker: entry.second, slot: 2 }
@@ -1640,13 +1683,19 @@
       return changes;
     }
 
+    function hasStandaloneDayLetter(text, letter) {
+      const escaped = letter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|[^\\u0590-\\u05ff])${escaped}['׳״"]?(?=$|[^\\u0590-\\u05ff])`).test(text);
+    }
+
     function dayIndexFromText(text) {
-      if (/ראשון|א['׳]?/.test(text)) return 0;
-      if (/שני|ב['׳]?/.test(text)) return 1;
-      if (/שלישי|ג['׳]?/.test(text)) return 2;
-      if (/רביעי|ד['׳]?/.test(text)) return 3;
-      if (/חמישי|ה['׳]?/.test(text)) return 4;
-      if (/שבת|ש['׳]?/.test(text)) return 6;
+      if (/שבת/.test(text)) return 6;
+      if (/ראשון/.test(text) || hasStandaloneDayLetter(text, "א")) return 0;
+      if (/שני/.test(text) || hasStandaloneDayLetter(text, "ב")) return 1;
+      if (/שלישי/.test(text) || hasStandaloneDayLetter(text, "ג")) return 2;
+      if (/רביעי/.test(text) || hasStandaloneDayLetter(text, "ד")) return 3;
+      if (/חמישי/.test(text) || hasStandaloneDayLetter(text, "ה")) return 4;
+      if (hasStandaloneDayLetter(text, "ש")) return 6;
       return null;
     }
 
@@ -1724,6 +1773,118 @@
       }
     }
 
+    function restrictOneTimeOnlyWorkers(workers, days, rules) {
+      for (const worker of workers.filter(item => item.oneTimeOnly)) {
+        const allowedDates = new Set(rules
+          .filter(rule => rule.worker.name === worker.name)
+          .map(rule => rule.iso));
+
+        for (const day of days) {
+          if (!allowedDates.has(day.iso)) worker.blocked.add(day.iso);
+        }
+      }
+    }
+
+    function placeForcedWorker(entry, worker, slot, warnings) {
+      if (!entry || entry.closed || !worker) return false;
+      if (!canAssign(worker, entry.day, slot)) {
+        warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} חסום/ה לפי האילוצים ולכן החריג המחייב לא שובץ.`);
+        return false;
+      }
+
+      const key = slot === 1 ? "first" : "second";
+      const otherKey = slot === 1 ? "second" : "first";
+      if (entry[key]?.name === worker.name) return true;
+
+      if (entry[otherKey]?.name === worker.name) {
+        unassign(entry[otherKey], entry.day, slot === 1 ? 2 : 1);
+        entry[otherKey] = null;
+      }
+      if (entry[key]) unassign(entry[key], entry.day, slot);
+
+      entry[key] = worker;
+      assign(worker, entry.day, slot);
+      return true;
+    }
+
+    function enforceOneTimeRules(schedule, workers, rules, warnings) {
+      const entriesByIso = new Map(Object.values(schedule).flat().map(entry => [entry.day.iso, entry]));
+      rebuildWorkerStats(schedule, workers);
+
+      for (const rule of rules) {
+        const entry = entriesByIso.get(rule.iso);
+        if (!entry || entry.closed) continue;
+
+        if (rule.slot) {
+          placeForcedWorker(entry, rule.worker, rule.slot, warnings);
+          continue;
+        }
+
+        if (entry.first?.name === rule.worker.name || entry.second?.name === rule.worker.name) continue;
+        const preferredSlots = entry.second ? [1] : [2, 1];
+        const slot = preferredSlots.find(item => canAssign(rule.worker, entry.day, item)
+          && (item === 1 ? entry.second?.name !== rule.worker.name : entry.first?.name !== rule.worker.name));
+        if (slot) {
+          placeForcedWorker(entry, rule.worker, slot, warnings);
+        } else {
+          warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${rule.worker.name} לא שובץ/ה בחריג המחייב כי אין מקום תקין במשמרת.`);
+        }
+      }
+
+      rebuildWorkerStats(schedule, workers);
+    }
+
+    function enforceMaximumCaps(schedule, workers, rules, warnings) {
+      const isForced = (worker, day, slot) => rules.some(rule => (
+        rule.worker.name === worker.name && rule.iso === day.iso && (!rule.slot || rule.slot === slot)
+      ));
+
+      const assignedSlots = (worker, week) => (schedule[week] || [])
+        .filter(entry => !entry.closed)
+        .flatMap(entry => [
+          { entry, key: "first", slot: 1, current: entry.first },
+          { entry, key: "second", slot: 2, current: entry.second }
+        ])
+        .filter(option => option.current?.name === worker.name);
+
+      for (let week = 0; week < getWeekConfigs().length; week++) {
+        for (const worker of workers) {
+          let guard = 0;
+          while (assignedSlots(worker, week).length > worker.max && guard < 30) {
+            guard += 1;
+            rebuildWorkerStats(schedule, workers);
+
+            const option = assignedSlots(worker, week)
+              .sort((a, b) => Number(isForced(a.current, a.entry.day, a.slot)) - Number(isForced(b.current, b.entry.day, b.slot))
+                || Number(a.current.preferred?.has(a.entry.day.iso)) - Number(b.current.preferred?.has(b.entry.day.iso))
+                || b.entry.day.dayIndex - a.entry.day.dayIndex)[0];
+
+            if (!option) break;
+            const overForced = isForced(option.current, option.entry.day, option.slot);
+
+            const otherName = option.slot === 1 ? option.entry.second?.name : option.entry.first?.name;
+            const replacement = workers
+              .filter(candidate => candidate.name !== worker.name)
+              .filter(candidate => candidate.name !== otherName)
+              .filter(candidate => (candidate.weekCounts[week] || 0) < candidate.max)
+              .filter(candidate => canWorkSlot(candidate, option.entry.day, option.slot, option.entry))
+              .sort((a, b) => workerScore(a, option.entry.day, option.slot) - workerScore(b, option.entry.day, option.slot))[0] || null;
+
+            unassign(worker, option.entry.day, option.slot);
+            option.entry[option.key] = replacement;
+            if (replacement) {
+              assign(replacement, option.entry.day, option.slot);
+            } else {
+              warnings.push(`${option.entry.day.dayName} ${displayDate(option.entry.day.date)}: ${worker.name} עבר/ה את המקסימום ${worker.max}, לכן המשבצת סומנה כחסרה.`);
+            }
+            if (overForced && assignedSlots(worker, week).length > worker.max) break;
+          }
+        }
+      }
+
+      rebuildWorkerStats(schedule, workers);
+    }
+
     function generateSchedule() {
       const warnings = [];
       const workers = getWorkersData();
@@ -1748,6 +1909,7 @@
 
       const oneTimeRules = collectOneTimeRules(workers, days);
       applyOnlyRules(workers, days, oneTimeRules);
+      restrictOneTimeOnlyWorkers(workers, days, oneTimeRules);
 
       for (const worker of workers) {
         worker.availableDaysByWeek = {};
@@ -1794,12 +1956,12 @@
         const forcedRules = oneTimeRules.filter(rule => rule.iso === day.iso);
         let forcedFirst = forcedRules.find(rule => rule.slot === 1)?.worker || null;
         let forcedSecond = forcedRules.find(rule => rule.slot === 2)?.worker || null;
-        if (forcedFirst && !canAssign(forcedFirst, day, 1, { allowOverMax: true })) forcedFirst = null;
-        if (forcedSecond && !canAssign(forcedSecond, day, 2, { allowOverMax: true })) forcedSecond = null;
+        if (forcedFirst && !canAssign(forcedFirst, day, 1)) forcedFirst = null;
+        if (forcedSecond && !canAssign(forcedSecond, day, 2)) forcedSecond = null;
 
         for (const rule of forcedRules.filter(item => !item.slot)) {
-          if (!forcedSecond && canAssign(rule.worker, day, 2, { allowOverMax: true })) forcedSecond = rule.worker;
-          else if (!forcedFirst && canAssign(rule.worker, day, 1, { allowOverMax: true })) forcedFirst = rule.worker;
+          if (!forcedSecond && canAssign(rule.worker, day, 2)) forcedSecond = rule.worker;
+          else if (!forcedFirst && canAssign(rule.worker, day, 1)) forcedFirst = rule.worker;
         }
 
         let pair = null;
@@ -1808,19 +1970,18 @@
             forcedSecond = null;
           }
           const usedForFirst = forcedSecond ? [forcedSecond.name] : [];
-          const first = forcedFirst || chooseWorker(workers, day, 1, usedForFirst, { allowOverMax: true });
+          const first = forcedFirst || chooseWorker(workers, day, 1, usedForFirst);
           const usedForSecond = first ? [first.name] : [];
-          const second = forcedSecond || chooseWorker(workers, day, 2, usedForSecond, { allowOverMax: true });
+          const second = forcedSecond || chooseWorker(workers, day, 2, usedForSecond);
           pair = { first, second };
         } else {
           pair = chooseShiftPair(workers, day);
-          if (!pair) pair = chooseShiftPair(workers, day, { allowOverMax: true });
         }
 
         let first = pair?.first || null;
         let second = pair?.second || null;
         if (first && second && first.name === second.name) {
-          second = chooseWorker(workers, day, 2, [first.name], { allowOverMax: true });
+          second = chooseWorker(workers, day, 2, [first.name]);
         }
         if (first) assign(first, day, 1);
         if (second) assign(second, day, 2);
@@ -1857,6 +2018,8 @@
       }
       fixDuplicateEntries(schedule, workers);
       fixBlockedEntries(schedule, workers, warnings);
+      enforceOneTimeRules(schedule, workers, oneTimeRules, warnings);
+      enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
       rebuildWorkerStats(schedule, workers);
 
       const weekCount = getWeekConfigs().length;
@@ -1870,6 +2033,8 @@
           warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: נמנעה כפילות של אותו עובד באותה משמרת.`);
         }
       }
+      rebuildWorkerStats(schedule, workers);
+      enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
 
       for (let week = 0; week < weekCount; week++) {
         for (const worker of workers) {
@@ -1888,6 +2053,10 @@
       const weekCount = getWeekConfigs().length;
       const plain = [];
       let html = "";
+      const displayWorker = worker => {
+        const name = worker?.name || worker || "";
+        return (!name || name === "לא שובץ" || name === "חסר") ? "-" : name;
+      };
 
       for (let week = 0; week < weekCount; week++) {
         const label = weekLabel(week);
@@ -1902,8 +2071,8 @@
             plain.push(`${dayName} - ${reason}`);
             continue;
           }
-          const first = entry.first?.name || "לא שובץ";
-          const second = entry.second?.name && entry.second.name !== entry.first?.name ? entry.second.name : "לא שובץ";
+          const first = displayWorker(entry.first);
+          const second = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorker(entry.second) : "-";
           html += `<div class="shift-line"><div class="shift-day">${dayName}</div><div>${first} ו${second}</div></div>`;
           plain.push(`${dayName} - ${first} ו${second}`);
         }
@@ -1938,7 +2107,7 @@
         workerDefs: WORKERS.map(worker => ({
           name: worker.name,
           aliases: worker.aliases || [],
-          min: Number(worker.min) || 1,
+          min: Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
           max: Number(worker.max) || 2,
           onlyNight2: Boolean(worker.onlyNight2),
           fixedMin: Boolean(worker.fixedMin)
