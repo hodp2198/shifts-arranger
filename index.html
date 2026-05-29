@@ -7,19 +7,19 @@
   <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="12" width="48" height="44" rx="8" fill="%23ffffff"/><rect x="8" y="12" width="48" height="14" rx="8" fill="%231c7c63"/><rect x="8" y="22" width="48" height="34" rx="6" fill="%23ffffff"/><path d="M20 8v10M44 8v10" stroke="%2317201d" stroke-width="5" stroke-linecap="round"/><path d="M18 34h8M30 34h8M42 34h4M18 44h8M30 44h8M42 44h4" stroke="%231c7c63" stroke-width="4" stroke-linecap="round"/></svg>'>
   <style>
     :root {
-      --bg: #f6f7f9;
+      --bg: #f5f5f7;
       --panel: #ffffff;
-      --panel-strong: #edf4f2;
-      --text: #17201d;
-      --muted: #5f6f68;
-      --line: #d8e0dc;
-      --accent: #1c7c63;
-      --accent-dark: #125947;
+      --panel-strong: #f5f5f7;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --line: #e5e5ea;
+      --accent: #1d1d1f;
+      --accent-dark: #000000;
       --warn: #b45309;
       --danger: #b42318;
-      --soft: #e8f3ef;
-      --shadow: 0 10px 28px rgba(24, 43, 37, 0.06);
-      font-family: Arial, "Noto Sans Hebrew", "Segoe UI", sans-serif;
+      --soft: #f2f2f7;
+      --shadow: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, "Noto Sans Hebrew", sans-serif;
     }
 
     * {
@@ -43,9 +43,9 @@
     }
 
     .shell {
-      width: min(1180px, calc(100% - 28px));
+      width: min(1160px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 22px 0 44px;
+      padding: 28px 0 52px;
     }
 
     .topbar {
@@ -53,7 +53,7 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 18px;
-      margin-bottom: 14px;
+      margin-bottom: 22px;
     }
 
     h1 {
@@ -61,19 +61,20 @@
       font-size: clamp(26px, 4vw, 38px);
       line-height: 1.12;
       letter-spacing: 0;
+      font-weight: 760;
     }
 
     .intro {
       margin: 0;
       color: var(--muted);
       font-size: 15px;
-      line-height: 1.55;
+      line-height: 1.6;
       max-width: 760px;
     }
 
     .actions {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
       justify-content: flex-start;
     }
@@ -83,30 +84,30 @@
     }
 
     .btn {
-      min-height: 42px;
-      padding: 0 15px;
-      border-radius: 7px;
+      min-height: 40px;
+      padding: 0 16px;
+      border-radius: 10px;
       background: var(--accent);
       color: #fff;
       display: inline-flex;
       align-items: center;
       gap: 8px;
       white-space: nowrap;
-      transition: transform .12s ease, background .12s ease;
+      transition: background .16s ease, opacity .16s ease;
+      font-weight: 650;
     }
 
     .btn:hover {
-      transform: translateY(-1px);
       background: var(--accent-dark);
     }
 
     .btn.secondary {
-      background: #e7ecea;
+      background: #f2f2f7;
       color: var(--text);
     }
 
     .btn.secondary:hover {
-      background: #dce4e0;
+      background: #e8e8ed;
     }
 
     .btn.danger {
@@ -121,22 +122,22 @@
     .grid {
       display: grid;
       grid-template-columns: minmax(0, .98fr) minmax(420px, 1.02fr);
-      gap: 16px;
+      gap: 18px;
       align-items: stretch;
     }
 
     .panel {
       background: var(--panel);
-      border: 1px solid #e3e9e6;
-      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 14px;
       box-shadow: var(--shadow);
       align-self: start;
     }
 
     .panel-header {
-      min-height: 58px;
-      padding: 12px 16px;
-      border-bottom: 1px solid #edf1ef;
+      min-height: 60px;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid #f0f0f2;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -146,10 +147,11 @@
     .panel-header h2 {
       margin: 0;
       font-size: 18px;
+      font-weight: 720;
     }
 
     .panel-body {
-      padding: 16px;
+      padding: 18px;
     }
 
     .field-row {
@@ -162,15 +164,16 @@
     label {
       display: block;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
       margin-bottom: 6px;
+      font-weight: 650;
     }
 
     input[type="text"], input[type="date"], input[type="number"], textarea, select {
       width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      background: #fff;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: #f5f5f7;
       color: var(--text);
       padding: 10px 11px;
       min-height: 42px;
@@ -178,8 +181,8 @@
     }
 
     input:focus, textarea:focus, select:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(28, 124, 99, 0.14);
+      border-color: #86868b;
+      box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
     }
 
     textarea {
@@ -192,7 +195,7 @@
     .workers {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 8px;
+      gap: 7px;
     }
 
     .employee-tools {
@@ -213,11 +216,11 @@
     .whatsapp-intake {
       display: grid;
       gap: 10px;
-      padding: 10px;
-      margin-bottom: 14px;
-      border: 1px solid #e3e9e6;
-      border-radius: 8px;
-      background: #fbfcfb;
+      padding: 12px;
+      margin-bottom: 16px;
+      border: 0;
+      border-radius: 12px;
+      background: #f5f5f7;
     }
 
     .whatsapp-row {
@@ -235,20 +238,20 @@
     .intake-status {
       min-height: 20px;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.45;
     }
 
     .icon-btn {
       width: 34px;
       height: 34px;
-      border-radius: 7px;
+      border-radius: 9px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       font-size: 24px;
       line-height: 1;
-      background: var(--accent);
+      background: #1d1d1f;
       color: #fff;
     }
 
@@ -257,7 +260,7 @@
       height: 28px;
       min-height: 28px;
       border-radius: 6px;
-      background: #f3dddd;
+      background: #f5f5f7;
       color: var(--danger);
       font-size: 20px;
       font-weight: 700;
@@ -268,8 +271,8 @@
     }
 
     .worker {
-      border: 1px solid #e3e9e6;
-      border-radius: 8px;
+      border: 1px solid #ededf0;
+      border-radius: 12px;
       overflow: hidden;
       background: #fff;
       position: relative;
@@ -280,8 +283,8 @@
       grid-template-columns: auto minmax(76px, 1fr) auto auto auto;
       gap: 8px;
       align-items: center;
-      min-height: 44px;
-      padding: 8px 10px;
+      min-height: 42px;
+      padding: 7px 10px;
       background: #fff;
     }
 
@@ -309,12 +312,12 @@
       display: grid;
       gap: 10px;
       padding: 0 10px 10px;
-      background: #fbfcfb;
+      background: #fafafa;
     }
 
     .worker-details {
-      border-top: 1px solid #edf1ef;
-      background: #fbfcfb;
+      border-top: 1px solid #f1f1f3;
+      background: #fafafa;
     }
 
     .worker-details summary {
@@ -322,7 +325,7 @@
       padding: 8px 10px;
       color: var(--muted);
       cursor: pointer;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       list-style-position: inside;
     }
@@ -336,8 +339,8 @@
 
     .worker textarea {
       min-height: 112px;
-      border-color: #e3e9e6;
-      border-radius: 7px;
+      border-color: transparent;
+      border-radius: 10px;
       background: #fff;
     }
 
@@ -354,9 +357,9 @@
 
     .collapsible {
       margin: 12px 0 16px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fbfcfb;
+      border: 0;
+      border-radius: 12px;
+      background: #f5f5f7;
       overflow: hidden;
     }
 
@@ -365,13 +368,13 @@
       padding: 10px 12px;
       cursor: pointer;
       font-weight: 700;
-      color: var(--accent-dark);
+      color: var(--text);
       user-select: none;
     }
 
     .collapsible-body {
       padding: 0 12px 12px;
-      border-top: 1px solid var(--line);
+      border-top: 1px solid #e8e8ed;
     }
 
     .week-row {
@@ -380,8 +383,8 @@
       gap: 10px;
       align-items: end;
       padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: 1px solid #ededf0;
+      border-radius: 10px;
       background: #fff;
     }
 
@@ -396,8 +399,8 @@
       gap: 10px;
       align-items: center;
       padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: 1px solid #ededf0;
+      border-radius: 10px;
       background: #fff;
     }
 
@@ -415,29 +418,29 @@
 
     .schedule-output {
       display: grid;
-      gap: 10px;
+      gap: 16px;
     }
 
     .week-result {
       border: 0;
       border-radius: 0;
       overflow: visible;
-      background: #fff;
+      background: transparent;
     }
 
     .week-title {
       padding: 6px 2px 8px;
       background: transparent;
-      font-weight: 700;
-      border-bottom: 1px solid #edf1ef;
+      font-weight: 760;
+      border-bottom: 1px solid #f0f0f2;
     }
 
     .shift-line {
       display: grid;
       grid-template-columns: 22px 48px minmax(0, 1fr);
       gap: 6px;
-      padding: 6px 2px;
-      border-bottom: 1px solid #f1f4f2;
+      padding: 7px 2px;
+      border-bottom: 1px solid #f5f5f7;
       align-items: center;
     }
 
@@ -450,15 +453,15 @@
     }
 
     .shift-line.warn {
-      background: #fffcf5;
+      background: transparent;
     }
 
     .shift-line.bad {
-      background: #fff8f6;
+      background: transparent;
     }
 
     .shift-line.info {
-      background: #fbfcfc;
+      background: transparent;
     }
 
     .shift-day {
@@ -481,8 +484,8 @@
       min-height: 18px;
       padding: 0 5px;
       border-radius: 999px;
-      border: 1px solid #d8e2dd;
-      background: #f7faf8;
+      border: 1px solid #e5e5ea;
+      background: #f5f5f7;
       color: var(--muted);
       font-size: 11px;
       font-weight: 700;
@@ -490,15 +493,15 @@
     }
 
     .day-tag.holiday {
-      border-color: #c9e3d2;
-      background: #eef8f1;
-      color: #23623a;
+      border-color: #d7eadb;
+      background: #f2fbf3;
+      color: #2f6f3e;
     }
 
     .day-tag.holidayEve,
     .day-tag.off {
       border-color: #ead69a;
-      background: #fff7dd;
+      background: #fff8e8;
       color: #7a5a00;
     }
 
@@ -519,9 +522,9 @@
       min-height: 20px;
       padding: 1px 7px;
       border-radius: 999px;
-      background: var(--worker-bg, var(--soft));
-      color: var(--worker-fg, var(--text));
-      border: 1px solid var(--worker-border, var(--line));
+      background: #f5f5f7;
+      color: var(--text);
+      border: 1px solid #ededf0;
       font-weight: 700;
       font-size: 13px;
       line-height: 1.2;
@@ -541,8 +544,8 @@
       min-height: 24px;
       padding: 2px 8px;
       border-radius: 999px;
-      background: var(--soft);
-      color: var(--accent-dark);
+      background: #f5f5f7;
+      color: var(--muted);
       font-size: 12px;
       margin-inline-start: 6px;
       vertical-align: middle;
@@ -551,21 +554,21 @@
     .notice {
       margin-top: 14px;
       padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid #f1d6a8;
-      background: #fff8eb;
-      color: #7a4100;
+      border-radius: 12px;
+      border: 1px solid #ededf0;
+      background: #fafafa;
+      color: var(--text);
       line-height: 1.55;
     }
 
     .notice.danger {
-      border-color: #f0b8b2;
-      background: #fff0ee;
+      border-color: #f0c2be;
+      background: #fff7f6;
       color: var(--danger);
     }
 
     .notice.review {
-      border-color: #ead178;
+      border-color: #f0dfb8;
       background: #fffaf0;
       color: var(--text);
     }
@@ -623,9 +626,9 @@
       width: 100%;
       min-height: 220px;
       margin-top: 8px;
-      border: 1px solid #e3e9e6;
-      border-radius: 8px;
-      background: #fbfcfb;
+      border: 1px solid #ededf0;
+      border-radius: 12px;
+      background: #fafafa;
       color: var(--text);
       font-size: 15px;
       line-height: 1.7;
@@ -779,9 +782,10 @@
           <div class="actions result-actions">
             <button class="btn" id="buildSchedule" type="button">צור סידור</button>
           </div>
+          <div class="preview-title">תצוגת סידור</div>
           <div id="scheduleOutput" class="schedule-output"></div>
           <div id="scheduleWarnings"></div>
-          <div class="preview-title">הודעת WhatsApp לשליחה</div>
+          <div class="preview-title">הודעת WhatsApp</div>
           <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע ההודעה הנקייה להעתקה"></textarea>
           <div class="actions preview-actions">
             <button class="btn secondary" id="copyResult" type="button">העתק הודעה</button>
