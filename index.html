@@ -363,8 +363,48 @@
 
     .week-settings {
       display: grid;
+      gap: 8px;
+      margin: 12px 0 14px;
+    }
+
+    .week-summary {
+      display: grid;
       gap: 10px;
-      margin: 14px 0 18px;
+    }
+
+    .summary-group {
+      display: grid;
+      gap: 6px;
+    }
+
+    .summary-label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .summary-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .summary-pill {
+      min-height: 26px;
+      padding: 3px 9px;
+      border: 1px solid rgba(29, 29, 31, 0.075);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .manual-offday {
+      display: grid;
+      grid-template-columns: minmax(110px, 1fr) minmax(130px, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+      margin-top: 10px;
     }
 
     .collapsible {
@@ -407,10 +447,10 @@
 
     .day-row {
       display: grid;
-      grid-template-columns: 70px 1fr 130px;
+      grid-template-columns: minmax(110px, 1fr) minmax(120px, auto) auto;
       gap: 10px;
       align-items: center;
-      padding: 10px;
+      padding: 8px 0;
       border: 1px solid rgba(29, 29, 31, 0.07);
       border-radius: 10px;
       background: #fff;
@@ -759,28 +799,44 @@
           <span class="badge" id="statusBadge">ממתין</span>
         </div>
         <div class="panel-body">
-          <div class="field-row">
-            <div>
-              <label for="startDate">תאריך התחלה ראשוני</label>
-              <input type="text" id="startDate" inputmode="numeric" placeholder="31/5">
-            </div>
-            <div>
-              <label for="weekCount">כמה שבועות לסדר</label>
-              <input type="number" id="weekCount" min="1" max="8" value="2">
-            </div>
-          </div>
-          <div class="mini-actions">
-            <button class="btn secondary" id="buildWeeks" type="button">בנה שבועות</button>
-          </div>
           <details class="collapsible" id="weekDetails">
-            <summary>הגדרות שבועות וימים מיוחדים</summary>
+            <summary>שבועות וימים מיוחדים</summary>
             <div class="collapsible-body">
               <div id="weekSettings" class="week-settings" aria-live="polite"></div>
-              <p class="helper">ימי שישי חסומים אוטומטית. הסידור כולל א׳ עד ה׳ ושבת.</p>
               <div id="specialDays" class="days" aria-live="polite"></div>
-              <div class="mini-actions">
-                <button class="btn secondary" id="refreshDays" type="button">רענן ימים</button>
-              </div>
+              <details class="collapsible">
+                <summary>Override ידני</summary>
+                <div class="collapsible-body">
+                  <div class="field-row">
+                    <div>
+                      <label for="startDate">תאריך התחלה ראשוני</label>
+                      <input type="text" id="startDate" inputmode="numeric" placeholder="31/5">
+                    </div>
+                    <div>
+                      <label for="weekCount">כמה שבועות לסדר</label>
+                      <input type="number" id="weekCount" min="1" max="8" value="2">
+                    </div>
+                  </div>
+                  <div class="manual-offday">
+                    <div>
+                      <label for="manualOffDate">יום ללא עבודה</label>
+                      <input type="text" id="manualOffDate" inputmode="numeric" placeholder="4/6">
+                    </div>
+                    <div>
+                      <label for="manualOffLabel">סיבה</label>
+                      <select id="manualOffLabel">
+                        <option value="אין עבודה">אין עבודה</option>
+                        <option value="ערב חג">ערב חג</option>
+                      </select>
+                    </div>
+                    <button class="btn secondary" id="addManualOffDay" type="button">הוסף</button>
+                  </div>
+                  <div class="mini-actions">
+                    <button class="btn secondary" id="buildWeeks" type="button">עדכן שבועות</button>
+                    <button class="btn secondary" id="refreshDays" type="button">רענן</button>
+                  </div>
+                </div>
+              </details>
             </div>
           </details>
           <details class="collapsible" id="importDetails">
@@ -866,6 +922,8 @@
     const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
     const bulkExcelStatusEl = document.getElementById("bulkExcelStatus");
     const oneTimeRulesEl = document.getElementById("oneTimeRules");
+    const manualOffDateEl = document.getElementById("manualOffDate");
+    const manualOffLabelEl = document.getElementById("manualOffLabel");
 
     function readSavedData() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -1026,32 +1084,21 @@
     }
 
     function renderWeekSettings(savedWeeks) {
-      const weeks = Number(weekCountEl.value) || 1;
       const baseStart = getBaseStartDate();
       if (!baseStart && !savedWeeks?.length) {
-        weekSettingsEl.innerHTML = `<p class="helper">בחר תאריך התחלה ואז לחץ על בנה שבועות.</p>`;
+        weekSettingsEl.innerHTML = `<p class="helper">עדיין לא זוהו שבועות. הדבק אקסל ולחץ על שייך לעובדים.</p>`;
         return;
       }
       const current = savedWeeks || getWeekConfigs();
-      const fallbackBase = baseStart || current[0]?.start;
-
-      weekSettingsEl.innerHTML = Array.from({ length: weeks }, (_, index) => {
-        const start = current[index]?.start instanceof Date ? current[index].start : addDays(fallbackBase, index * 7);
-        const end = current[index]?.end instanceof Date ? current[index].end : addDays(start, 6);
-        return `
-          <div class="week-row" data-week="${index}">
-            <div class="week-number">שבוע ${index + 1}</div>
-            <div>
-              <label>מתאריך</label>
-              <input type="text" class="week-start" inputmode="numeric" value="${editDateValue(start)}">
-            </div>
-            <div>
-              <label>עד תאריך</label>
-              <input type="text" class="week-end" inputmode="numeric" value="${editDateValue(end)}">
-            </div>
+      const weekItems = current.map(week => `<span class="summary-pill">${displayDate(week.start)}–${displayDate(week.end)}</span>`).join("");
+      weekSettingsEl.innerHTML = `
+        <div class="week-summary">
+          <div class="summary-group">
+            <div class="summary-label">שבועות שזוהו: ${current.length}</div>
+            <div class="summary-list">${weekItems}</div>
           </div>
-        `;
-      }).join("");
+        </div>
+      `;
     }
 
     function parseWeekStartFromHeader(text) {
@@ -1076,26 +1123,39 @@
       return null;
     }
 
-    function applyWeekDatesFromRows(rows, sourceWorkerName = "הוד") {
-      const startsByIso = new Map();
-      const headers = rows[0] || [];
-      const sourceIndex = headers.findIndex(header => normalizeWorkerName(header) === normalizeWorkerName(sourceWorkerName));
-      if (sourceIndex < 0) return 0;
+    function resolveWeekStartFromHeader(text, lastStart = null, fallbackStart = null) {
+      const start = parseWeekStartFromHeader(text);
+      if (start) return start;
 
-      rows.slice(1).forEach(row => {
-        const cell = row[sourceIndex];
-        const text = String(cell || "").trim();
-        if (!isConstraintWeekHeader(text)) return;
-        const start = parseWeekStartFromHeader(text);
+      const line = String(text || "").trim();
+      const base = lastStart || fallbackStart || getBaseStartDate();
+      const fallbackYear = base?.getFullYear() || new Date().getFullYear();
+      let fallbackMonth = base?.getMonth() + 1 || null;
+      const simpleRange = line.match(/(?:תאריך\s*[:\-/]?\s*)?(\d{1,2})\s*[-–]\s*(\d{1,2})(?![./])/);
+      if (!simpleRange || !fallbackMonth) return null;
+      const day = Number(simpleRange[1]);
+      if (lastStart && day < lastStart.getDate()) fallbackMonth += 1;
+      return new Date(fallbackYear, fallbackMonth - 1, day, 12);
+    }
+
+    function applyWeekDatesFromRows(rows) {
+      const startsByIso = new Map();
+      const headers = rows.flat().map(cell => String(cell || "").trim()).filter(isConstraintWeekHeader);
+      const fallbackStart = headers.map(parseWeekStartFromHeader).find(Boolean) || null;
+      let lastStart = null;
+
+      headers.forEach(text => {
+        const start = resolveWeekStartFromHeader(text, lastStart, fallbackStart);
         if (!start) return;
         startsByIso.set(isoDate(start), start);
+        lastStart = start;
       });
 
       const starts = [...startsByIso.values()].sort((a, b) => a - b);
       if (!starts.length) return 0;
 
       startDateEl.value = editDateValue(starts[0]);
-      weekCountEl.value = String(Math.max(Number(weekCountEl.value) || 1, starts.length));
+      weekCountEl.value = String(starts.length);
       renderWeekSettings(starts.map(start => ({ start, end: addDays(start, 6) })));
       refreshCalendarDays();
       return starts.length;
@@ -1254,7 +1314,7 @@
     function importRowsMatrix(rows, statusEl) {
       const headers = rows[0] || [];
       let imported = 0;
-      const importedWeeks = applyWeekDatesFromRows(rows, "הוד");
+      const importedWeeks = applyWeekDatesFromRows(rows);
 
       headers.forEach((header, columnIndex) => {
         const name = String(header || "").trim();
@@ -1275,7 +1335,7 @@
         imported += 1;
       });
 
-      statusEl.textContent = `נקלטו ${imported} עמודות עובדים${importedWeeks ? ` ועודכנו ${importedWeeks} שבועות לפי התאריכים של הוד` : ""}.`;
+      statusEl.textContent = `נקלטו ${imported} עמודות עובדים${importedWeeks ? ` וזוהו ${importedWeeks} שבועות מתוך האקסל` : ""}.`;
       saveState();
     }
 
@@ -1307,23 +1367,63 @@
 
     function renderSpecialDays() {
       const days = getScheduleDays();
-      specialDaysEl.innerHTML = days.map(day => {
-        const closed = day.closed || false;
-        const label = state.special[day.iso]?.label || calendarStatusLabel(day.dayType.status);
-        const autoTag = !state.special[day.iso] && label ? `<span class="day-tag ${day.dayType.status}">${label}</span>` : "";
-        return `
-          <div class="day-row" data-date="${day.iso}">
-            <div class="day-label">${day.dayName} ${displayDate(day.date)} ${autoTag}</div>
-            <select class="special-type">
-              <option value="" ${!label ? "selected" : ""}>יום עבודה</option>
-              <option value="אין עבודה" ${label === "אין עבודה" || label === "לא משובץ" ? "selected" : ""}>אין עבודה</option>
-              <option value="ערב חג" ${label === "ערב חג" ? "selected" : ""}>ערב חג</option>
-              <option value="חג" ${label === "חג" ? "selected" : ""}>חג</option>
-            </select>
-            <span class="${closed ? "closed" : ""}">${closed ? "חסום" : "פתוח"}</span>
+      if (!days.length) {
+        specialDaysEl.innerHTML = "";
+        return;
+      }
+      const holidayEves = days.filter(day => day.dayType.status === "holidayEve");
+      const manualDays = days.filter(day => state.special[day.iso]);
+      const holidayText = holidayEves.length
+        ? holidayEves.map(day => `<span class="summary-pill">${displayDate(day.date)} — ${day.dayType.title || "ערב חג"} ללא עבודה</span>`).join("")
+        : `<span class="helper">אין ערבי חג בטווח שנבחר</span>`;
+      const manualText = manualDays.length
+        ? manualDays.map(day => {
+          const label = state.special[day.iso]?.label || "אין עבודה";
+          const closed = state.special[day.iso]?.closed;
+          return `
+            <div class="day-row" data-date="${day.iso}">
+              <div class="day-label">${displayDate(day.date)} — ${label}</div>
+              <span class="${closed ? "closed" : ""}">${closed ? "חסום" : "פתוח"}</span>
+              <button class="btn secondary remove-special-day" type="button">הסר</button>
+            </div>
+          `;
+        }).join("")
+        : `<span class="helper">אין ימים ידניים</span>`;
+
+      specialDaysEl.innerHTML = `
+        <div class="week-summary">
+          <div class="summary-group">
+            <div class="summary-label">ימים ללא עבודה</div>
+            <div class="summary-list">
+              <span class="summary-pill">שישי קבוע</span>
+              ${holidayText}
+            </div>
           </div>
-        `;
-      }).join("");
+          <div class="summary-group">
+            <div class="summary-label">Override ידני</div>
+            <div class="manual-days">${manualText}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function addManualOffDay() {
+      const date = parseUiDate(manualOffDateEl.value, getBaseStartDate()?.getFullYear());
+      if (!date) {
+        statusBadgeEl.textContent = "תאריך ידני לא תקין";
+        return;
+      }
+      const label = manualOffLabelEl.value || "אין עבודה";
+      state.special[isoDate(date)] = { closed: true, label };
+      manualOffDateEl.value = "";
+      renderSpecialDays();
+      saveState();
+    }
+
+    function removeManualSpecialDay(iso) {
+      delete state.special[iso];
+      renderSpecialDays();
+      saveState();
     }
 
     function refreshCalendarDays() {
@@ -2788,21 +2888,12 @@
       await refreshCalendarDays();
       saveState();
     });
+    document.getElementById("addManualOffDay").addEventListener("click", addManualOffDay);
 
-    specialDaysEl.addEventListener("change", event => {
-      if (!event.target.classList.contains("special-type")) return;
+    specialDaysEl.addEventListener("click", event => {
+      if (!event.target.classList.contains("remove-special-day")) return;
       const row = event.target.closest(".day-row");
-      const iso = row.dataset.date;
-      const value = event.target.value;
-      if (!value) {
-        delete state.special[iso];
-      } else if (value === "חג") {
-        state.special[iso] = { closed: false, label: value };
-      } else {
-        state.special[iso] = { closed: true, label: value };
-      }
-      renderSpecialDays();
-      saveState();
+      removeManualSpecialDay(row.dataset.date);
     });
 
     workersEl.addEventListener("click", event => {
