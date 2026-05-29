@@ -575,13 +575,18 @@
       min-height: 20px;
       padding: 1px 7px;
       border-radius: 999px;
-      background: var(--surface-strong);
-      color: var(--text);
-      border: 1px solid rgba(29, 29, 31, 0.075);
+      background: var(--worker-bg, var(--surface-strong));
+      color: var(--worker-fg, var(--text));
+      border: 1px solid var(--worker-border, rgba(29, 29, 31, 0.075));
       font-weight: 720;
       font-size: 13px;
       line-height: 1.2;
       white-space: nowrap;
+    }
+
+    .worker-chip.count-chip {
+      min-height: 24px;
+      padding-inline: 8px;
     }
 
     .notice .worker-chip {
@@ -603,6 +608,26 @@
       font-weight: 650;
       margin-inline-start: 6px;
       vertical-align: middle;
+    }
+
+    .worker-summary {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 14px;
+      padding: 10px 0 12px;
+      border-bottom: 1px solid rgba(29, 29, 31, 0.055);
+    }
+
+    .worker-summary-title {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .worker-summary-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
 
     .notice {
@@ -883,15 +908,15 @@
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
     const FLEXIBLE_RESERVE_WORKERS = new Set(["אלון", "יהלי"]);
     const WORKER_COLORS = {
-      "הוד": ["#e8f3ff", "#17558f", "#9ec9ee"],
-      "סיואר": ["#eaf8ef", "#23623a", "#a7d9b6"],
-      "הדס": ["#fff0f5", "#8b3150", "#efb2c5"],
-      "דניאל": ["#fff6d8", "#725107", "#e5c867"],
-      "שדא": ["#f0ecff", "#50358c", "#c3b5f2"],
-      "אשרקת": ["#e9fbfb", "#17666b", "#9bdadd"],
-      "יהלי": ["#f4f0e7", "#654d23", "#d8c59c"],
-      "נעמי": ["#fdeeee", "#8b3631", "#edb3ae"],
-      "אלון": ["#edf4e7", "#46651f", "#bdd6a0"]
+      "הוד": ["#eaf3ff", "#195b92", "#bfd8f2"],
+      "סיואר": ["#edf8f1", "#28623f", "#bfdcc8"],
+      "הדס": ["#fff0f6", "#85435c", "#efc3d2"],
+      "דניאל": ["#fff7df", "#74550f", "#ead79c"],
+      "שדא": ["#f3efff", "#5a438f", "#d4c9f3"],
+      "אשרקת": ["#eafbfb", "#266a70", "#b9e0e1"],
+      "יהלי": ["#f5f1e8", "#64512f", "#ded1b7"],
+      "נעמי": ["#fff0ee", "#85403b", "#efc4bf"],
+      "אלון": ["#eef6e8", "#4e672e", "#cbdcb8"]
     };
     const LEARNED_PAIR_PREFERENCES = [
       { dayIndex: 0, names: ["סיואר", "שדא"], bonus: 420 },
@@ -2657,6 +2682,10 @@
         const [bg, fg, border] = WORKER_COLORS[name] || ["#eef3f1", "#263b34", "#c9d8d1"];
         return `<span class="worker-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name}</span>`;
       };
+      const workerCountChip = (name, count) => {
+        const [bg, fg, border] = WORKER_COLORS[name] || ["#eef3f1", "#263b34", "#c9d8d1"];
+        return `<span class="worker-chip count-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name} ${count}</span>`;
+      };
       const displayWorker = worker => workerChip(displayWorkerName(worker));
       const formatWarning = warning => {
         let text = warning;
@@ -2702,6 +2731,25 @@
         const status = day.dayType.status === "workday" && day.closed ? "off" : day.dayType.status;
         return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;
       };
+      const workerCounts = new Map();
+      Object.values(schedule).flat().forEach(entry => {
+        [entry.first, entry.second].forEach(worker => {
+          const name = displayWorkerName(worker);
+          if (name !== "-") workerCounts.set(name, (workerCounts.get(name) || 0) + 1);
+        });
+      });
+      const workerSummary = [...workerCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "he"))
+        .map(([name, count]) => workerCountChip(name, count))
+        .join("");
+      if (workerSummary) {
+        html += `
+          <section class="worker-summary">
+            <div class="worker-summary-title">סיכום עובדים</div>
+            <div class="worker-summary-list">${workerSummary}</div>
+          </section>
+        `;
+      }
       for (let week = 0; week < weekCount; week++) {
         const label = weekResultTitle(week);
         plain.push(weekCopyLabel(week));
