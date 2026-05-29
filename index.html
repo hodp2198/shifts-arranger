@@ -795,6 +795,7 @@
     </section>
   </main>
 
+  <script src="vendor/hebcal-core.min.js"></script>
   <script>
     const DEFAULT_WORKERS = [
       { name: "הוד", min: 3, max: 3, fixedMin: true },
@@ -834,9 +835,6 @@
       special: {},
       shuffleSeed: 0,
       calendar: {
-        holidaysByIso: {},
-        loadedYears: new Set(),
-        failedYears: new Set(),
         warning: ""
       }
     };
@@ -908,59 +906,19 @@
       return "";
     }
 
-    function markCalendarItem(item) {
-      const iso = item.date;
-      if (!iso) return;
-      const title = `${item.title || ""} ${item.hebrew || ""}`;
-      const category = item.category || "";
-      const isEve = /^Erev\b/i.test(item.title || "") || /ערב/.test(title);
-      const isNationalHoliday = category === "modern" && /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים|Yom HaZikaron|יום הזיכרון/i.test(title);
-      const isHoliday = Boolean(item.yomtov) || isNationalHoliday;
-
-      if (isEve) {
-        state.calendar.holidaysByIso[iso] = { status: "holidayEve", reason: "ערב חג", title: item.hebrew || item.title || "ערב חג" };
-        return;
-      }
-      if (isHoliday) {
-        state.calendar.holidaysByIso[iso] = { status: "holiday", reason: "חג", title: item.hebrew || item.title || "חג" };
-      }
-    }
-
-    async function loadCalendarYear(year) {
-      if (state.calendar.loadedYears.has(year) || state.calendar.failedYears.has(year)) return;
-      const params = new URLSearchParams({
-        cfg: "json",
-        v: "1",
-        year: String(year),
-        i: "on",
-        maj: "on",
-        min: "on",
-        mod: "on",
-        nx: "on",
-        lg: "he"
-      });
-
-      try {
-        const response = await fetch(`https://www.hebcal.com/hebcal?${params.toString()}`);
-        if (!response.ok) throw new Error(`Hebcal ${response.status}`);
-        const data = await response.json();
-        (data.items || []).forEach(markCalendarItem);
-        state.calendar.loadedYears.add(year);
-      } catch (error) {
-        state.calendar.failedYears.add(year);
-      }
-    }
-
-    async function ensureCalendarRulesLoaded() {
-      const years = [...new Set(getWeekConfigs().flatMap(week => (
-        week ? [week.start.getFullYear(), week.end.getFullYear()] : []
-      )))];
+    function getHebcalEvents(date) {
       state.calendar.warning = "";
-      await Promise.all(years.map(loadCalendarYear));
-      if (years.some(year => state.calendar.failedYears.has(year))) {
-        state.calendar.warning = "לא ניתן היה לטעון חגים, הסידור נבנה לפי ימים רגילים בלבד.";
+      const core = window.hebcal;
+      if (!core?.getHolidaysOnDate || !core?.flags) {
+        state.calendar.warning = "ספריית החגים המקומית לא נטענה, הסידור נבנה לפי ימים רגילים בלבד.";
+        return [];
       }
-      return !state.calendar.warning;
+      try {
+        return core.getHolidaysOnDate(date, true) || [];
+      } catch (error) {
+        state.calendar.warning = "ספריית החגים המקומית לא נטענה, הסידור נבנה לפי ימים רגילים בלבד.";
+        return [];
+      }
     }
 
     function getDayType(date) {
@@ -969,12 +927,26 @@
         return { status: "off", isWorkday: false, reason: "יום שישי" };
       }
 
-      const holiday = state.calendar.holidaysByIso[isoDate(date)];
-      if (holiday?.status === "holidayEve") {
-        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: holiday.title };
+      const core = window.hebcal;
+      const flags = core?.flags || {};
+      const events = getHebcalEvents(date);
+      const hasFlag = (event, flag) => Boolean(flag && event.getFlags && (event.getFlags() & flag));
+      const getDesc = event => event.render?.("he-x-NoNikud") || event.getDesc?.() || "חג";
+      const isEve = event => hasFlag(event, flags.EREV) || /^Erev\b/i.test(event.getDesc?.() || "") || /ערב/.test(getDesc(event));
+      const isIsraeliHoliday = event => {
+        const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
+        return hasFlag(event, flags.MODERN_HOLIDAY) && /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
+      };
+      const isHoliday = event => hasFlag(event, flags.CHAG) || isIsraeliHoliday(event);
+
+      const holidayEve = events.find(isEve);
+      if (holidayEve) {
+        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) };
       }
-      if (holiday?.status === "holiday") {
-        return { status: "holiday", isWorkday: true, reason: "חג", title: holiday.title };
+
+      const holiday = events.find(isHoliday);
+      if (holiday) {
+        return { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) };
       }
 
       return { status: "workday", isWorkday: true, reason: "יום רגיל" };
@@ -1340,9 +1312,7 @@
       }).join("");
     }
 
-    async function refreshCalendarDays() {
-      renderSpecialDays();
-      await ensureCalendarRulesLoaded();
+    function refreshCalendarDays() {
       renderSpecialDays();
     }
 
@@ -2560,7 +2530,6 @@
     }
 
     async function renderSchedule() {
-      await ensureCalendarRulesLoaded();
       const { schedule, warnings, workers } = generateSchedule();
       const weekCount = getWeekConfigs().length;
       const plain = [];
@@ -2591,6 +2560,7 @@
         if (warning.includes("שובץ/ה מעל המקסימום")
           || warning.includes("רק ")
           || warning.includes("לא ניתן היה לטעון חגים")
+          || warning.includes("ספריית החגים המקומית")
           || warning.includes("פחות מהמינימום")
           || warning.includes("מעל המקסימום")) {
           return "warn";
