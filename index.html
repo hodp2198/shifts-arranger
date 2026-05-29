@@ -536,6 +536,18 @@
       color: var(--accent-dark);
     }
 
+    .explain.interesting summary {
+      background: #fff8dd;
+      border-color: #ead178;
+      color: #7a5a00;
+    }
+
+    .explain.problem summary {
+      background: #fff0ee;
+      border-color: #f0b8b2;
+      color: var(--danger);
+    }
+
     .explain-panel {
       position: absolute;
       z-index: 4;
@@ -2406,9 +2418,12 @@
         const slotLabel = slot === 1 ? "נייט 1" : "נייט 2";
         const lines = [];
         const dayWarning = warnings.find(item => warningMatchesDay(item, entry.day));
+        const dayWarningSeverity = dayWarning ? warningSeverity(dayWarning) : null;
+        let severity = dayWarningSeverity === "bad" ? "problem" : (dayWarning ? "interesting" : "none");
 
         if (!worker) {
           const submitted = eligibleForSlot(entry, slot);
+          severity = "problem";
           lines.push("✗ לא שובץ עובד במשבצת הזאת");
           lines.push(submitted.length ? `✓ ${submitted.length} עובדים הגישו אבל לא נמצאה התאמה תקינה` : "✗ אף עובד מתאים לא הגיש וזמין");
           if (dayWarning) lines.push("⚠ קיימת הערת חוסר ליום הזה");
@@ -2421,16 +2436,26 @@
           lines.push(slot === 1 && worker.onlyNight2 ? "✗ מוגדר/ת רק נייט 2" : `✓ מתאים/ה ל${slotLabel}`);
           lines.push(weekCount <= min ? `✓ מסייע למינימום השבועי (${weekCount}/${min})` : `✓ עומד/ת במינימום (${weekCount}/${min})`);
           if (weekCount > worker.max) {
+            severity = "problem";
             lines.push(underMaxAlternatives.length ? "⚠ מעל המקסימום למרות שקיימות חלופות" : "⚠ מעל המקסימום בגלל חוסר חלופות");
           } else {
             lines.push(`✓ מתחת/בתוך המקסימום (${weekCount}/${worker.max})`);
           }
-          if (worker.preferred?.has(entry.day.iso)) lines.push("✓ היום סומן כהעדפה");
+          if (worker.preferred?.has(entry.day.iso)) {
+            if (severity === "none") severity = "interesting";
+            lines.push("✓ היום סומן כהעדפה");
+          }
+          if (slot === 2 && worker.onlyNight2) {
+            if (severity === "none") severity = "interesting";
+            lines.push("✓ שובץ/ה בנייט 2 בהתאם להגבלה");
+          }
         }
 
+        if (severity === "none") return "";
+
         return `
-          <details class="explain">
-            <summary title="למה?">ⓘ</summary>
+          <details class="explain ${severity}">
+            <summary title="למה?">${severity === "problem" ? "⚠" : "ⓘ"}</summary>
             <div class="explain-panel">
               <strong>${entry.day.dayName} ${displayDate(entry.day.date)} · ${slotLabel}</strong>
               ${lines.map(line => `<span>${line}</span>`).join("")}
