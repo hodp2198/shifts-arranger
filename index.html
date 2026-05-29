@@ -1265,12 +1265,20 @@
 
     function chooseWorker(workers, day, slot, alreadyChosen, options = {}) {
       const allowOverMax = Boolean(options.allowOverMax);
+      const hasUnderMaxAlternative = worker => workers.some(candidate => (
+        candidate.name !== worker.name
+        && !alreadyChosen.includes(candidate.name)
+        && !candidate.blocked.has(day.iso)
+        && candidate.submitted?.has(day.iso)
+        && !(slot === 1 && candidate.onlyNight2)
+        && (candidate.weekCounts[day.week] || 0) < candidate.max
+      ));
       const candidates = workers
         .filter(worker => !alreadyChosen.includes(worker.name))
         .filter(worker => !worker.blocked.has(day.iso))
         .filter(worker => worker.submitted?.has(day.iso))
         .filter(worker => !(slot === 1 && worker.onlyNight2))
-        .filter(worker => allowOverMax || (worker.weekCounts[day.week] || 0) < worker.max)
+        .filter(worker => (worker.weekCounts[day.week] || 0) < worker.max || (allowOverMax && !hasUnderMaxAlternative(worker)))
         .sort((a, b) => workerScore(a, day, slot) - workerScore(b, day, slot) || a.name.localeCompare(b.name, "he"));
 
       const underMinimum = candidates.filter(worker => (worker.weekCounts[day.week] || 0) < getWorkerMin(worker));
@@ -1907,21 +1915,30 @@
             rebuildWorkerStats(schedule, workers);
             if ((worker.weekCounts[week] || 0) <= getWorkerMin(worker)) break;
 
-            const option = assignedSlots(worker, week)
+            const options = assignedSlots(worker, week)
               .sort((a, b) => Number(isForced(a.current, a.entry.day, a.slot)) - Number(isForced(b.current, b.entry.day, b.slot))
                 || Number(a.current.preferred?.has(a.entry.day.iso)) - Number(b.current.preferred?.has(b.entry.day.iso))
-                || b.entry.day.dayIndex - a.entry.day.dayIndex)[0];
+                || b.entry.day.dayIndex - a.entry.day.dayIndex);
 
-            if (!option) break;
+            let best = null;
+            for (const option of options) {
+              const otherName = option.slot === 1 ? option.entry.second?.name : option.entry.first?.name;
+              const replacement = workers
+                .filter(candidate => candidate.name !== worker.name)
+                .filter(candidate => candidate.name !== otherName)
+                .filter(candidate => (candidate.weekCounts[week] || 0) < candidate.max)
+                .filter(candidate => canWorkSlot(candidate, option.entry.day, option.slot, option.entry))
+                .sort((a, b) => workerScore(a, option.entry.day, option.slot) - workerScore(b, option.entry.day, option.slot))[0] || null;
+              if (replacement) {
+                best = { option, replacement };
+                break;
+              }
+            }
+
+            if (!options.length) break;
+            const option = best?.option || options[0];
             const overForced = isForced(option.current, option.entry.day, option.slot);
-
-            const otherName = option.slot === 1 ? option.entry.second?.name : option.entry.first?.name;
-            const replacement = workers
-              .filter(candidate => candidate.name !== worker.name)
-              .filter(candidate => candidate.name !== otherName)
-              .filter(candidate => (candidate.weekCounts[week] || 0) < candidate.max)
-              .filter(candidate => canWorkSlot(candidate, option.entry.day, option.slot, option.entry))
-              .sort((a, b) => workerScore(a, option.entry.day, option.slot) - workerScore(b, option.entry.day, option.slot))[0] || null;
+            const replacement = best?.replacement || null;
 
             if (!replacement) {
               warnings.push(`${option.entry.day.dayName} ${displayDate(option.entry.day.date)}: ${worker.name} שובץ/ה מעל המקסימום ${worker.max} כי לא היה עובד אחר שהגיש וזמין מתחת למקסימום.`);
