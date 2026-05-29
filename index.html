@@ -2164,6 +2164,77 @@
       return changes;
     }
 
+    function validateSchedule(schedule, workers, stage = "schedule") {
+      const issues = [];
+      const weekCount = getWeekConfigs().length;
+      const allEntries = Object.values(schedule).flat().filter(entry => !entry.closed);
+
+      const canReplaceUnderMax = (entry, slot, worker) => {
+        const otherName = slot === 1 ? entry.second?.name : entry.first?.name;
+        return workers.some(candidate => (
+          candidate.name !== worker.name
+          && candidate.name !== otherName
+          && (candidate.weekCounts[entry.day.week] || 0) < candidate.max
+          && canWorkSlot(candidate, entry.day, slot, entry)
+        ));
+      };
+
+      for (const entry of allEntries) {
+        if (entry.first?.name && entry.second?.name && entry.first.name === entry.second.name) {
+          issues.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${entry.first.name} appears twice in the same shift.`);
+        }
+
+        [
+          { worker: entry.first, slot: 1 },
+          { worker: entry.second, slot: 2 }
+        ].forEach(item => {
+          const worker = item.worker;
+          if (!worker) return;
+          if (item.slot === 1 && worker.onlyNight2) {
+            issues.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} is only night 2 but assigned to night 1.`);
+          }
+          if (!worker.submitted?.has(entry.day.iso)) {
+            issues.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} assigned without submitting this day.`);
+          }
+          if (worker.blocked.has(entry.day.iso)) {
+            issues.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} assigned on a blocked day.`);
+          }
+        });
+      }
+
+      for (let week = 0; week < weekCount; week++) {
+        for (const worker of workers) {
+          const count = worker.weekCounts[week] || 0;
+          const min = getWorkerMin(worker);
+          const available = worker.availableDaysByWeek?.[week] || 0;
+
+          if (count < min && available >= min) {
+            issues.push(`${weekLabel(week)}: ${worker.name} below minimum ${count}/${min} despite enough submitted days.`);
+          }
+
+          if (count > worker.max && count > min) {
+            const replaceableOverMaxSlot = (schedule[week] || [])
+              .filter(entry => !entry.closed)
+              .flatMap(entry => [
+                { entry, slot: 1, worker: entry.first },
+                { entry, slot: 2, worker: entry.second }
+              ])
+              .some(item => item.worker?.name === worker.name && canReplaceUnderMax(item.entry, item.slot, worker));
+
+            if (replaceableOverMaxSlot) {
+              issues.push(`${weekLabel(week)}: ${worker.name} above maximum ${count}/${worker.max} while an under-max replacement exists.`);
+            }
+          }
+        }
+      }
+
+      if (issues.length) {
+        console.warn(`[schedule validation] ${stage}`, issues);
+      }
+
+      return issues;
+    }
+
     function hasOverMaxShortageWarning(warnings, worker, week) {
       const weekEntries = getScheduleDays()
         .filter(day => day.week === week)
@@ -2240,6 +2311,10 @@
         warnings.push("צריך לפחות שני עובדים מסומנים כדי ליצור סידור. טקסט בתיבה מסמן אוטומטית, אבל אם הורדת סימון ידנית העובד לא ייכנס.");
       }
       addSubmissionWarnings(days, workers, warnings);
+      const auditSchedule = stage => {
+        rebuildWorkerStats(schedule, workers);
+        return validateSchedule(schedule, workers, stage);
+      };
 
       const assignmentDays = [];
       for (let week = 0; week < getWeekConfigs().length; week++) {
@@ -2301,7 +2376,9 @@
 
       for (let pass = 0; pass < 6; pass++) {
         const minChanges = improveMinimums(schedule, workers);
+        auditSchedule(`pass ${pass + 1} after improveMinimums`);
         const maxChanges = improveMaximums(schedule, workers);
+        auditSchedule(`pass ${pass + 1} after improveMaximums`);
         const targetChanges = improveTargets(schedule, workers);
         const mixChanges = optimizeScheduleMix(schedule, workers);
         const duplicateChanges = fixDuplicateEntries(schedule, workers);
@@ -2312,9 +2389,9 @@
       for (let pass = 0; pass < 4; pass++) {
         rebuildWorkerStats(schedule, workers);
         const maxChanges = improveMaximums(schedule, workers);
-        rebuildWorkerStats(schedule, workers);
+        auditSchedule(`final pass ${pass + 1} after improveMaximums`);
         const minChanges = improveMinimums(schedule, workers);
-        rebuildWorkerStats(schedule, workers);
+        auditSchedule(`final pass ${pass + 1} after improveMinimums`);
         const mixChanges = optimizeScheduleMix(schedule, workers);
         if (!maxChanges && !minChanges && !mixChanges) break;
       }
@@ -2322,8 +2399,9 @@
       fixBlockedEntries(schedule, workers, warnings);
       enforceOneTimeRules(schedule, workers, oneTimeRules, warnings);
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
+      auditSchedule("after enforceMaximumCaps");
       fillMissingSlots(schedule, workers);
-      rebuildWorkerStats(schedule, workers);
+      auditSchedule("after fillMissingSlots");
 
       const weekCount = getWeekConfigs().length;
       for (let week = 0; week < weekCount; week++) {
@@ -2338,9 +2416,11 @@
       }
       rebuildWorkerStats(schedule, workers);
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
+      auditSchedule("after final enforceMaximumCaps");
       fillMissingSlots(schedule, workers);
-      rebuildWorkerStats(schedule, workers);
+      auditSchedule("after final fillMissingSlots");
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
+      auditSchedule("after closing enforceMaximumCaps");
 
       for (let week = 0; week < weekCount; week++) {
         for (const entry of schedule[week] || []) {
