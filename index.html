@@ -1909,6 +1909,7 @@
 
       for (let week = 0; week < getWeekConfigs().length; week++) {
         for (const worker of workers) {
+          let reportedShortageOverride = false;
           let guard = 0;
           while (assignedSlots(worker, week).length > worker.max && guard < 30) {
             guard += 1;
@@ -1941,7 +1942,10 @@
             const replacement = best?.replacement || null;
 
             if (!replacement) {
-              warnings.push(`${option.entry.day.dayName} ${displayDate(option.entry.day.date)}: ${worker.name} שובץ/ה מעל המקסימום ${worker.max} כי לא היה עובד אחר שהגיש וזמין מתחת למקסימום.`);
+              if (!reportedShortageOverride) {
+                warnings.push(`${option.entry.day.dayName} ${displayDate(option.entry.day.date)}: ${worker.name} שובץ/ה מעל המקסימום ${worker.max} כי לא היה עובד אחר שהגיש וזמין מתחת למקסימום.`);
+                reportedShortageOverride = true;
+              }
               break;
             }
 
@@ -1980,6 +1984,14 @@
       }
 
       return changes;
+    }
+
+    function hasOverMaxShortageWarning(warnings, worker, week) {
+      const weekEntries = getScheduleDays()
+        .filter(day => day.week === week)
+        .map(day => `${day.dayName} ${displayDate(day.date)}: ${worker.name} שובץ/ה מעל המקסימום`);
+
+      return warnings.some(warning => weekEntries.some(prefix => warning.startsWith(prefix)));
     }
 
     function addSubmissionWarnings(days, workers, warnings) {
@@ -2170,7 +2182,9 @@
               : "למרות שהגיש/ה מספיק ימים, צריך בדיקה";
             warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, פחות מהמינימום ${min}, ${reason}.`);
           }
-          if (count > worker.max) warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
+          if (count > worker.max && !hasOverMaxShortageWarning(warnings, worker, week)) {
+            warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
+          }
         }
       }
 
