@@ -431,6 +431,27 @@
       color: var(--muted);
     }
 
+    .worker-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: var(--worker-bg, var(--soft));
+      color: var(--worker-fg, var(--text));
+      border: 1px solid var(--worker-border, var(--line));
+      font-weight: 700;
+      line-height: 1.25;
+      white-space: nowrap;
+    }
+
+    .notice .worker-chip {
+      min-height: 20px;
+      padding: 1px 7px;
+      margin: 0 2px;
+      font-size: 13px;
+    }
+
     .badge {
       display: inline-flex;
       align-items: center;
@@ -629,6 +650,17 @@
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
     const FLEXIBLE_RESERVE_WORKERS = new Set(["אלון", "יהלי"]);
+    const WORKER_COLORS = {
+      "הוד": ["#e8f3ff", "#17558f", "#9ec9ee"],
+      "סיואר": ["#eaf8ef", "#23623a", "#a7d9b6"],
+      "הדס": ["#fff0f5", "#8b3150", "#efb2c5"],
+      "דניאל": ["#fff6d8", "#725107", "#e5c867"],
+      "שדא": ["#f0ecff", "#50358c", "#c3b5f2"],
+      "אשרקת": ["#e9fbfb", "#17666b", "#9bdadd"],
+      "יהלי": ["#f4f0e7", "#654d23", "#d8c59c"],
+      "נעמי": ["#fdeeee", "#8b3631", "#edb3ae"],
+      "אלון": ["#edf4e7", "#46651f", "#bdd6a0"]
+    };
     const LEARNED_PAIR_PREFERENCES = [
       { dayIndex: 0, names: ["סיואר", "שדא"], bonus: 420 },
       { dayIndex: 1, names: ["סיואר", "הדס"], bonus: 500 },
@@ -1041,6 +1073,7 @@
     function isConstraintWeekHeader(line) {
       return /^תאריך\s*[:\-/]?/i.test(line)
         || /^שבוע\s+של\s+\d{1,2}[./]\d{1,2}/i.test(line)
+        || /^שבוע\s+\d{1,2}[./]\d{1,2}/i.test(line)
         || /^\d{1,2}[./]\d{1,2}\s*[-–]\s*\d{1,2}(?:[./]\d{1,2})?/i.test(line)
         || /^\d{1,2}\s*[-–]\s*\d{1,2}[./]\d{1,2}/i.test(line);
     }
@@ -1119,7 +1152,7 @@
     }
 
     function isUnavailableText(text) {
-      return /לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(text);
+      return /לא\s*יכול|לא\s*יכולה|לא\s*יוכלה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(text);
     }
 
     function isPreferredText(text) {
@@ -2132,9 +2165,20 @@
       const weekCount = getWeekConfigs().length;
       const plain = [];
       let html = "";
-      const displayWorker = worker => {
+      const displayWorkerName = worker => {
         const name = worker?.name || worker || "";
         return (!name || name === "לא שובץ" || name === "חסר") ? "-" : name;
+      };
+      const workerChip = name => {
+        if (name === "-") return "-";
+        const [bg, fg, border] = WORKER_COLORS[name] || ["#eef3f1", "#263b34", "#c9d8d1"];
+        return `<span class="worker-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name}</span>`;
+      };
+      const displayWorker = worker => workerChip(displayWorkerName(worker));
+      const formatWarning = warning => {
+        let text = warning;
+        for (const worker of WORKERS) text = text.replaceAll(worker.name, workerChip(worker.name));
+        return text;
       };
 
       for (let week = 0; week < weekCount; week++) {
@@ -2150,10 +2194,12 @@
             plain.push(`${dayName} - ${reason}`);
             continue;
           }
+          const firstName = displayWorkerName(entry.first);
+          const secondName = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorkerName(entry.second) : "-";
           const first = displayWorker(entry.first);
           const second = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorker(entry.second) : "-";
           html += `<div class="shift-line"><div class="shift-day">${dayName}</div><div>${first} ו${second}</div></div>`;
-          plain.push(`${dayName} - ${first} ו${second}`);
+          plain.push(`${dayName} - ${firstName} ו${secondName}`);
         }
 
         html += `</section>`;
@@ -2161,7 +2207,7 @@
       }
 
       if (warnings.length) {
-        warningsEl.innerHTML = `<div class="notice danger"><strong>צריך בדיקה:</strong><br>${warnings.map(item => `• ${item}`).join("<br>")}</div>`;
+        warningsEl.innerHTML = `<div class="notice danger"><strong>צריך בדיקה:</strong><br>${warnings.map(item => `• ${formatWarning(item)}`).join("<br>")}</div>`;
         statusBadgeEl.textContent = "נוצר עם אזהרות";
       } else {
         warningsEl.innerHTML = `<div class="notice"><strong>הסידור נוצר בהצלחה.</strong> כללי המינימום/מקסימום והאילוצים מולאו.</div>`;
