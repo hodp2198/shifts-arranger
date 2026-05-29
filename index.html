@@ -1073,6 +1073,7 @@
     function parseConstraints(text) {
       const blocked = new Set();
       const preferred = new Set();
+      const submitted = new Set();
       const lines = text.split(/\r?\n/);
       let weekOffset = 0;
       let sawDate = false;
@@ -1095,7 +1096,6 @@
         const value = match[2] || "";
         const unavailable = isUnavailableText(value);
         const wanted = isPreferredText(value);
-        if (!unavailable && !wanted) continue;
 
         const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
         if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
@@ -1106,11 +1106,16 @@
         const baseStart = getBaseStartDate();
         const date = week ? addDays(week.start, dayIndex) : (baseStart ? addDays(baseStart, weekOffset * 7 + dayIndex) : null);
         if (!date) continue;
-        if (unavailable) blocked.add(isoDate(date));
-        if (wanted && !unavailable) preferred.add(isoDate(date));
+        const iso = isoDate(date);
+        if (unavailable) {
+          blocked.add(iso);
+        } else {
+          submitted.add(iso);
+        }
+        if (wanted && !unavailable) preferred.add(iso);
       }
 
-      return { blocked, preferred };
+      return { blocked, preferred, submitted };
     }
 
     function isUnavailableText(text) {
@@ -1163,6 +1168,7 @@
           max: Number(card.querySelector(".max-shifts").value) || 1,
           blocked: parsedConstraints.blocked,
           preferred: parsedConstraints.preferred,
+          submitted: parsedConstraints.submitted,
           weekCounts: {},
           total: 0,
           recentDays: [],
@@ -1229,6 +1235,7 @@
       const candidates = workers
         .filter(worker => !alreadyChosen.includes(worker.name))
         .filter(worker => !worker.blocked.has(day.iso))
+        .filter(worker => worker.submitted?.has(day.iso))
         .filter(worker => !(slot === 1 && worker.onlyNight2))
         .filter(worker => allowOverMax || (worker.weekCounts[day.week] || 0) < worker.max)
         .sort((a, b) => workerScore(a, day, slot) - workerScore(b, day, slot) || a.name.localeCompare(b.name, "he"));
@@ -1240,6 +1247,7 @@
 
     function canAssign(worker, day, slot, options = {}) {
       if (!worker || worker.blocked.has(day.iso)) return false;
+      if (!worker.submitted?.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
       if (!options.allowOverMax && (worker.weekCounts[day.week] || 0) >= worker.max) return false;
       return true;
@@ -1312,6 +1320,7 @@
 
     function canWorkSlot(worker, day, slot, entry) {
       if (!worker || worker.blocked.has(day.iso)) return false;
+      if (!worker.submitted?.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
       if (slot !== 1 && entry.first?.name === worker.name) return false;
       if (slot !== 2 && entry.second?.name === worker.name) return false;
@@ -1326,7 +1335,6 @@
         for (const worker of workers) {
           const min = getWorkerMin(worker);
           while ((worker.weekCounts[week] || 0) < min) {
-            if ((worker.weekCounts[week] || 0) >= worker.max) break;
             const entries = (schedule[week] || [])
               .filter(entry => !entry.closed)
               .filter(entry => canWorkSlot(worker, entry.day, 1, entry) || canWorkSlot(worker, entry.day, 2, entry));
@@ -1340,7 +1348,15 @@
 
               for (const option of slots) {
                 if (!canWorkSlot(worker, entry.day, option.slot, entry)) continue;
-                if (!option.current) continue;
+                if (!option.current) {
+                  const score = 100000
+                    - (worker.dayCounts[entry.day.dayIndex] || 0) * 60
+                    - Math.max(0, (worker.slotCounts[option.slot] || 0) - (worker.slotCounts[option.slot === 1 ? 2 : 1] || 0)) * 70;
+                  if (!best || score > best.score) {
+                    best = { entry, key: option.key, current: null, score };
+                  }
+                  continue;
+                }
                 if (option.current.preferred?.has(entry.day.iso)) continue;
 
                 const currentMin = getWorkerMin(option.current);
@@ -1364,7 +1380,7 @@
 
             if (!best) break;
 
-            unassign(best.current, best.entry.day, best.key === "first" ? 1 : 2);
+            if (best.current) unassign(best.current, best.entry.day, best.key === "first" ? 1 : 2);
             best.entry[best.key] = worker;
             assign(worker, best.entry.day, best.key === "first" ? 1 : 2);
             changes += 1;
@@ -1753,6 +1769,7 @@
 
         if (slot) {
           const slottedWorker = workersInRule.find(worker => worker.name !== "הוד") || workersInRule[0];
+          workersInRule.forEach(worker => worker.submitted.add(iso));
           rules.push({ worker: slottedWorker, iso, slot, only });
           workersInRule
             .filter(worker => worker.name !== slottedWorker.name)
@@ -1760,7 +1777,10 @@
           return;
         }
 
-        workersInRule.forEach(worker => rules.push({ worker, iso, slot: null, only }));
+        workersInRule.forEach(worker => {
+          worker.submitted.add(iso);
+          rules.push({ worker, iso, slot: null, only });
+        });
       };
 
       oneTimeRulesEl.value.split(/\r?\n/).forEach(line => addRule(line));
@@ -1860,6 +1880,7 @@
           while (assignedSlots(worker, week).length > worker.max && guard < 30) {
             guard += 1;
             rebuildWorkerStats(schedule, workers);
+            if ((worker.weekCounts[week] || 0) <= getWorkerMin(worker)) break;
 
             const option = assignedSlots(worker, week)
               .sort((a, b) => Number(isForced(a.current, a.entry.day, a.slot)) - Number(isForced(b.current, b.entry.day, b.slot))
@@ -1877,13 +1898,14 @@
               .filter(candidate => canWorkSlot(candidate, option.entry.day, option.slot, option.entry))
               .sort((a, b) => workerScore(a, option.entry.day, option.slot) - workerScore(b, option.entry.day, option.slot))[0] || null;
 
+            if (!replacement) {
+              warnings.push(`${option.entry.day.dayName} ${displayDate(option.entry.day.date)}: ${worker.name} שובץ/ה מעל המקסימום ${worker.max} כי לא היה עובד אחר שהגיש וזמין מתחת למקסימום.`);
+              break;
+            }
+
             unassign(worker, option.entry.day, option.slot);
             option.entry[option.key] = replacement;
-            if (replacement) {
-              assign(replacement, option.entry.day, option.slot);
-            } else {
-              warnings.push(`${option.entry.day.dayName} ${displayDate(option.entry.day.date)}: ${worker.name} עבר/ה את המקסימום ${worker.max}, לכן המשבצת סומנה כחסרה.`);
-            }
+            assign(replacement, option.entry.day, option.slot);
             if (overForced && assignedSlots(worker, week).length > worker.max) break;
           }
         }
@@ -1904,7 +1926,9 @@
         ]) {
           if (entry[option.key]) continue;
           const otherName = entry[option.otherKey]?.name;
-          const replacement = chooseWorker(workers, entry.day, option.slot, otherName ? [otherName] : []);
+          const alreadyChosen = otherName ? [otherName] : [];
+          let replacement = chooseWorker(workers, entry.day, option.slot, alreadyChosen);
+          if (!replacement) replacement = chooseWorker(workers, entry.day, option.slot, alreadyChosen, { allowOverMax: true });
           if (!replacement) continue;
 
           entry[option.key] = replacement;
@@ -1914,6 +1938,21 @@
       }
 
       return changes;
+    }
+
+    function addSubmissionWarnings(days, workers, warnings) {
+      for (const day of days) {
+        if (day.closed) continue;
+        const submitters = workers.filter(worker => (
+          worker.submitted?.has(day.iso) && !worker.blocked.has(day.iso)
+        ));
+
+        if (!submitters.length) {
+          warnings.push(`${day.dayName} ${displayDate(day.date)}: אף עובד לא הגיש את היום הזה.`);
+        } else if (submitters.length === 1) {
+          warnings.push(`${day.dayName} ${displayDate(day.date)}: רק ${submitters[0].name} הגיש/ה את היום הזה.`);
+        }
+      }
     }
 
     function generateSchedule() {
@@ -1948,6 +1987,7 @@
         for (let week = 0; week < getWeekConfigs().length; week++) {
           worker.availableDaysByWeek[week] = days
             .filter(day => day.week === week && !day.closed)
+            .filter(day => worker.submitted?.has(day.iso))
             .filter(day => !worker.blocked.has(day.iso))
             .filter(day => !(worker.onlyNight2 && day.closed))
             .length;
@@ -1958,6 +1998,7 @@
         for (const worker of workers) {
           day.remainingByWorker[worker.name] = days
             .filter(item => item.week === day.week && item.iso >= day.iso && !item.closed)
+            .filter(item => worker.submitted?.has(item.iso))
             .filter(item => !worker.blocked.has(item.iso))
             .length;
         }
@@ -1966,6 +2007,7 @@
       if (workers.length < 2) {
         warnings.push("צריך לפחות שני עובדים מסומנים כדי ליצור סידור. טקסט בתיבה מסמן אוטומטית, אבל אם הורדת סימון ידנית העובד לא ייכנס.");
       }
+      addSubmissionWarnings(days, workers, warnings);
 
       const assignmentDays = [];
       for (let week = 0; week < getWeekConfigs().length; week++) {
@@ -2018,10 +2060,6 @@
         if (first) assign(first, day, 1);
         if (second) assign(second, day, 2);
 
-        if (!first || !second) {
-          warnings.push(`${day.dayName} ${displayDate(day.date)}: לא נמצאו שני עובדים זמינים לפי האילוצים.`);
-        }
-
         schedule[day.week].push({ day, first, second });
       }
 
@@ -2073,15 +2111,28 @@
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
 
       for (let week = 0; week < weekCount; week++) {
+        for (const entry of schedule[week] || []) {
+          if (entry.closed || (entry.first && entry.second)) continue;
+          warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: נשארה משבצת חסרה כי אין מספיק עובדים שהגישו וזמינים לאותו יום.`);
+        }
+      }
+
+      for (let week = 0; week < weekCount; week++) {
         for (const worker of workers) {
           const count = worker.weekCounts[week] || 0;
           const min = getWorkerMin(worker);
-          if (count < min) warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, פחות מהמינימום ${min}.`);
+          const available = worker.availableDaysByWeek?.[week] || 0;
+          if (count < min) {
+            const reason = available < min
+              ? `כי הגיש/ה רק ${available} ימים זמינים בשבוע הזה`
+              : "למרות שהגיש/ה מספיק ימים, צריך בדיקה";
+            warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, פחות מהמינימום ${min}, ${reason}.`);
+          }
           if (count > worker.max) warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
         }
       }
 
-      return { schedule, warnings, workers };
+      return { schedule, warnings: [...new Set(warnings)], workers };
     }
 
     function renderSchedule() {
