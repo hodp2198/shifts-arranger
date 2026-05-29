@@ -441,12 +441,43 @@
 
     .shift-day {
       font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
     }
 
     .status-mark {
       font-size: 14px;
       line-height: 1;
       text-align: center;
+    }
+
+    .day-tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 18px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid #d8e2dd;
+      background: #f7faf8;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .day-tag.holiday {
+      border-color: #c9e3d2;
+      background: #eef8f1;
+      color: #23623a;
+    }
+
+    .day-tag.holidayEve,
+    .day-tag.off {
+      border-color: #ead69a;
+      background: #fff7dd;
+      color: #7a5a00;
     }
 
     .shift-assignment {
@@ -796,7 +827,16 @@
       { dayIndex: 6, names: ["דניאל", "אשרקת"], bonus: 500 }
     ];
     const STORAGE_KEY = "shifts-arranger-v2";
-    const state = { special: {}, shuffleSeed: 0 };
+    const state = {
+      special: {},
+      shuffleSeed: 0,
+      calendar: {
+        holidaysByIso: {},
+        loadedYears: new Set(),
+        failedYears: new Set(),
+        warning: ""
+      }
+    };
     let WORKERS = loadWorkerDefinitions();
 
     const workersEl = document.getElementById("workers");
@@ -856,6 +896,85 @@
 
     function displayDate(date) {
       return `${date.getDate()}.${date.getMonth() + 1}`;
+    }
+
+    function calendarStatusLabel(status) {
+      if (status === "holiday") return "חג";
+      if (status === "holidayEve") return "ערב חג";
+      if (status === "off") return "לא משובץ";
+      return "";
+    }
+
+    function markCalendarItem(item) {
+      const iso = item.date;
+      if (!iso) return;
+      const title = `${item.title || ""} ${item.hebrew || ""}`;
+      const category = item.category || "";
+      const isEve = /^Erev\b/i.test(item.title || "") || /ערב/.test(title);
+      const isNationalHoliday = category === "modern" && /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים|Yom HaZikaron|יום הזיכרון/i.test(title);
+      const isHoliday = Boolean(item.yomtov) || isNationalHoliday;
+
+      if (isEve) {
+        state.calendar.holidaysByIso[iso] = { status: "holidayEve", reason: "ערב חג", title: item.hebrew || item.title || "ערב חג" };
+        return;
+      }
+      if (isHoliday) {
+        state.calendar.holidaysByIso[iso] = { status: "holiday", reason: "חג", title: item.hebrew || item.title || "חג" };
+      }
+    }
+
+    async function loadCalendarYear(year) {
+      if (state.calendar.loadedYears.has(year) || state.calendar.failedYears.has(year)) return;
+      const params = new URLSearchParams({
+        cfg: "json",
+        v: "1",
+        year: String(year),
+        i: "on",
+        maj: "on",
+        min: "on",
+        mod: "on",
+        nx: "on",
+        lg: "he"
+      });
+
+      try {
+        const response = await fetch(`https://www.hebcal.com/hebcal?${params.toString()}`);
+        if (!response.ok) throw new Error(`Hebcal ${response.status}`);
+        const data = await response.json();
+        (data.items || []).forEach(markCalendarItem);
+        state.calendar.loadedYears.add(year);
+      } catch (error) {
+        state.calendar.failedYears.add(year);
+      }
+    }
+
+    async function ensureCalendarRulesLoaded() {
+      const years = [...new Set(getWeekConfigs().flatMap(week => (
+        week ? [week.start.getFullYear(), week.end.getFullYear()] : []
+      )))];
+      state.calendar.warning = "";
+      await Promise.all(years.map(loadCalendarYear));
+      if (years.some(year => state.calendar.failedYears.has(year))) {
+        state.calendar.warning = "לא ניתן היה לטעון חגים, הסידור נבנה לפי ימים רגילים בלבד.";
+      }
+      return !state.calendar.warning;
+    }
+
+    function getDayType(date) {
+      const dayIndex = date.getDay();
+      if (dayIndex === 5) {
+        return { status: "off", isWorkday: false, reason: "יום שישי" };
+      }
+
+      const holiday = state.calendar.holidaysByIso[isoDate(date)];
+      if (holiday?.status === "holidayEve") {
+        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: holiday.title };
+      }
+      if (holiday?.status === "holiday") {
+        return { status: "holiday", isWorkday: true, reason: "חג", title: holiday.title };
+      }
+
+      return { status: "workday", isWorkday: true, reason: "יום רגיל" };
     }
 
     function editDateValue(date) {
@@ -989,7 +1108,7 @@
       startDateEl.value = editDateValue(starts[0]);
       weekCountEl.value = String(Math.max(Number(weekCountEl.value) || 1, starts.length));
       renderWeekSettings(starts.map(start => ({ start, end: addDays(start, 6) })));
-      renderSpecialDays();
+      refreshCalendarDays();
       return starts.length;
     }
 
@@ -1000,14 +1119,20 @@
         const start = weekConfigs[week].start;
         for (const dayIndex of SCHEDULE_DAYS) {
           const date = addDays(start, dayIndex);
+          const iso = isoDate(date);
+          const manual = state.special[iso];
+          const dayType = getDayType(date);
+          const closed = manual ? Boolean(manual.closed) : !dayType.isWorkday;
+          const label = manual?.label || (closed ? dayType.reason : "");
           days.push({
             date,
-            iso: isoDate(date),
+            iso,
             dayIndex,
             dayName: DAY_NAMES[dayIndex],
             week,
-            closed: dayIndex === 5 || state.special[isoDate(date)]?.closed || false,
-            label: state.special[isoDate(date)]?.label || ""
+            closed,
+            label,
+            dayType
           });
         }
       }
@@ -1187,20 +1312,27 @@
       const days = getScheduleDays();
       specialDaysEl.innerHTML = days.map(day => {
         const closed = day.closed || false;
-        const label = state.special[day.iso]?.label || "";
+        const label = state.special[day.iso]?.label || calendarStatusLabel(day.dayType.status);
+        const autoTag = !state.special[day.iso] && label ? `<span class="day-tag ${day.dayType.status}">${label}</span>` : "";
         return `
           <div class="day-row" data-date="${day.iso}">
-            <div class="day-label">${day.dayName} ${displayDate(day.date)}</div>
+            <div class="day-label">${day.dayName} ${displayDate(day.date)} ${autoTag}</div>
             <select class="special-type">
-              <option value="" ${!closed ? "selected" : ""}>יום עבודה</option>
-              <option value="אין עבודה" ${closed && label === "אין עבודה" ? "selected" : ""}>אין עבודה</option>
-              <option value="ערב חג" ${closed && label === "ערב חג" ? "selected" : ""}>ערב חג</option>
-              <option value="חג" ${closed && label === "חג" ? "selected" : ""}>חג</option>
+              <option value="" ${!label ? "selected" : ""}>יום עבודה</option>
+              <option value="אין עבודה" ${label === "אין עבודה" || label === "לא משובץ" ? "selected" : ""}>אין עבודה</option>
+              <option value="ערב חג" ${label === "ערב חג" ? "selected" : ""}>ערב חג</option>
+              <option value="חג" ${label === "חג" ? "selected" : ""}>חג</option>
             </select>
             <span class="${closed ? "closed" : ""}">${closed ? "חסום" : "פתוח"}</span>
           </div>
         `;
       }).join("");
+    }
+
+    async function refreshCalendarDays() {
+      renderSpecialDays();
+      await ensureCalendarRulesLoaded();
+      renderSpecialDays();
     }
 
     function normalizeDayName(text) {
@@ -2233,6 +2365,9 @@
         warnings.push("בחר תאריך התחלה ראשוני ובנה שבועות לפני יצירת סידור.");
         return { schedule, warnings, workers };
       }
+      if (state.calendar.warning) {
+        warnings.push(state.calendar.warning);
+      }
 
       for (const day of days) {
         if (!openDaysByWeek[day.week]) openDaysByWeek[day.week] = [];
@@ -2413,7 +2548,8 @@
       return { schedule, warnings: [...new Set(warnings)], workers };
     }
 
-    function renderSchedule() {
+    async function renderSchedule() {
+      await ensureCalendarRulesLoaded();
       const { schedule, warnings, workers } = generateSchedule();
       const weekCount = getWeekConfigs().length;
       const plain = [];
@@ -2443,6 +2579,7 @@
         }
         if (warning.includes("שובץ/ה מעל המקסימום")
           || warning.includes("רק ")
+          || warning.includes("לא ניתן היה לטעון חגים")
           || warning.includes("פחות מהמינימום")
           || warning.includes("מעל המקסימום")) {
           return "warn";
@@ -2463,6 +2600,12 @@
         if (level === "bad") return "🔴";
         if (level === "warn" || level === "info") return "🟡";
         return "🟢";
+      };
+      const dayTag = day => {
+        const label = day.label || calendarStatusLabel(day.dayType.status);
+        if (!label || label === "יום רגיל") return "";
+        const status = day.dayType.status === "workday" && day.closed ? "off" : day.dayType.status;
+        return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;
       };
       const eligibleForSlot = (entry, slot, excludeName = null, underMaxOnly = false) => workers.filter(worker => (
         worker.name !== excludeName
@@ -2534,7 +2677,7 @@
             html += `
               <div class="shift-line info">
                 <span class="status-mark">${statusIcon(status.level)}</span>
-                <span class="shift-day">${dayName}</span>
+                <span class="shift-day">${dayName}${dayTag(entry.day)}</span>
                 <span class="shift-assignment">${reason}</span>
               </div>
             `;
@@ -2548,7 +2691,7 @@
           html += `
             <div class="shift-line ${status.level}">
               <span class="status-mark" title="${status.label}">${statusIcon(status.level)}</span>
-              <span class="shift-day">${dayName}</span>
+              <span class="shift-day">${dayName}${dayTag(entry.day)}</span>
               <span class="shift-assignment">
                 ${first}${explainSlot(entry, entry.first, 1)}
                 <span>ו</span>
@@ -2630,7 +2773,9 @@
         const startDate = parseUiDate(savedStartDate);
         startDateEl.value = startDate ? editDateValue(startDate) : "";
         weekCountEl.value = data.weekCount || weekCountEl.value;
-        Object.assign(state.special, data.special || {});
+        Object.entries(data.special || {}).forEach(([iso, item]) => {
+          state.special[iso] = item?.label === "חג" ? { ...item, closed: false } : item;
+        });
         if (startDate && Array.isArray(data.weeks) && data.weeks.length) {
           renderWeekSettings(data.weeks.map(week => ({
             start: parseUiDate(week.start, startDate.getFullYear()),
@@ -2649,7 +2794,7 @@
       }
     }
 
-    function loadDemo() {
+    async function loadDemo() {
       WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
       renderWorkers();
       startDateEl.value = "19/4";
@@ -2674,16 +2819,16 @@
       }
 
       Object.keys(state.special).forEach(key => delete state.special[key]);
-      renderSpecialDays();
-      renderSchedule();
+      await refreshCalendarDays();
+      await renderSchedule();
     }
 
-    document.getElementById("buildSchedule").addEventListener("click", () => {
+    document.getElementById("buildSchedule").addEventListener("click", async () => {
       state.shuffleSeed = 34;
-      renderSchedule();
+      await renderSchedule();
     });
     document.getElementById("copyResult").addEventListener("click", async () => {
-      if (!plainResultEl.value.trim()) renderSchedule();
+      if (!plainResultEl.value.trim()) await renderSchedule();
       try {
         await navigator.clipboard.writeText(plainResultEl.value);
         statusBadgeEl.textContent = "הועתק";
@@ -2696,13 +2841,13 @@
       if (event.key === "Enter") addWorker();
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
-    document.getElementById("buildWeeks").addEventListener("click", () => {
+    document.getElementById("buildWeeks").addEventListener("click", async () => {
       renderWeekSettings();
-      renderSpecialDays();
+      await refreshCalendarDays();
       saveState();
     });
-    document.getElementById("refreshDays").addEventListener("click", () => {
-      renderSpecialDays();
+    document.getElementById("refreshDays").addEventListener("click", async () => {
+      await refreshCalendarDays();
       saveState();
     });
 
@@ -2713,6 +2858,8 @@
       const value = event.target.value;
       if (!value) {
         delete state.special[iso];
+      } else if (value === "חג") {
+        state.special[iso] = { closed: false, label: value };
       } else {
         state.special[iso] = { closed: true, label: value };
       }
@@ -2726,15 +2873,15 @@
       removeWorker(card.dataset.worker);
     });
 
-    document.addEventListener("input", event => {
+    document.addEventListener("input", async event => {
       if (event.target.closest(".worker") || event.target.closest(".week-row") || event.target === startDateEl || event.target === weekCountEl) {
         if (event.target.classList.contains("constraints") && event.target.value.trim()) {
           event.target.closest(".worker").querySelector(".active-worker").checked = true;
         }
-        if (event.target.closest(".week-row")) renderSpecialDays();
+        if (event.target.closest(".week-row")) await refreshCalendarDays();
         if (event.target === startDateEl || event.target === weekCountEl) {
           renderWeekSettings();
-          renderSpecialDays();
+          await refreshCalendarDays();
         }
         saveState();
       }
@@ -2743,7 +2890,7 @@
     renderWorkers();
     renderWeekSettings();
     loadState();
-    renderSpecialDays();
+    refreshCalendarDays();
   </script>
 </body>
 </html>
