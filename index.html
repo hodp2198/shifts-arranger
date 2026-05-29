@@ -393,29 +393,29 @@
 
     .schedule-output {
       display: grid;
-      gap: 14px;
+      gap: 10px;
     }
 
     .week-result {
-      border: 1px solid #e5ebe8;
-      border-radius: 8px;
+      border: 0;
+      border-radius: 0;
       overflow: visible;
       background: #fff;
     }
 
     .week-title {
-      padding: 10px 12px;
-      background: #f5f9f7;
+      padding: 6px 2px 8px;
+      background: transparent;
       font-weight: 700;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid #edf1ef;
     }
 
     .shift-line {
       display: grid;
-      grid-template-columns: 26px 42px minmax(0, 1fr);
-      gap: 8px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--line);
+      grid-template-columns: 22px 48px minmax(0, 1fr);
+      gap: 6px;
+      padding: 6px 2px;
+      border-bottom: 1px solid #f1f4f2;
       align-items: center;
     }
 
@@ -424,19 +424,19 @@
     }
 
     .shift-line.good {
-      background: #fcfffd;
+      background: transparent;
     }
 
     .shift-line.warn {
-      background: #fffaf0;
+      background: #fffcf5;
     }
 
     .shift-line.bad {
-      background: #fff7f5;
+      background: #fff8f6;
     }
 
     .shift-line.info {
-      background: #f8fafb;
+      background: #fbfcfc;
     }
 
     .shift-day {
@@ -448,7 +448,7 @@
     }
 
     .status-mark {
-      font-size: 14px;
+      font-size: 12px;
       line-height: 1;
       text-align: center;
     }
@@ -457,7 +457,7 @@
       display: inline-flex;
       align-items: center;
       min-height: 18px;
-      padding: 1px 6px;
+      padding: 0 5px;
       border-radius: 999px;
       border: 1px solid #d8e2dd;
       background: #f7faf8;
@@ -483,74 +483,8 @@
     .shift-assignment {
       display: flex;
       align-items: center;
-      gap: 7px;
+      gap: 5px;
       flex-wrap: wrap;
-    }
-
-    .explain {
-      position: relative;
-      display: inline-block;
-    }
-
-    .explain summary {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: #f5f8f7;
-      color: var(--muted);
-      font-weight: 800;
-      cursor: pointer;
-      list-style: none;
-    }
-
-    .explain summary::-webkit-details-marker {
-      display: none;
-    }
-
-    .explain summary:hover {
-      background: var(--soft);
-      color: var(--accent-dark);
-    }
-
-    .explain.interesting summary {
-      background: #fff8dd;
-      border-color: #ead178;
-      color: #7a5a00;
-    }
-
-    .explain.problem summary {
-      background: #fff0ee;
-      border-color: #f0b8b2;
-      color: var(--danger);
-    }
-
-    .explain-panel {
-      position: absolute;
-      z-index: 4;
-      top: 30px;
-      inset-inline-end: 0;
-      width: min(280px, 76vw);
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      box-shadow: 0 14px 34px rgba(20, 42, 35, 0.16);
-      color: var(--text);
-      line-height: 1.55;
-    }
-
-    .explain-panel strong,
-    .explain-panel span {
-      display: block;
-    }
-
-    .explain-panel span {
-      margin-top: 3px;
-      font-size: 13px;
     }
 
     .closed {
@@ -560,22 +494,23 @@
     .worker-chip {
       display: inline-flex;
       align-items: center;
-      min-height: 24px;
-      padding: 2px 9px;
+      min-height: 20px;
+      padding: 1px 7px;
       border-radius: 999px;
       background: var(--worker-bg, var(--soft));
       color: var(--worker-fg, var(--text));
       border: 1px solid var(--worker-border, var(--line));
       font-weight: 700;
-      line-height: 1.25;
+      font-size: 13px;
+      line-height: 1.2;
       white-space: nowrap;
     }
 
     .notice .worker-chip {
-      min-height: 20px;
-      padding: 1px 7px;
+      min-height: 18px;
+      padding: 0 6px;
       margin: 0 2px;
-      font-size: 13px;
+      font-size: 12px;
     }
 
     .badge {
@@ -593,7 +528,7 @@
 
     .notice {
       margin-top: 14px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       border-radius: 8px;
       border: 1px solid #f1d6a8;
       background: #fff8eb;
@@ -613,29 +548,33 @@
       color: var(--text);
     }
 
+    .notice summary {
+      cursor: pointer;
+      list-style-position: inside;
+    }
+
     .warning-list {
       display: grid;
-      gap: 6px;
+      gap: 4px;
       margin-top: 8px;
     }
 
     .warning-item {
-      padding: 7px 9px;
-      border-radius: 7px;
-      border: 1px solid var(--line);
-      background: #fff;
+      padding: 4px 0;
+      border-radius: 0;
+      border: 0;
+      background: transparent;
       line-height: 1.45;
     }
 
     .warning-item.warn {
-      border-color: #ead178;
-      background: #fff8dd;
+      color: #7a5a00;
+      background: transparent;
     }
 
     .warning-item.bad {
-      border-color: #f0b8b2;
-      background: #fff0ee;
       color: var(--danger);
+      background: transparent;
     }
 
     .helper {
@@ -2607,63 +2546,6 @@
         const status = day.dayType.status === "workday" && day.closed ? "off" : day.dayType.status;
         return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;
       };
-      const eligibleForSlot = (entry, slot, excludeName = null, underMaxOnly = false) => workers.filter(worker => (
-        worker.name !== excludeName
-        && worker.submitted?.has(entry.day.iso)
-        && !worker.blocked.has(entry.day.iso)
-        && !(slot === 1 && worker.onlyNight2)
-        && (slot === 1 ? entry.second?.name !== worker.name : entry.first?.name !== worker.name)
-        && (!underMaxOnly || (worker.weekCounts[entry.day.week] || 0) < worker.max)
-      ));
-      const explainSlot = (entry, worker, slot) => {
-        const slotLabel = slot === 1 ? "נייט 1" : "נייט 2";
-        const lines = [];
-        const dayWarning = warnings.find(item => warningMatchesDay(item, entry.day));
-        const dayWarningSeverity = dayWarning ? warningSeverity(dayWarning) : null;
-        let severity = dayWarningSeverity === "bad" ? "problem" : (dayWarning ? "interesting" : "none");
-
-        if (!worker) {
-          const submitted = eligibleForSlot(entry, slot);
-          severity = "problem";
-          lines.push("✗ לא שובץ עובד במשבצת הזאת");
-          lines.push(submitted.length ? `✓ ${submitted.length} עובדים הגישו אבל לא נמצאה התאמה תקינה` : "✗ אף עובד מתאים לא הגיש וזמין");
-          if (dayWarning) lines.push("⚠ קיימת הערת חוסר ליום הזה");
-        } else {
-          const weekCount = worker.weekCounts[entry.day.week] || 0;
-          const min = getWorkerMin(worker);
-          const underMaxAlternatives = eligibleForSlot(entry, slot, worker.name, true);
-          lines.push(worker.submitted?.has(entry.day.iso) ? "✓ הגיש/ה את היום" : "✗ לא נמצאה הגשה ליום");
-          lines.push(worker.blocked.has(entry.day.iso) ? "✗ חסום/ה לפי אילוצים" : "✓ לא חסום/ה ביום הזה");
-          lines.push(slot === 1 && worker.onlyNight2 ? "✗ מוגדר/ת רק נייט 2" : `✓ מתאים/ה ל${slotLabel}`);
-          lines.push(weekCount <= min ? `✓ מסייע למינימום השבועי (${weekCount}/${min})` : `✓ עומד/ת במינימום (${weekCount}/${min})`);
-          if (weekCount > worker.max) {
-            severity = "problem";
-            lines.push(underMaxAlternatives.length ? "⚠ מעל המקסימום למרות שקיימות חלופות" : "⚠ מעל המקסימום בגלל חוסר חלופות");
-          } else {
-            lines.push(`✓ מתחת/בתוך המקסימום (${weekCount}/${worker.max})`);
-          }
-          if (worker.preferred?.has(entry.day.iso)) {
-            if (severity === "none") severity = "interesting";
-            lines.push("✓ היום סומן כהעדפה");
-          }
-          if (slot === 2 && worker.onlyNight2) {
-            if (severity === "none") severity = "interesting";
-            lines.push("✓ שובץ/ה בנייט 2 בהתאם להגבלה");
-          }
-        }
-
-        if (severity === "none") return "";
-
-        return `
-          <details class="explain ${severity}">
-            <summary title="למה?">${severity === "problem" ? "⚠" : "ⓘ"}</summary>
-            <div class="explain-panel">
-              <strong>${entry.day.dayName} ${displayDate(entry.day.date)} · ${slotLabel}</strong>
-              ${lines.map(line => `<span>${line}</span>`).join("")}
-            </div>
-          </details>
-        `;
-      };
       for (let week = 0; week < weekCount; week++) {
         const label = weekResultTitle(week);
         plain.push(weekCopyLabel(week));
@@ -2693,9 +2575,9 @@
               <span class="status-mark" title="${status.label}">${statusIcon(status.level)}</span>
               <span class="shift-day">${dayName}${dayTag(entry.day)}</span>
               <span class="shift-assignment">
-                ${first}${explainSlot(entry, entry.first, 1)}
+                ${first}
                 <span>ו</span>
-                ${second}${explainSlot(entry, entry.second, 2)}
+                ${second}
               </span>
             </div>
           `;
@@ -2708,12 +2590,12 @@
 
       if (warnings.length) {
         warningsEl.innerHTML = `
-          <div class="notice review">
-            <strong>צריך בדיקה:</strong>
+          <details class="notice review">
+            <summary><strong>צריך בדיקה:</strong> ${warnings.length}</summary>
             <div class="warning-list">
               ${warnings.map(item => `<div class="warning-item ${warningSeverity(item)}">• ${formatWarning(item)}</div>`).join("")}
             </div>
-          </div>
+          </details>
         `;
         statusBadgeEl.textContent = "נוצר עם אזהרות";
       } else {
