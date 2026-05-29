@@ -882,7 +882,7 @@
           name,
           aliases: worker.aliases || [],
           min: Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
-          max: Number(worker.max) || 2,
+          max: Number.isFinite(Number(worker.max)) ? Number(worker.max) : 2,
           onlyNight2: Boolean(worker.onlyNight2),
           fixedMin: Boolean(worker.fixedMin)
         };
@@ -1090,7 +1090,7 @@
             </div>
             <div>
               <label>מקסימום בשבוע</label>
-              <input type="number" class="max-shifts" min="1" max="6" value="${worker.max}">
+              <input type="number" class="max-shifts" min="0" max="6" value="${worker.max}">
             </div>
           </div>
           <textarea class="constraints" placeholder=""></textarea>
@@ -1376,7 +1376,7 @@
           oneTimeOnly: oneTimeActive && !hasWorkerInput,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: Number(card.querySelector(".min-shifts").value) || 0,
-          max: Number(card.querySelector(".max-shifts").value) || 1,
+          max: Number.isFinite(Number(card.querySelector(".max-shifts").value)) ? Number(card.querySelector(".max-shifts").value) : 1,
           blocked: parsedConstraints.blocked,
           preferred: parsedConstraints.preferred,
           submitted: parsedConstraints.submitted,
@@ -1453,6 +1453,7 @@
       ));
       const candidates = workers
         .filter(worker => !alreadyChosen.includes(worker.name))
+        .filter(worker => worker.max > 0)
         .filter(worker => !worker.blocked.has(day.iso))
         .filter(worker => worker.submitted?.has(day.iso))
         .filter(worker => !(slot === 1 && worker.onlyNight2))
@@ -1466,6 +1467,7 @@
 
     function canAssign(worker, day, slot, options = {}) {
       if (!worker || worker.blocked.has(day.iso)) return false;
+      if (worker.max <= 0) return false;
       if (!worker.submitted?.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
       if (!options.allowOverMax && (worker.weekCounts[day.week] || 0) >= worker.max) return false;
@@ -1539,6 +1541,7 @@
 
     function canWorkSlot(worker, day, slot, entry) {
       if (!worker || worker.blocked.has(day.iso)) return false;
+      if (worker.max <= 0) return false;
       if (!worker.submitted?.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
       if (slot !== 1 && entry.first?.name === worker.name) return false;
@@ -2649,7 +2652,7 @@
           name: worker.name,
           aliases: worker.aliases || [],
           min: Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
-          max: Number(worker.max) || 2,
+          max: Number.isFinite(Number(worker.max)) ? Number(worker.max) : 2,
           onlyNight2: Boolean(worker.onlyNight2),
           fixedMin: Boolean(worker.fixedMin)
         })),
