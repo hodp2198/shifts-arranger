@@ -396,6 +396,79 @@
       gap: 14px;
     }
 
+    .manager-summary {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 2px;
+    }
+
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+      gap: 8px;
+    }
+
+    .summary-card {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .summary-value {
+      display: block;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .summary-label {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+      gap: 6px;
+    }
+
+    .heat-day {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      min-height: 54px;
+      background: #fff;
+    }
+
+    .heat-day strong,
+    .heat-day span {
+      display: block;
+    }
+
+    .heat-day span {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .heat-ok {
+      background: #edf8f1;
+      border-color: #b8ddc4;
+    }
+
+    .heat-warn {
+      background: #fff7dd;
+      border-color: #ead178;
+    }
+
+    .heat-bad {
+      background: #fff0ee;
+      border-color: #f0b8b2;
+    }
+
     .week-result {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -2212,6 +2285,45 @@
         for (const worker of WORKERS) text = text.replaceAll(worker.name, workerChip(worker.name));
         return text;
       };
+      const warningMatchesDay = (warning, day) => warning.startsWith(`${day.dayName} ${displayDate(day.date)}:`);
+      const buildManagerSummary = () => {
+        const entries = Object.values(schedule).flat().filter(entry => !entry.closed);
+        const totalSlots = entries.length * 2;
+        const filledSlots = entries.reduce((total, entry) => total + (entry.first ? 1 : 0) + (entry.second ? 1 : 0), 0);
+        const missingEntries = entries.filter(entry => !entry.first || !entry.second).length;
+        const overMaxCount = warnings.filter(item => item.includes("שובץ/ה מעל המקסימום") || item.includes("מעל המקסימום")).length;
+        const minIssues = warnings.filter(item => item.includes("פחות מהמינימום")).length;
+        const cards = [
+          [`${filledSlots}/${totalSlots}`, "משבצות מולאו"],
+          [String(missingEntries), "ימים עם חוסר"],
+          [String(overMaxCount), "חריגות מקסימום"],
+          [String(minIssues), "בעיות מינימום"]
+        ].map(([value, label]) => `
+          <div class="summary-card">
+            <span class="summary-value">${value}</span>
+            <span class="summary-label">${label}</span>
+          </div>
+        `).join("");
+
+        const heat = entries.map(entry => {
+          const dayWarnings = warnings.filter(item => warningMatchesDay(item, entry.day));
+          const isBad = !entry.first || !entry.second || dayWarnings.some(item => (
+            item.includes("נשארה משבצת חסרה") || item.includes("אף עובד לא הגיש")
+          ));
+          const isWarn = !isBad && dayWarnings.length > 0;
+          const className = isBad ? "heat-bad" : (isWarn ? "heat-warn" : "heat-ok");
+          const label = isBad ? "חוסר" : (isWarn ? "גבולי" : "תקין");
+          const shortDay = entry.day.dayName === "שבת" ? "ש" : entry.day.dayName;
+          return `<div class="heat-day ${className}"><strong>${shortDay} ${displayDate(entry.day.date)}</strong><span>${label}</span></div>`;
+        }).join("");
+
+        return `
+          <section class="manager-summary">
+            <div class="summary-strip">${cards}</div>
+            <div class="heatmap">${heat}</div>
+          </section>
+        `;
+      };
 
       for (let week = 0; week < weekCount; week++) {
         const label = weekLabel(week);
@@ -2246,7 +2358,7 @@
         statusBadgeEl.textContent = "נוצר בהצלחה";
       }
 
-      outputEl.innerHTML = html;
+      outputEl.innerHTML = buildManagerSummary() + html;
       plainResultEl.value = plain.join("\n").trim();
       saveState();
     }
