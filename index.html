@@ -483,6 +483,109 @@
       border-bottom: 1px solid var(--line);
     }
 
+    .week-days {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .day-card {
+      display: grid;
+      gap: 9px;
+      min-height: 132px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .day-card.good {
+      background: #f7fbf8;
+      border-color: #c8e4d0;
+    }
+
+    .day-card.warn {
+      background: #fffaf0;
+      border-color: #ead69a;
+    }
+
+    .day-card.bad {
+      background: #fff6f4;
+      border-color: #efc4bf;
+    }
+
+    .day-card.info {
+      background: #f7f9fb;
+    }
+
+    .day-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .day-card-title {
+      display: grid;
+      gap: 2px;
+      font-weight: 800;
+    }
+
+    .day-card-date {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .status-pill {
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .status-pill.good {
+      border-color: #b8ddc4;
+      background: #edf8f1;
+      color: #23623a;
+    }
+
+    .status-pill.warn {
+      border-color: #ead178;
+      background: #fff7dd;
+      color: #7a5a00;
+    }
+
+    .status-pill.bad {
+      border-color: #f0b8b2;
+      background: #fff0ee;
+      color: var(--danger);
+    }
+
+    .day-slots {
+      display: grid;
+      gap: 7px;
+    }
+
+    .slot-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      gap: 7px;
+      align-items: center;
+      min-height: 28px;
+    }
+
+    .slot-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
     .shift-line {
       display: grid;
       grid-template-columns: 86px 1fr;
@@ -2489,6 +2592,15 @@
         return "info";
       };
       const warningMatchesDay = (warning, day) => warning.startsWith(`${day.dayName} ${displayDate(day.date)}:`);
+      const dayStatus = entry => {
+        if (entry.closed) return { level: "info", label: entry.day.label || "אין עבודה" };
+        const dayWarnings = warnings.filter(item => warningMatchesDay(item, entry.day));
+        const bad = !entry.first || !entry.second || dayWarnings.some(item => warningSeverity(item) === "bad");
+        if (bad) return { level: "bad", label: "חוסר" };
+        if (dayWarnings.some(item => warningSeverity(item) === "warn")) return { level: "warn", label: "אזהרה" };
+        if (dayWarnings.length) return { level: "info", label: "בדיקה" };
+        return { level: "good", label: "תקין" };
+      };
       const eligibleForSlot = (entry, slot, excludeName = null, underMaxOnly = false) => workers.filter(worker => (
         worker.name !== excludeName
         && worker.submitted?.has(entry.day.iso)
@@ -2566,15 +2678,10 @@
         `).join("");
 
         const heat = entries.map(entry => {
-          const dayWarnings = warnings.filter(item => warningMatchesDay(item, entry.day));
-          const isBad = !entry.first || !entry.second || dayWarnings.some(item => (
-            item.includes("נשארה משבצת חסרה") || item.includes("אף עובד לא הגיש")
-          ));
-          const isWarn = !isBad && dayWarnings.length > 0;
-          const className = isBad ? "heat-bad" : (isWarn ? "heat-warn" : "heat-ok");
-          const label = isBad ? "חוסר" : (isWarn ? "גבולי" : "תקין");
+          const status = dayStatus(entry);
+          const className = status.level === "bad" ? "heat-bad" : (status.level === "warn" ? "heat-warn" : "heat-ok");
           const shortDay = entry.day.dayName === "שבת" ? "ש" : entry.day.dayName;
-          return `<div class="heat-day ${className}"><strong>${shortDay} ${displayDate(entry.day.date)}</strong><span>${label}</span></div>`;
+          return `<div class="heat-day ${className}"><strong>${shortDay} ${displayDate(entry.day.date)}</strong><span>${status.label}</span></div>`;
         }).join("");
 
         return `
@@ -2588,13 +2695,22 @@
       for (let week = 0; week < weekCount; week++) {
         const label = weekLabel(week);
         plain.push(label);
-        html += `<section class="week-result"><div class="week-title">${label}</div>`;
+        html += `<section class="week-result"><div class="week-title">${label}</div><div class="week-days">`;
 
         for (const entry of schedule[week] || []) {
           const dayName = entry.day.dayName === "שבת" ? "ש" : entry.day.dayName;
+          const status = dayStatus(entry);
           if (entry.closed) {
             const reason = entry.day.label || "אין עבודה";
-            html += `<div class="shift-line"><div class="shift-day">${dayName}</div><div class="closed">${reason}</div></div>`;
+            html += `
+              <div class="day-card info">
+                <div class="day-card-head">
+                  <div class="day-card-title"><span>${dayName}</span><span class="day-card-date">${displayDate(entry.day.date)}</span></div>
+                  <span class="status-pill info">${reason}</span>
+                </div>
+                <div class="closed">${reason}</div>
+              </div>
+            `;
             plain.push(`${dayName} - ${reason}`);
             continue;
           }
@@ -2603,18 +2719,29 @@
           const first = displayWorker(entry.first);
           const second = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorker(entry.second) : "-";
           html += `
-            <div class="shift-line">
-              <div class="shift-day">${dayName}</div>
-              <div class="shift-assignment">
-                <span>${first}</span>${explainSlot(entry, entry.first, 1)}
-                <span>ו${second}</span>${explainSlot(entry, entry.second, 2)}
+            <div class="day-card ${status.level}">
+              <div class="day-card-head">
+                <div class="day-card-title"><span>${dayName}</span><span class="day-card-date">${displayDate(entry.day.date)}</span></div>
+                <span class="status-pill ${status.level}">${status.label}</span>
+              </div>
+              <div class="day-slots">
+                <div class="slot-row">
+                  <span class="slot-label">N1</span>
+                  <span>${first}</span>
+                  ${explainSlot(entry, entry.first, 1)}
+                </div>
+                <div class="slot-row">
+                  <span class="slot-label">N2</span>
+                  <span>${second}</span>
+                  ${explainSlot(entry, entry.second, 2)}
+                </div>
               </div>
             </div>
           `;
           plain.push(`${dayName} - ${firstName} ו${secondName}`);
         }
 
-        html += `</section>`;
+        html += `</div></section>`;
         plain.push("");
       }
 
