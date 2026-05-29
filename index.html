@@ -472,7 +472,7 @@
     .week-result {
       border: 1px solid var(--line);
       border-radius: 8px;
-      overflow: hidden;
+      overflow: visible;
       background: #fff;
     }
 
@@ -498,6 +498,67 @@
 
     .shift-day {
       font-weight: 700;
+    }
+
+    .shift-assignment {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .explain {
+      position: relative;
+      display: inline-block;
+    }
+
+    .explain summary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f5f8f7;
+      color: var(--muted);
+      font-weight: 800;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .explain summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .explain summary:hover {
+      background: var(--soft);
+      color: var(--accent-dark);
+    }
+
+    .explain-panel {
+      position: absolute;
+      z-index: 4;
+      top: 30px;
+      inset-inline-end: 0;
+      width: min(280px, 76vw);
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 14px 34px rgba(20, 42, 35, 0.16);
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    .explain-panel strong,
+    .explain-panel span {
+      display: block;
+    }
+
+    .explain-panel span {
+      margin-top: 3px;
+      font-size: 13px;
     }
 
     .closed {
@@ -2297,7 +2358,7 @@
     }
 
     function renderSchedule() {
-      const { schedule, warnings } = generateSchedule();
+      const { schedule, warnings, workers } = generateSchedule();
       const weekCount = getWeekConfigs().length;
       const plain = [];
       let html = "";
@@ -2333,6 +2394,50 @@
         return "info";
       };
       const warningMatchesDay = (warning, day) => warning.startsWith(`${day.dayName} ${displayDate(day.date)}:`);
+      const eligibleForSlot = (entry, slot, excludeName = null, underMaxOnly = false) => workers.filter(worker => (
+        worker.name !== excludeName
+        && worker.submitted?.has(entry.day.iso)
+        && !worker.blocked.has(entry.day.iso)
+        && !(slot === 1 && worker.onlyNight2)
+        && (slot === 1 ? entry.second?.name !== worker.name : entry.first?.name !== worker.name)
+        && (!underMaxOnly || (worker.weekCounts[entry.day.week] || 0) < worker.max)
+      ));
+      const explainSlot = (entry, worker, slot) => {
+        const slotLabel = slot === 1 ? "נייט 1" : "נייט 2";
+        const lines = [];
+        const dayWarning = warnings.find(item => warningMatchesDay(item, entry.day));
+
+        if (!worker) {
+          const submitted = eligibleForSlot(entry, slot);
+          lines.push("✗ לא שובץ עובד במשבצת הזאת");
+          lines.push(submitted.length ? `✓ ${submitted.length} עובדים הגישו אבל לא נמצאה התאמה תקינה` : "✗ אף עובד מתאים לא הגיש וזמין");
+          if (dayWarning) lines.push("⚠ קיימת הערת חוסר ליום הזה");
+        } else {
+          const weekCount = worker.weekCounts[entry.day.week] || 0;
+          const min = getWorkerMin(worker);
+          const underMaxAlternatives = eligibleForSlot(entry, slot, worker.name, true);
+          lines.push(worker.submitted?.has(entry.day.iso) ? "✓ הגיש/ה את היום" : "✗ לא נמצאה הגשה ליום");
+          lines.push(worker.blocked.has(entry.day.iso) ? "✗ חסום/ה לפי אילוצים" : "✓ לא חסום/ה ביום הזה");
+          lines.push(slot === 1 && worker.onlyNight2 ? "✗ מוגדר/ת רק נייט 2" : `✓ מתאים/ה ל${slotLabel}`);
+          lines.push(weekCount <= min ? `✓ מסייע למינימום השבועי (${weekCount}/${min})` : `✓ עומד/ת במינימום (${weekCount}/${min})`);
+          if (weekCount > worker.max) {
+            lines.push(underMaxAlternatives.length ? "⚠ מעל המקסימום למרות שקיימות חלופות" : "⚠ מעל המקסימום בגלל חוסר חלופות");
+          } else {
+            lines.push(`✓ מתחת/בתוך המקסימום (${weekCount}/${worker.max})`);
+          }
+          if (worker.preferred?.has(entry.day.iso)) lines.push("✓ היום סומן כהעדפה");
+        }
+
+        return `
+          <details class="explain">
+            <summary title="למה?">ⓘ</summary>
+            <div class="explain-panel">
+              <strong>${entry.day.dayName} ${displayDate(entry.day.date)} · ${slotLabel}</strong>
+              ${lines.map(line => `<span>${line}</span>`).join("")}
+            </div>
+          </details>
+        `;
+      };
       const buildManagerSummary = () => {
         const entries = Object.values(schedule).flat().filter(entry => !entry.closed);
         const totalSlots = entries.length * 2;
@@ -2389,7 +2494,15 @@
           const secondName = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorkerName(entry.second) : "-";
           const first = displayWorker(entry.first);
           const second = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorker(entry.second) : "-";
-          html += `<div class="shift-line"><div class="shift-day">${dayName}</div><div>${first} ו${second}</div></div>`;
+          html += `
+            <div class="shift-line">
+              <div class="shift-day">${dayName}</div>
+              <div class="shift-assignment">
+                <span>${first}</span>${explainSlot(entry, entry.first, 1)}
+                <span>ו${second}</span>${explainSlot(entry, entry.second, 2)}
+              </div>
+            </div>
+          `;
           plain.push(`${dayName} - ${firstName} ו${secondName}`);
         }
 
