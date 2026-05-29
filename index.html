@@ -1749,16 +1749,12 @@
         return names;
       };
 
-      const addRule = (text, defaultWorkerName) => {
+      const addRule = text => {
         const clean = String(text || "").trim();
         if (!clean) return;
         if (isUnavailableText(clean)) return;
 
-        const workersInRule = defaultWorkerName
-          ? workers.find(item => item.name === defaultWorkerName)
-            ? [workers.find(item => item.name === defaultWorkerName)]
-            : []
-          : workerNamesInText(clean);
+        const workersInRule = workerNamesInText(clean);
         if (!workersInRule.length) return;
 
         const iso = isoFromRuleText(clean, days);
@@ -1784,10 +1780,6 @@
       };
 
       oneTimeRulesEl.value.split(/\r?\n/).forEach(line => addRule(line));
-      document.querySelectorAll(".worker").forEach(card => {
-        const workerName = card.dataset.worker;
-        card.querySelector(".constraints").value.split(/\r?\n/).forEach(line => addRule(line, workerName));
-      });
 
       return rules;
     }
