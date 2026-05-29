@@ -18,7 +18,7 @@
       --warn: #b45309;
       --danger: #b42318;
       --soft: #e8f3ef;
-      --shadow: 0 16px 45px rgba(24, 43, 37, 0.09);
+      --shadow: 0 10px 28px rgba(24, 43, 37, 0.06);
       font-family: Arial, "Noto Sans Hebrew", "Segoe UI", sans-serif;
     }
 
@@ -29,9 +29,7 @@
     body {
       margin: 0;
       color: var(--text);
-      background:
-        linear-gradient(180deg, #eef4f1 0, rgba(246, 247, 249, 0) 360px),
-        var(--bg);
+      background: var(--bg);
       min-height: 100vh;
     }
 
@@ -47,7 +45,7 @@
     .shell {
       width: min(1180px, calc(100% - 28px));
       margin: 0 auto;
-      padding: 28px 0 48px;
+      padding: 22px 0 44px;
     }
 
     .topbar {
@@ -55,21 +53,21 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 18px;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
     }
 
     h1 {
       margin: 0 0 8px;
-      font-size: clamp(28px, 5vw, 44px);
-      line-height: 1.05;
+      font-size: clamp(26px, 4vw, 38px);
+      line-height: 1.12;
       letter-spacing: 0;
     }
 
     .intro {
       margin: 0;
       color: var(--muted);
-      font-size: 16px;
-      line-height: 1.6;
+      font-size: 15px;
+      line-height: 1.55;
       max-width: 760px;
     }
 
@@ -81,7 +79,7 @@
     }
 
     .result-actions {
-      margin-bottom: 16px;
+      margin: 4px 0 14px;
     }
 
     .btn {
@@ -122,23 +120,23 @@
 
     .grid {
       display: grid;
-      grid-template-columns: 1.1fr .9fr;
-      gap: 18px;
+      grid-template-columns: minmax(0, .98fr) minmax(420px, 1.02fr);
+      gap: 16px;
       align-items: stretch;
     }
 
     .panel {
       background: var(--panel);
-      border: 1px solid var(--line);
+      border: 1px solid #e3e9e6;
       border-radius: 8px;
       box-shadow: var(--shadow);
       align-self: start;
     }
 
     .panel-header {
-      min-height: 68px;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--line);
+      min-height: 58px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #edf1ef;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -147,11 +145,11 @@
 
     .panel-header h2 {
       margin: 0;
-      font-size: 20px;
+      font-size: 18px;
     }
 
     .panel-body {
-      padding: 18px;
+      padding: 16px;
     }
 
     .field-row {
@@ -193,8 +191,8 @@
 
     .workers {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
-      gap: 12px;
+      grid-template-columns: 1fr;
+      gap: 8px;
     }
 
     .employee-tools {
@@ -215,9 +213,9 @@
     .whatsapp-intake {
       display: grid;
       gap: 10px;
-      padding: 12px;
+      padding: 10px;
       margin-bottom: 14px;
-      border: 1px solid var(--line);
+      border: 1px solid #e3e9e6;
       border-radius: 8px;
       background: #fbfcfb;
     }
@@ -255,9 +253,6 @@
     }
 
     .icon-btn.remove {
-      position: absolute;
-      top: 9px;
-      right: 9px;
       width: 28px;
       height: 28px;
       min-height: 28px;
@@ -266,7 +261,6 @@
       color: var(--danger);
       font-size: 20px;
       font-weight: 700;
-      z-index: 1;
     }
 
     .icon-btn:hover {
@@ -274,7 +268,7 @@
     }
 
     .worker {
-      border: 1px solid var(--line);
+      border: 1px solid #e3e9e6;
       border-radius: 8px;
       overflow: hidden;
       background: #fff;
@@ -283,40 +277,68 @@
 
     .worker-head {
       display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 10px;
+      grid-template-columns: auto minmax(76px, 1fr) auto auto auto;
+      gap: 8px;
       align-items: center;
-      padding: 12px 48px 12px 12px;
-      background: #fbfcfb;
-      border-bottom: 1px solid var(--line);
+      min-height: 44px;
+      padding: 8px 10px;
+      background: #fff;
     }
 
     .worker-name {
       font-weight: 700;
-      font-size: 16px;
+      font-size: 15px;
+    }
+
+    .worker-meta {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
     }
 
     .toggle-line {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
       white-space: nowrap;
+    }
+
+    .worker-body {
+      display: grid;
+      gap: 10px;
+      padding: 0 10px 10px;
+      background: #fbfcfb;
+    }
+
+    .worker-details {
+      border-top: 1px solid #edf1ef;
+      background: #fbfcfb;
+    }
+
+    .worker-details summary {
+      min-height: 34px;
+      padding: 8px 10px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      list-style-position: inside;
     }
 
     .worker-options {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
-      padding: 12px 12px 0;
+      padding-top: 10px;
     }
 
     .worker textarea {
-      border: 0;
-      border-top: 1px solid var(--line);
-      border-radius: 0;
-      min-height: 126px;
+      min-height: 112px;
+      border-color: #e3e9e6;
+      border-radius: 7px;
+      background: #fff;
     }
 
     .days {
@@ -597,7 +619,29 @@
     }
 
     .copy-area {
-      display: none;
+      display: block;
+      width: 100%;
+      min-height: 220px;
+      margin-top: 8px;
+      border: 1px solid #e3e9e6;
+      border-radius: 8px;
+      background: #fbfcfb;
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.7;
+      resize: vertical;
+      white-space: pre-wrap;
+    }
+
+    .preview-title {
+      margin: 16px 0 4px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .preview-actions {
+      margin-top: 10px;
     }
 
     @media (max-width: 920px) {
@@ -628,8 +672,21 @@
         grid-template-columns: 1fr;
       }
 
+      .worker-head {
+        grid-template-columns: auto 1fr auto;
+      }
+
+      .worker-meta,
+      .worker-head .toggle-line {
+        grid-column: 2 / -1;
+      }
+
       .icon-btn {
         width: 100%;
+      }
+
+      .worker-head .icon-btn {
+        width: 28px;
       }
 
       .employee-tools .icon-btn {
@@ -651,7 +708,7 @@
     <section class="topbar">
       <div>
         <h1>סידור משמרות</h1>
-        <p class="intro">מגדירים תאריכים לכל שבוע, מדביקים אילוצים בעמודה של כל עובד, מסמנים ימים ללא עבודה או חג, ומפיקים סידור עם נייט 1 ונייט 2.</p>
+        <p class="intro">ייבוא אילוצים, יצירת סידור, בדיקת בעיות והעתקת הודעת WhatsApp נקייה לעובדים.</p>
       </div>
     </section>
 
@@ -659,7 +716,7 @@
       <div class="panel">
         <div class="panel-header">
           <h2>אילוצים</h2>
-          <span class="badge">מי שאין לו אילוצים לא נכנס לסידור</span>
+          <span class="badge">עובדים ואילוצים</span>
         </div>
         <div class="panel-body">
           <div class="whatsapp-intake">
@@ -682,7 +739,7 @@
       <aside class="panel result">
         <div class="panel-header">
           <h2>תוצאה</h2>
-          <span class="badge" id="statusBadge">ממתין להרצה</span>
+          <span class="badge" id="statusBadge">ממתין</span>
         </div>
         <div class="panel-body">
           <div class="field-row">
@@ -719,13 +776,16 @@
               </div>
             </div>
           </details>
-        <div id="scheduleOutput" class="schedule-output"></div>
-        <div class="actions result-actions">
-          <button class="btn" id="buildSchedule" type="button">צור סידור</button>
-          <button class="btn secondary" id="copyResult" type="button">העתק תוצאה</button>
-        </div>
-        <div id="scheduleWarnings"></div>
-        <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע גרסת טקסט להעתקה"></textarea>
+          <div class="actions result-actions">
+            <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+          </div>
+          <div id="scheduleOutput" class="schedule-output"></div>
+          <div id="scheduleWarnings"></div>
+          <div class="preview-title">הודעת WhatsApp לשליחה</div>
+          <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע ההודעה הנקייה להעתקה"></textarea>
+          <div class="actions preview-actions">
+            <button class="btn secondary" id="copyResult" type="button">העתק הודעה</button>
+          </div>
       </div>
       </aside>
     </section>
@@ -1091,9 +1151,11 @@
     }
 
     function weekCopyLabel(weekIndex) {
-      const week = getWeekConfigs()[weekIndex];
-      if (!week) return `שבוע ${weekIndex + 1}`;
-      return `${displayDate(week.start)} -${displayDate(week.end)}`;
+      return weekResultTitle(weekIndex);
+    }
+
+    function scheduleDayLabel(dayName) {
+      return dayName === "שבת" ? "שבת" : `${dayName}'`;
     }
 
     function renderWorkers() {
@@ -1102,23 +1164,29 @@
           <div class="worker-head">
             <input type="checkbox" class="active-worker" aria-label="הכנס את ${worker.name} לסידור">
             <div class="worker-name">${worker.name}</div>
-            <button class="icon-btn remove remove-worker" type="button" title="הסר עובד" aria-label="הסר את ${worker.name}">-</button>
+            <span class="worker-meta">${worker.min}/${worker.max}</span>
             <label class="toggle-line">
               <input type="checkbox" class="night2-only" ${worker.onlyNight2 ? "checked" : ""}>
               רק נייט 2
             </label>
+            <button class="icon-btn remove remove-worker" type="button" title="הסר עובד" aria-label="הסר את ${worker.name}">-</button>
           </div>
-          <div class="worker-options">
-            <div>
-              <label>מינימום בשבוע</label>
-              <input type="number" class="min-shifts" min="0" max="6" value="${worker.min}">
+          <details class="worker-details">
+            <summary>אילוצים והגדרות</summary>
+            <div class="worker-body">
+              <div class="worker-options">
+                <div>
+                  <label>מינימום בשבוע</label>
+                  <input type="number" class="min-shifts" min="0" max="6" value="${worker.min}">
+                </div>
+                <div>
+                  <label>מקסימום בשבוע</label>
+                  <input type="number" class="max-shifts" min="0" max="6" value="${worker.max}">
+                </div>
+              </div>
+              <textarea class="constraints" placeholder="אילוצים לעובד הזה"></textarea>
             </div>
-            <div>
-              <label>מקסימום בשבוע</label>
-              <input type="number" class="max-shifts" min="0" max="6" value="${worker.max}">
-            </div>
-          </div>
-          <textarea class="constraints" placeholder=""></textarea>
+          </details>
       </article>
       `).join("");
     }
@@ -2552,7 +2620,7 @@
         html += `<section class="week-result"><div class="week-title">${label}</div>`;
 
         for (const entry of schedule[week] || []) {
-          const dayName = entry.day.dayName === "שבת" ? "ש" : entry.day.dayName;
+          const dayName = scheduleDayLabel(entry.day.dayName);
           const status = dayStatus(entry);
           if (entry.closed) {
             const reason = entry.day.label || "אין עבודה";
@@ -2591,7 +2659,7 @@
       if (warnings.length) {
         warningsEl.innerHTML = `
           <details class="notice review">
-            <summary><strong>צריך בדיקה:</strong> ${warnings.length}</summary>
+            <summary><strong>⚠ צריך בדיקה</strong> (${warnings.length})</summary>
             <div class="warning-list">
               ${warnings.map(item => `<div class="warning-item ${warningSeverity(item)}">• ${formatWarning(item)}</div>`).join("")}
             </div>
