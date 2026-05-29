@@ -554,6 +554,37 @@
       color: var(--danger);
     }
 
+    .notice.review {
+      border-color: #ead178;
+      background: #fffaf0;
+      color: var(--text);
+    }
+
+    .warning-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .warning-item {
+      padding: 7px 9px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #fff;
+      line-height: 1.45;
+    }
+
+    .warning-item.warn {
+      border-color: #ead178;
+      background: #fff8dd;
+    }
+
+    .warning-item.bad {
+      border-color: #f0b8b2;
+      background: #fff0ee;
+      color: var(--danger);
+    }
+
     .helper {
       color: var(--muted);
       font-size: 13px;
@@ -2285,6 +2316,22 @@
         for (const worker of WORKERS) text = text.replaceAll(worker.name, workerChip(worker.name));
         return text;
       };
+      const warningSeverity = warning => {
+        if (warning.includes("נשארה משבצת חסרה")
+          || warning.includes("אף עובד לא הגיש")
+          || warning.includes("לא שובץ")
+          || warning.includes("לא נמצא")
+          || warning.includes("לא נמצאו")) {
+          return "bad";
+        }
+        if (warning.includes("שובץ/ה מעל המקסימום")
+          || warning.includes("רק ")
+          || warning.includes("פחות מהמינימום")
+          || warning.includes("מעל המקסימום")) {
+          return "warn";
+        }
+        return "info";
+      };
       const warningMatchesDay = (warning, day) => warning.startsWith(`${day.dayName} ${displayDate(day.date)}:`);
       const buildManagerSummary = () => {
         const entries = Object.values(schedule).flat().filter(entry => !entry.closed);
@@ -2351,7 +2398,14 @@
       }
 
       if (warnings.length) {
-        warningsEl.innerHTML = `<div class="notice danger"><strong>צריך בדיקה:</strong><br>${warnings.map(item => `• ${formatWarning(item)}`).join("<br>")}</div>`;
+        warningsEl.innerHTML = `
+          <div class="notice review">
+            <strong>צריך בדיקה:</strong>
+            <div class="warning-list">
+              ${warnings.map(item => `<div class="warning-item ${warningSeverity(item)}">• ${formatWarning(item)}</div>`).join("")}
+            </div>
+          </div>
+        `;
         statusBadgeEl.textContent = "נוצר עם אזהרות";
       } else {
         warningsEl.innerHTML = `<div class="notice"><strong>הסידור נוצר בהצלחה.</strong> כללי המינימום/מקסימום והאילוצים מולאו.</div>`;
