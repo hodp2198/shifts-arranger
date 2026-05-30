@@ -32,6 +32,7 @@
             <textarea id="bulkExcelNotes" placeholder="מדביקים כאן טווח שהועתק מאקסל"></textarea>
             <div class="intake-status" id="bulkExcelStatus"></div>
             <div class="mini-actions excel-actions">
+              <button class="btn secondary" id="quickReset" type="button">ניקוי מהיר</button>
               <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
             </div>
           </div>
@@ -584,6 +585,25 @@
       return worker;
     }
 
+    function getWorkerDefinitionForImport(name, existingWorkers = WORKERS) {
+      const cleanName = String(name || "").trim();
+      const normalized = normalizeWorkerName(cleanName);
+      const candidates = [...existingWorkers, ...DEFAULT_WORKERS];
+      const match = candidates.find(worker => (
+        normalizeWorkerName(worker.name) === normalized
+        || (worker.aliases || []).some(alias => normalizeWorkerName(alias) === normalized)
+      ));
+
+      if (match) {
+        return {
+          ...match,
+          aliases: match.aliases || []
+        };
+      }
+
+      return { name: cleanName, aliases: [], min: 1, max: 2 };
+    }
+
     function getCurrentWorkerState() {
       const data = {};
       document.querySelectorAll(".worker").forEach(card => {
@@ -645,11 +665,42 @@
       let imported = 0;
       const issues = [];
       const importedWeeks = applyWeekDatesFromRows(rows);
+      const existingWorkers = WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
+      const existingState = getCurrentWorkerState();
+      const importedDefinitions = [];
+      const importedNames = new Set();
+
+      headers.forEach(header => {
+        const name = String(header || "").trim();
+        if (!name) return;
+        const worker = getWorkerDefinitionForImport(name, existingWorkers);
+        if (importedNames.has(worker.name)) return;
+        importedNames.add(worker.name);
+        importedDefinitions.push(worker);
+      });
+
+      const removedWorkers = existingWorkers
+        .filter(worker => !importedNames.has(worker.name))
+        .filter(worker => existingState[worker.name]?.active || existingState[worker.name]?.constraints || existingState[worker.name]?.quickAvailability)
+        .map(worker => worker.name);
+
+      WORKERS = importedDefinitions;
+      renderWorkers();
+      const importState = {};
+      importedDefinitions.forEach(worker => {
+        importState[worker.name] = {
+          ...(existingState[worker.name] || {}),
+          active: false,
+          constraints: "",
+          quickAvailability: ""
+        };
+      });
+      applyWorkerState(importState);
 
       headers.forEach((header, columnIndex) => {
         const name = String(header || "").trim();
         if (!name) return;
-        const worker = ensureWorker(name);
+        const worker = getWorkerDefinitionForImport(name, importedDefinitions);
         if (!worker) return;
 
         const text = rows
@@ -668,6 +719,9 @@
       });
 
       if (!imported) issues.push("לא זוהו עמודות עובדים.");
+      if (removedWorkers.length) {
+        issues.push(`עובדים שלא הופיעו בייבוא החדש נוקו: ${removedWorkers.join(", ")}.`);
+      }
       renderImportSummary({ imported, importedWeeks, issues });
       saveState();
     }
@@ -687,6 +741,36 @@
 
       const rows = tableLines.map(line => line.split("\t"));
       importRowsMatrix(rows, bulkExcelStatusEl);
+    }
+
+    async function quickResetState() {
+      const approved = window.confirm("פעולה זו תנקה נתונים שמורים ותתחיל סידור חדש");
+      if (!approved) return;
+
+      localStorage.removeItem(STORAGE_KEY);
+      Object.keys(state.special).forEach(key => delete state.special[key]);
+      setDetectedWeeks([]);
+      state.currentSchedule = null;
+      state.currentWorkers = [];
+      state.currentWarnings = [];
+      state.shuffleSeed = 0;
+      state.calendar.warning = "";
+
+      WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
+      renderWorkers();
+      startDateEl.value = "";
+      weekCountEl.value = "2";
+      bulkExcelNotesEl.value = "";
+      bulkExcelStatusEl.textContent = "";
+      oneTimeRulesEl.value = "";
+      plainResultEl.value = "";
+      outputEl.innerHTML = "";
+      warningsEl.innerHTML = "";
+      manualOffDateEl.value = "";
+      renderWeekSettings();
+      await refreshCalendarDays();
+      statusBadgeEl.textContent = "נוקה";
+      if (autosaveStatusEl) autosaveStatusEl.textContent = "התחלה נקייה";
     }
 
     function removeWorker(name) {
@@ -2552,6 +2636,11 @@
 
       bulkExcelNotesEl.value = `${demoRows.map(row => row.join("\t")).join("\n")}\nהערות\n${oneTimeRulesEl.value}`;
       importRowsMatrix(demoRows, bulkExcelStatusEl);
+      console.info("[demo]", {
+        "weeks detected": getDetectedWeekConfigs().length,
+        "weeks generated": getWeekConfigs().length,
+        source: getDetectedWeekConfigs().length ? "detectedWeeks" : "manualFallback"
+      });
 
       ["הדס", "יהלי"].forEach(name => {
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
@@ -2582,6 +2671,7 @@
       if (event.key === "Enter") addWorker();
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
+    document.getElementById("quickReset").addEventListener("click", quickResetState);
     document.getElementById("loadDemoData").addEventListener("click", loadDemo);
     document.getElementById("buildWeeks").addEventListener("click", async () => {
       setDetectedWeeks([]);
