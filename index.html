@@ -671,6 +671,13 @@
       line-height: 1.45;
     }
 
+    .warning-lines {
+      display: grid;
+      gap: 2px;
+      margin-inline-start: 18px;
+      margin-top: 2px;
+    }
+
     .warning-item.warn {
       color: #7a5a00;
       background: transparent;
@@ -2758,6 +2765,52 @@
         for (const worker of WORKERS) text = text.replaceAll(worker.name, workerChip(worker.name));
         return text;
       };
+      const compactWarningText = warning => {
+        let text = warning.replace(/^[^:]+:\s*/, "").trim();
+        text = text
+          .replace("הגיש/ה", "הגיש")
+          .replace("שובץ/ה", "שובץ")
+          .replace("קיבל/ה", "קיבל")
+          .replace("נשארה משבצת חסרה כי אין מספיק עובדים שהגישו וזמינים לאותו יום.", "נשארה משבצת חסרה.")
+          .replace("אף עובד לא הגיש את היום הזה.", "אף עובד לא הגיש את היום.")
+          .replace("את היום הזה.", "את היום.")
+          .replace(/(.+?) שובץ מעל המקסימום \d+ כי לא היה עובד אחר שהגיש וזמין מתחת למקסימום\./, "$1 שובץ מעל המקסימום בגלל חוסר אמיתי.")
+          .replace(/(.+?) קיבל (\d+) משמרות, מעל המקסימום (\d+)\./, "$1 קיבל $2 משמרות, מעל המקסימום $3.")
+          .replace(/כי הגיש רק (\d+) ימים זמינים בשבוע הזה/, "כי הגיש רק $1 ימים זמינים");
+        return text;
+      };
+      const buildWarningGroups = () => {
+        const groups = [];
+        const dayGroups = new Map();
+        const allEntries = Object.values(schedule).flat();
+
+        for (const warning of warnings) {
+          const entry = allEntries.find(item => warningMatchesDay(warning, item.day));
+          const severity = warningSeverity(warning);
+          const text = compactWarningText(warning);
+
+          if (!entry) {
+            groups.push({ key: warning, title: "", lines: [text], severity });
+            continue;
+          }
+
+          const key = entry.day.iso;
+          if (!dayGroups.has(key)) {
+            dayGroups.set(key, {
+              key,
+              title: `${entry.day.dayName} ${displayDate(entry.day.date)}`,
+              lines: [],
+              severity: "info"
+            });
+          }
+          const group = dayGroups.get(key);
+          if (!group.lines.includes(text)) group.lines.push(text);
+          if (severity === "bad") group.severity = "bad";
+          else if (severity === "warn" && group.severity !== "bad") group.severity = "warn";
+        }
+
+        return [...dayGroups.values(), ...groups];
+      };
       const warningSeverity = warning => {
         if (warning.includes("נשארה משבצת חסרה")
           || warning.includes("אף עובד לא הגיש")
@@ -2777,6 +2830,18 @@
         return "info";
       };
       const warningMatchesDay = (warning, day) => warning.startsWith(`${day.dayName} ${displayDate(day.date)}:`);
+      const renderWarningGroup = group => {
+        const lines = group.lines.map(line => `<div>${formatWarning(line)}</div>`).join("");
+        if (!group.title) {
+          return `<div class="warning-item ${group.severity}">• ${lines}</div>`;
+        }
+        return `
+          <div class="warning-item ${group.severity}">
+            <div>• <strong>${group.title}:</strong></div>
+            <div class="warning-lines">${lines}</div>
+          </div>
+        `;
+      };
       const dayStatus = entry => {
         if (entry.closed) return { level: "info", label: entry.day.label || "אין עבודה" };
         const dayWarnings = warnings.filter(item => warningMatchesDay(item, entry.day));
@@ -2859,11 +2924,12 @@
       }
 
       if (warnings.length) {
+        const warningGroups = buildWarningGroups();
         warningsEl.innerHTML = `
           <details class="notice review">
-            <summary><strong>⚠ צריך בדיקה</strong> (${warnings.length})</summary>
+            <summary><strong>⚠ נקודות לבדיקה</strong> (${warningGroups.length})</summary>
             <div class="warning-list">
-              ${warnings.map(item => `<div class="warning-item ${warningSeverity(item)}">• ${formatWarning(item)}</div>`).join("")}
+              ${warningGroups.map(renderWarningGroup).join("")}
             </div>
           </details>
         `;
