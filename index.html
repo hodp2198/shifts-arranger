@@ -2385,17 +2385,24 @@
             entry.first = first;
             entry.second = second;
             rebuildWorkerStats(schedule, workers);
-            const issues = validateSchedule(schedule, workers, "alternative preview", { silent: true });
-            const createsNewLimitIssue = workers.some(worker => {
+            const impact = [];
+            let severity = "good";
+            workers.forEach(worker => {
               const before = baseline.get(worker.name) || { count: 0, min: getWorkerMin(worker), max: worker.max };
               const after = worker.weekCounts[entry.day.week] || 0;
-              return (after < before.min && after < before.count)
-                || (after > before.max && after > before.count);
+              if (after > before.max && after > before.count) {
+                severity = "warn";
+                impact.push(`⚠ ${worker.name} יחרוג מהמקסימום`);
+              }
+              if (after < before.min && after < before.count) {
+                severity = "warn";
+                impact.push(`⚠ ${worker.name} ירד מתחת למינימום`);
+              }
             });
-
-            if (!issues.length && !createsNewLimitIssue) {
-              options.push({ first: first.name, second: second.name });
-            }
+            if (!impact.length) impact.push("✓ תקין");
+            impact.push("✓ נייט 1/2 תקין");
+            impact.push("✓ WhatsApp Preview יתעדכן");
+            options.push({ first: first.name, second: second.name, severity, impact });
           }
         }
 
@@ -2403,7 +2410,10 @@
         entry.second = originalSecond;
         rebuildWorkerStats(schedule, workers);
 
-        return options.slice(0, 5);
+        return options
+          .sort((a, b) => (a.severity === "good" ? 0 : 1) - (b.severity === "good" ? 0 : 1)
+            || a.first.localeCompare(b.first, "he")
+            || a.second.localeCompare(b.second, "he"));
       };
       const renderAlternativePanel = (entry, firstName, secondName) => {
         const options = getAlternativePairs(entry);
@@ -2419,16 +2429,16 @@
               </div>
               <div class="alternative-subtitle">חלופות</div>
               ${options.map(option => `
-                <div class="alternative-option">
-                  <div>○ ${workerChip(option.first)} <span>|</span> ${workerChip(option.second)}</div>
+                <div class="alternative-option ${option.severity}">
+                  <div>○ ${workerChip(option.first)} <span>|</span> ${workerChip(option.second)} <span class="alternative-status">${option.severity === "good" ? "✓ תקין" : "⚠ השפעה"}</span></div>
                   <div class="alternative-impact">
                     להחליף?<br>
                     ${workerChip(firstName)} <span>|</span> ${workerChip(secondName)}
                     <span>↓</span>
                     ${workerChip(option.first)} <span>|</span> ${workerChip(option.second)}<br>
-                    ✓ עדיין תקין · ⚠ שינוי בסטטיסטיקה · ✓ אין חריגות חדשות
+                    ${option.impact.join(" · ")}
                   </div>
-                  <button class="btn secondary apply-alternative" type="button" data-iso="${entry.day.iso}" data-first="${option.first}" data-second="${option.second}">אשר</button>
+                  <button class="btn secondary apply-alternative" type="button" data-iso="${entry.day.iso}" data-first="${option.first}" data-second="${option.second}">החלף שיבוץ</button>
                 </div>
               `).join("")}
             </div>
@@ -2718,23 +2728,17 @@
 
       const previousFirst = entry.first;
       const previousSecond = entry.second;
-      const baseline = new Map(state.currentWorkers.map(worker => [worker.name, {
-        count: worker.weekCounts[entry.day.week] || 0,
-        min: getWorkerMin(worker),
-        max: worker.max
-      }]));
       entry.first = first;
       entry.second = second;
       rebuildWorkerStats(state.currentSchedule, state.currentWorkers);
       const issues = validateSchedule(state.currentSchedule, state.currentWorkers, "after smart alternative", { silent: true });
-      const createsNewLimitIssue = state.currentWorkers.some(worker => {
-        const before = baseline.get(worker.name) || { count: 0, min: getWorkerMin(worker), max: worker.max };
-        const after = worker.weekCounts[entry.day.week] || 0;
-        return (after < before.min && after < before.count)
-          || (after > before.max && after > before.count);
-      });
 
-      if (issues.length || createsNewLimitIssue) {
+      if (issues.some(issue => (
+        issue.includes("appears twice")
+        || issue.includes("only night 2")
+        || issue.includes("without submitting")
+        || issue.includes("blocked day")
+      ))) {
         entry.first = previousFirst;
         entry.second = previousSecond;
         rebuildWorkerStats(state.currentSchedule, state.currentWorkers);
