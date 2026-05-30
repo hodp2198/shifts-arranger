@@ -101,6 +101,7 @@
           </details>
           <div class="actions result-actions">
             <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+            <button class="btn secondary" id="loadDemoData" type="button">טען נתוני דמו</button>
           </div>
           <div class="preview-title">תצוגת סידור</div>
           <div id="scheduleOutput" class="schedule-output"></div>
@@ -2293,30 +2294,44 @@
       WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
       renderWorkers();
       setDetectedWeeks([]);
-      startDateEl.value = "19/4";
-      weekCountEl.value = "2";
-      renderWeekSettings();
-      document.querySelectorAll(".constraints").forEach(area => area.value = "");
-      document.querySelectorAll(".active-worker").forEach(box => box.checked = false);
-
-      const samples = {
-        "הוד": "תאריך: 19-25\nא' - \nב' - \nג' - \nד' - \nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
-        "הדס": "תאריך: 19-25\nא' - לא יכולה\nב' - \nג' - \nד' - \nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
-        "סיואר": "תאריך: 19-25\nא' - \nב' - \nג' - לא יכול\nד' - \nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
-        "דניאל": "תאריך: 19-25\nא' - \nב' - \nג' - \nד' - \nה' - לא יכול\nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - \nד' - \nה' - \nשבת -",
-        "שדא": "תאריך: 19-25\nא' - \nב' - לא יכול\nג' - \nד' - \nה' - \nשבת - לא יכול\n\nתאריך: 26-2\nא' -\nב' - לא יכול\nג' - \nד' - \nה' - \nשבת -",
-        "אשרקת": "תאריך: 19-25\nא' - לא יכול\nב' - \nג' - \nד' - לא יכול\nה' - \nשבת - \n\nתאריך: 26-2\nא' -\nב' - \nג' - לא יכול\nד' - \nה' - \nשבת - לא יכול"
-      };
-
-      for (const [name, text] of Object.entries(samples)) {
-        const card = document.querySelector(`.worker[data-worker="${name}"]`);
-        card.querySelector(".constraints").value = text;
-        card.querySelector(".active-worker").checked = true;
-      }
-
       Object.keys(state.special).forEach(key => delete state.special[key]);
+      startDateEl.value = "";
+      weekCountEl.value = "2";
+      oneTimeRulesEl.value = "אלון חייב לקבל את יום ראשון הקרוב נייט 2 עם הוד";
+      plainResultEl.value = "";
+      outputEl.innerHTML = "";
+      warningsEl.innerHTML = "";
+
+      const demoRows = [
+        ["הוד", "סיואר", "הדס", "דניאל", "שדא", "אשרקת", "יהלי", "נעמי", "אלון"],
+        ["תאריך: 31-6", "31.5 - 6.6", "שבוע של 31/05:", "תאריך- 31/5", "שבוע 31.05 - 06.06", "תאריך: 31-6", "31/5-6.6", "31/5-6.6", "31/5-6.6"],
+        ["א' - רוצה", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", "א-"],
+        ["ב' -", "ב' -", "ב' -", "ב' -", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", "ב- לא פנויה"],
+        ["ג' -", "ג' -", "ג' - לא יכולה", "ג' -", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", "ג- לא פנויה"],
+        ["ד' -", "ד' -", "ד' -", "ד' -", "ד' -", "ד' - לא יכולה", "ד- לא פנויה", "ד- לא פנויה", "ד- לא פנויה"],
+        ["ה' - לא יכול", "ה' - רוצה", "ה' - לא יכולה", "ה' - לא יכול", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", "ה- לא פנויה"],
+        ["שבת - יכול ורוצה", "שבת -", "שבת -", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת-", "שבת- לא פנויה"],
+        ["תאריך: 7-13", "7.6 - 13.6", "שבוע של 07/06:", "תאריך : 7-13/6", "שבוע 7.06-13.06", "תאריך: 7-13", "7/6-13/6", "7/6-13/6", "7/6-13/6"],
+        ["א' -", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", "א- לא פנויה"],
+        ["ב' -", "ב' - לא יכולה", "ב' -", "ב' - לא יכול", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", "ב- לא פנויה"],
+        ["ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", "ג- לא פנויה"],
+        ["ד' -", "ד' -", "ד' - לא יכולה", "ד' -", "ד' - לא יכולה", "ד' -", "ד- לא פנויה", "ד- לא פנויה", "ד- לא פנויה"],
+        ["ה' -", "ה' -", "ה' - לא יכולה", "ה' -", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", "ה- לא פנויה"],
+        ["שבת - לא יכול", "שבת -", "שבת - לא יכולה", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת- לא פנויה", "שבת- לא פנויה"]
+      ];
+
+      bulkExcelNotesEl.value = `${demoRows.map(row => row.join("\t")).join("\n")}\nהערות\n${oneTimeRulesEl.value}`;
+      importRowsMatrix(demoRows, bulkExcelStatusEl);
+
+      ["הדס", "יהלי"].forEach(name => {
+        const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
+        if (card) card.querySelector(".night2-only").checked = true;
+      });
+
+      renderWeekSettings();
       await refreshCalendarDays();
-      await renderSchedule();
+      statusBadgeEl.textContent = "נתוני דמו נטענו";
+      saveState();
     }
 
     document.getElementById("buildSchedule").addEventListener("click", async () => {
@@ -2337,6 +2352,7 @@
       if (event.key === "Enter") addWorker();
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
+    document.getElementById("loadDemoData").addEventListener("click", loadDemo);
     document.getElementById("buildWeeks").addEventListener("click", async () => {
       setDetectedWeeks([]);
       renderWeekSettings();
