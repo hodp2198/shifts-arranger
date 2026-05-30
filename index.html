@@ -1045,10 +1045,34 @@
 
       const holiday = events.find(isHoliday);
       if (holiday) {
-        return { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) };
+        return { status: "holiday", isWorkday: false, reason: "חג", title: getDesc(holiday) };
       }
 
       return { status: "workday", isWorkday: true, reason: "יום רגיל" };
+    }
+
+    function holidayClosedReason(dayType) {
+      const title = String(dayType?.title || "").trim();
+      if (dayType?.status === "holidayEve") {
+        const cleanTitle = title
+          .replace(/^Erev\s+/i, "")
+          .replace(/^ערב\s+(חג\s+)?/, "")
+          .trim();
+        return `ערב חג${cleanTitle ? ` ${cleanTitle}` : ""} אין משמרת`;
+      }
+      if (dayType?.status === "holiday") {
+        const cleanTitle = title.replace(/^חג\s+/, "").trim();
+        return `חג${cleanTitle ? ` ${cleanTitle}` : ""} אין משמרת`;
+      }
+      if (dayType?.status === "off") return "אין משמרת";
+      return "";
+    }
+
+    function closedDayReason(day) {
+      if (day.dayType?.status === "holiday" || day.dayType?.status === "holidayEve") {
+        return holidayClosedReason(day.dayType);
+      }
+      return day.label || "אין משמרת";
     }
 
     function editDateValue(date) {
@@ -1430,11 +1454,13 @@
         specialDaysEl.innerHTML = "";
         return;
       }
-      const holidayEves = days.filter(day => day.dayType.status === "holidayEve");
+      const calendarClosedDays = days.filter(day => (
+        day.dayType.status === "holidayEve" || day.dayType.status === "holiday"
+      ));
       const manualDays = days.filter(day => state.special[day.iso]);
-      const holidayText = holidayEves.length
-        ? holidayEves.map(day => `<span class="summary-pill">${displayDate(day.date)} — ${day.dayType.title || "ערב חג"} ללא עבודה</span>`).join("")
-        : `<span class="helper">אין ערבי חג בטווח שנבחר</span>`;
+      const holidayText = calendarClosedDays.length
+        ? calendarClosedDays.map(day => `<span class="summary-pill">${displayDate(day.date)} — ${closedDayReason(day)}</span>`).join("")
+        : `<span class="helper">אין חגים או ערבי חג בטווח שנבחר</span>`;
       const calendarWarning = state.calendar.warning
         ? `<span class="helper">${state.calendar.warning}</span>`
         : "";
@@ -2799,7 +2825,7 @@
           const dayName = scheduleDayLabel(entry.day.dayName);
           const status = dayStatus(entry);
           if (entry.closed) {
-            const reason = entry.day.label || "אין עבודה";
+            const reason = closedDayReason(entry.day);
             html += `
               <div class="shift-line info">
                 <span class="status-mark">${statusIcon(status.level)}</span>
@@ -2904,7 +2930,7 @@
         startDateEl.value = startDate ? editDateValue(startDate) : "";
         weekCountEl.value = data.weekCount || weekCountEl.value;
         Object.entries(data.special || {}).forEach(([iso, item]) => {
-          state.special[iso] = item?.label === "חג" ? { ...item, closed: false } : item;
+          state.special[iso] = item;
         });
         const savedWeeks = Array.isArray(data.detectedWeeks) && data.detectedWeeks.length
           ? data.detectedWeeks
