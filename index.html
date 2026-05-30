@@ -2214,13 +2214,14 @@
       const warningMatchesDay = (warning, day) => warning.startsWith(`${day.dayName} ${displayDate(day.date)}:`);
       const renderWarningGroup = group => {
         const lines = group.lines.map(line => `<div>${formatWarning(line)}</div>`).join("");
+        const icon = group.severity === "bad" ? "🔴" : (group.severity === "warn" ? "🟡" : "🟢");
         if (!group.title) {
-          return `<div class="warning-item ${group.severity}">• ${lines}</div>`;
+          return `<div class="health-detail ${group.severity}">${icon} ${lines}</div>`;
         }
         return `
-          <div class="warning-item ${group.severity}">
-            <div>• <strong>${group.title}:</strong></div>
-            <div class="warning-lines">${lines}</div>
+          <div class="health-detail ${group.severity}">
+            <div><strong>${icon} ${group.title}</strong></div>
+            <div class="health-lines">${lines}</div>
           </div>
         `;
       };
@@ -2232,6 +2233,42 @@
         if (dayWarnings.some(item => warningSeverity(item) === "warn")) return { level: "warn", label: "אזהרה" };
         if (dayWarnings.length) return { level: "info", label: "בדיקה" };
         return { level: "good", label: "תקין" };
+      };
+      const buildScheduleHealth = () => {
+        const entries = Object.values(schedule).flat().filter(entry => !entry.closed);
+        const statuses = entries.map(dayStatus);
+        const filled = entries.filter(entry => entry.first && entry.second).length * 2
+          + entries.filter(entry => (entry.first && !entry.second) || (!entry.first && entry.second)).length;
+        const totalSlots = entries.length * 2;
+        const good = statuses.filter(status => status.level === "good").length;
+        const warn = statuses.filter(status => status.level === "warn" || status.level === "info").length;
+        const bad = statuses.filter(status => status.level === "bad").length;
+        const explainedOverMax = warnings.filter(warning => warning.includes("שובץ/ה מעל המקסימום")).length;
+        return { filled, totalSlots, good, warn, bad, explainedOverMax };
+      };
+      const renderScheduleHealth = () => {
+        const health = buildScheduleHealth();
+        const warningGroups = buildWarningGroups();
+        return `
+          <details class="notice schedule-health">
+            <summary>
+              <strong>מצב הסידור</strong>
+              <span class="health-summary">
+                <span>✓ ${health.filled}/${health.totalSlots} שובצו</span>
+                <span>🟢 ${health.good} תקינים</span>
+                <span>🟡 ${health.warn} גבוליים</span>
+                <span>🔴 ${health.bad} חוסר</span>
+                <span>⚠ ${health.explainedOverMax} חריגות מוסברות</span>
+              </span>
+            </summary>
+            <div class="health-details">
+              <div class="health-details-title">פרטי מצב הסידור</div>
+              ${warningGroups.length
+                ? warningGroups.map(renderWarningGroup).join("")
+                : `<div class="health-detail good">🟢 כל הימים מולאו בלי נקודות לבדיקה.</div>`}
+            </div>
+          </details>
+        `;
       };
       const canUseAlternativeWorker = (worker, day, slot, otherName) => (
         worker
@@ -2385,21 +2422,8 @@
         plain.push("");
       }
 
-      if (warnings.length) {
-        const warningGroups = buildWarningGroups();
-        warningsEl.innerHTML = `
-          <details class="notice review">
-            <summary><strong>⚠ נקודות לבדיקה</strong> (${warningGroups.length})</summary>
-            <div class="warning-list">
-              ${warningGroups.map(renderWarningGroup).join("")}
-            </div>
-          </details>
-        `;
-        statusBadgeEl.textContent = "נוצר עם אזהרות";
-      } else {
-        warningsEl.innerHTML = `<div class="notice"><strong>הסידור נוצר בהצלחה.</strong> כללי המינימום/מקסימום והאילוצים מולאו.</div>`;
-        statusBadgeEl.textContent = "נוצר בהצלחה";
-      }
+      warningsEl.innerHTML = renderScheduleHealth();
+      statusBadgeEl.textContent = warnings.length ? "נוצר עם נקודות לבדיקה" : "נוצר בהצלחה";
 
       outputEl.innerHTML = html;
       plainResultEl.value = plain.join("\n").trim();
