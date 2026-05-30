@@ -87,6 +87,18 @@
       line-height: 1.5;
     }
 
+    .import-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      align-items: center;
+    }
+
+    .import-issues {
+      flex-basis: 100%;
+      color: #7a5a00;
+    }
+
     .icon-btn {
       width: 34px;
       height: 34px;
@@ -566,6 +578,13 @@
 
     .preview-actions {
       margin-top: 10px;
+      align-items: center;
+    }
+
+    .autosave-status {
+      color: var(--muted-soft);
+      font-size: 13px;
+      font-weight: 650;
     }
 
     @media (max-width: 920px) {

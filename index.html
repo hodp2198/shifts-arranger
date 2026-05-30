@@ -106,9 +106,11 @@
           <div id="scheduleOutput" class="schedule-output"></div>
           <div id="scheduleWarnings"></div>
           <div class="preview-title">הודעת WhatsApp</div>
+          <div class="intake-status">זה הטקסט הנקי שיישלח לעובדים, בלי צבעים ובלי סימונים של הממשק.</div>
           <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע ההודעה הנקייה להעתקה"></textarea>
           <div class="actions preview-actions">
             <button class="btn secondary" id="copyResult" type="button">העתק הודעה</button>
+            <span class="autosave-status" id="autosaveStatus">נשמר אוטומטית</span>
           </div>
       </div>
       </aside>
@@ -175,6 +177,7 @@
     const oneTimeRulesEl = document.getElementById("oneTimeRules");
     const manualOffDateEl = document.getElementById("manualOffDate");
     const manualOffLabelEl = document.getElementById("manualOffLabel");
+    const autosaveStatusEl = document.getElementById("autosaveStatus");
 
     function readSavedData() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -622,6 +625,7 @@
     function importRowsMatrix(rows, statusEl) {
       const headers = rows[0] || [];
       let imported = 0;
+      const issues = [];
       const importedWeeks = applyWeekDatesFromRows(rows);
 
       headers.forEach((header, columnIndex) => {
@@ -643,7 +647,8 @@
         imported += 1;
       });
 
-      statusEl.textContent = `נקלטו ${imported} עמודות עובדים${importedWeeks ? ` וזוהו ${importedWeeks} שבועות מתוך האקסל` : ""}.`;
+      if (!imported) issues.push("לא זוהו עמודות עובדים.");
+      renderImportSummary({ imported, importedWeeks, issues });
       saveState();
     }
 
@@ -861,6 +866,42 @@
     function hasMeaningfulWorkerInput(text) {
       const lines = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
       return lines.some(line => isUnavailableText(line) || isPreferredText(line));
+    }
+
+    function countImportedConstraints() {
+      let blocked = 0;
+      let preferred = 0;
+      let activeWorkers = 0;
+
+      document.querySelectorAll(".worker").forEach(card => {
+        const text = card.querySelector(".constraints").value.trim();
+        if (!text) return;
+        const parsed = parseConstraints(text);
+        blocked += parsed.blocked.size;
+        preferred += parsed.preferred.size;
+        if (hasMeaningfulWorkerInput(text)) activeWorkers += 1;
+      });
+
+      return { blocked, preferred, activeWorkers };
+    }
+
+    function renderImportSummary({ imported, importedWeeks, issues = [] }) {
+      const counts = countImportedConstraints();
+      const rows = [
+        `✓ זוהו ${imported} עובדים`,
+        `✓ זוהו ${importedWeeks || getWeekConfigs().length || 0} שבועות`,
+        `✓ זוהו ${counts.blocked} חסימות`,
+        `✓ זוהו ${counts.preferred} ימים מועדפים`
+      ];
+      if (!counts.activeWorkers) issues.push("לא נמצאו אילוצים פעילים לעובדים.");
+      if (!importedWeeks && !getDetectedWeekConfigs().length) issues.push("לא זוהו שבועות מתוך האקסל.");
+
+      bulkExcelStatusEl.innerHTML = `
+        <div class="import-summary">
+          ${rows.map(row => `<div>${row}</div>`).join("")}
+          ${issues.length ? `<div class="import-issues">${issues.map(issue => `⚠ ${issue}`).join("<br>")}</div>` : ""}
+        </div>
+      `;
     }
 
     function getWorkersData() {
@@ -2171,6 +2212,9 @@
       const data = {
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
+        bulkExcelNotes: bulkExcelNotesEl.value,
+        oneTimeRules: oneTimeRulesEl.value,
+        plainResult: plainResultEl.value,
         special: state.special,
         detectedWeeks: getDetectedWeekConfigs().map(week => ({
           start: isoDate(week.start),
@@ -2190,14 +2234,17 @@
         })),
         workers: [...document.querySelectorAll(".worker")].map(card => ({
           name: card.dataset.worker,
-          active: false,
+          active: card.querySelector(".active-worker").checked,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
-          constraints: ""
+          constraints: card.querySelector(".constraints").value
         }))
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (autosaveStatusEl) {
+        autosaveStatusEl.textContent = "נשמר אוטומטית";
+      }
     }
 
     function loadState() {
@@ -2213,6 +2260,9 @@
         const startDate = parseUiDate(savedStartDate);
         startDateEl.value = startDate ? editDateValue(startDate) : "";
         weekCountEl.value = data.weekCount || weekCountEl.value;
+        bulkExcelNotesEl.value = data.bulkExcelNotes || "";
+        oneTimeRulesEl.value = data.oneTimeRules || "";
+        plainResultEl.value = data.plainResult || "";
         Object.entries(data.special || {}).forEach(([iso, item]) => {
           state.special[iso] = item;
         });
@@ -2228,9 +2278,12 @@
         }
         const workersState = {};
         for (const saved of data.workers || []) {
-          workersState[saved.name] = { ...saved, active: false, constraints: "" };
+          workersState[saved.name] = saved;
         }
         applyWorkerState(workersState);
+        if (data.bulkExcelNotes) {
+          renderImportSummary({ imported: (data.workers || []).filter(worker => worker.constraints).length, importedWeeks: getDetectedWeekConfigs().length });
+        }
       } catch (error) {
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -2309,7 +2362,14 @@
     });
 
     document.addEventListener("input", async event => {
-      if (event.target.closest(".worker") || event.target.closest(".week-row") || event.target === startDateEl || event.target === weekCountEl) {
+      const shouldAutoSave = event.target.closest(".worker")
+        || event.target.closest(".week-row")
+        || event.target === startDateEl
+        || event.target === weekCountEl
+        || event.target === bulkExcelNotesEl
+        || event.target === oneTimeRulesEl;
+
+      if (shouldAutoSave) {
         if (event.target.classList.contains("constraints") && event.target.value.trim()) {
           event.target.closest(".worker").querySelector(".active-worker").checked = true;
         }
