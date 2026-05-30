@@ -157,6 +157,9 @@
     const state = {
       special: {},
       detectedWeeks: [],
+      currentSchedule: null,
+      currentWorkers: [],
+      currentWarnings: [],
       shuffleSeed: 0,
       calendar: {
         warning: ""
@@ -1711,7 +1714,7 @@
       return changes;
     }
 
-    function validateSchedule(schedule, workers, stage = "schedule") {
+    function validateSchedule(schedule, workers, stage = "schedule", options = {}) {
       const issues = [];
       const weekCount = getWeekConfigs().length;
       const allEntries = Object.values(schedule).flat().filter(entry => !entry.closed);
@@ -1775,7 +1778,7 @@
         }
       }
 
-      if (issues.length) {
+      if (issues.length && !options.silent) {
         console.warn(`[schedule validation] ${stage}`, issues);
       }
 
@@ -1803,6 +1806,41 @@
           warnings.push(`${day.dayName} ${displayDate(day.date)}: רק ${submitters[0].name} הגיש/ה את היום הזה.`);
         }
       }
+    }
+
+    function collectFinalWarnings(schedule, workers) {
+      const warnings = [];
+      const days = getScheduleDays();
+      const weekCount = getWeekConfigs().length;
+
+      if (state.calendar.warning) warnings.push(state.calendar.warning);
+      addSubmissionWarnings(days, workers, warnings);
+
+      for (let week = 0; week < weekCount; week++) {
+        for (const entry of schedule[week] || []) {
+          if (entry.closed || (entry.first && entry.second)) continue;
+          warnings.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: נשארה משבצת חסרה כי אין מספיק עובדים שהגישו וזמינים לאותו יום.`);
+        }
+      }
+
+      for (let week = 0; week < weekCount; week++) {
+        for (const worker of workers) {
+          const count = worker.weekCounts[week] || 0;
+          const min = getWorkerMin(worker);
+          const available = worker.availableDaysByWeek?.[week] || 0;
+          if (count < min) {
+            const reason = available < min
+              ? `כי הגיש/ה רק ${available} ימים זמינים בשבוע הזה`
+              : "למרות שהגיש/ה מספיק ימים, צריך בדיקה";
+            warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, פחות מהמינימום ${min}, ${reason}.`);
+          }
+          if (count > worker.max) {
+            warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
+          }
+        }
+      }
+
+      return [...new Set(warnings)];
     }
 
     function generateSchedule() {
@@ -2001,8 +2039,12 @@
       return { schedule, warnings: [...new Set(warnings)], workers };
     }
 
-    async function renderSchedule() {
-      const { schedule, warnings, workers } = generateSchedule();
+    async function renderSchedule(existing = null) {
+      const result = existing || generateSchedule();
+      const { schedule, warnings, workers } = result;
+      state.currentSchedule = schedule;
+      state.currentWarnings = warnings;
+      state.currentWorkers = workers;
       const weekCount = getWeekConfigs().length;
       const plain = [];
       let html = "";
@@ -2111,6 +2153,81 @@
         if (dayWarnings.length) return { level: "info", label: "בדיקה" };
         return { level: "good", label: "תקין" };
       };
+      const canUseAlternativeWorker = (worker, day, slot, otherName) => (
+        worker
+        && worker.max > 0
+        && worker.name !== otherName
+        && !worker.blocked.has(day.iso)
+        && worker.submitted?.has(day.iso)
+        && !(slot === 1 && worker.onlyNight2)
+      );
+      const getAlternativePairs = entry => {
+        if (entry.closed || !entry.first || !entry.second) return [];
+        const originalFirst = entry.first;
+        const originalSecond = entry.second;
+        const baseline = new Map(workers.map(worker => [worker.name, {
+          count: worker.weekCounts[entry.day.week] || 0,
+          min: getWorkerMin(worker),
+          max: worker.max
+        }]));
+        const options = [];
+
+        for (const first of workers) {
+          if (!canUseAlternativeWorker(first, entry.day, 1, null)) continue;
+          for (const second of workers) {
+            if (!canUseAlternativeWorker(second, entry.day, 2, first.name)) continue;
+            if (first.name === originalFirst.name && second.name === originalSecond.name) continue;
+
+            entry.first = first;
+            entry.second = second;
+            rebuildWorkerStats(schedule, workers);
+            const issues = validateSchedule(schedule, workers, "alternative preview", { silent: true });
+            const createsNewLimitIssue = workers.some(worker => {
+              const before = baseline.get(worker.name) || { count: 0, min: getWorkerMin(worker), max: worker.max };
+              const after = worker.weekCounts[entry.day.week] || 0;
+              return (after < before.min && after < before.count)
+                || (after > before.max && after > before.count);
+            });
+
+            if (!issues.length && !createsNewLimitIssue) {
+              options.push({ first: first.name, second: second.name });
+            }
+          }
+        }
+
+        entry.first = originalFirst;
+        entry.second = originalSecond;
+        rebuildWorkerStats(schedule, workers);
+
+        return options.slice(0, 5);
+      };
+      const renderAlternativePanel = (entry, firstName, secondName) => {
+        const options = getAlternativePairs(entry);
+        if (!options.length) return "";
+        return `
+          <details class="alternatives-panel">
+            <summary>⋯ אפשרויות</summary>
+            <div class="alternatives-body">
+              <div class="alternative-title">${scheduleDayLabel(entry.day.dayName)} ${displayDate(entry.day.date)}</div>
+              <div class="alternative-selected">נבחר: ✓ ${workerChip(firstName)} <span>|</span> ${workerChip(secondName)}</div>
+              <div class="alternative-subtitle">אפשרויות נוספות</div>
+              ${options.map(option => `
+                <div class="alternative-option">
+                  <div>○ ${workerChip(option.first)} <span>|</span> ${workerChip(option.second)}</div>
+                  <div class="alternative-impact">
+                    להחליף?<br>
+                    ${workerChip(firstName)} <span>|</span> ${workerChip(secondName)}
+                    <span>↓</span>
+                    ${workerChip(option.first)} <span>|</span> ${workerChip(option.second)}<br>
+                    ✓ עדיין תקין · ⚠ שינוי בסטטיסטיקה · ✓ אין חריגות חדשות
+                  </div>
+                  <button class="btn secondary apply-alternative" type="button" data-iso="${entry.day.iso}" data-first="${option.first}" data-second="${option.second}">אשר</button>
+                </div>
+              `).join("")}
+            </div>
+          </details>
+        `;
+      };
       const statusIcon = level => {
         if (level === "bad") return "🔴";
         if (level === "warn" || level === "info") return "🟡";
@@ -2165,6 +2282,7 @@
           const secondName = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorkerName(entry.second) : "-";
           const first = displayWorker(entry.first);
           const second = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorker(entry.second) : "-";
+          const alternatives = renderAlternativePanel(entry, firstName, secondName);
           html += `
             <div class="shift-line ${status.level}">
               <span class="status-mark" title="${status.label}">${statusIcon(status.level)}</span>
@@ -2174,6 +2292,7 @@
                 <span>ו</span>
                 ${second}
               </span>
+              ${alternatives}
             </div>
           `;
           plain.push(`${dayName} - ${firstName} ו${secondName}`);
@@ -2375,6 +2494,52 @@
       if (!event.target.classList.contains("remove-worker")) return;
       const card = event.target.closest(".worker");
       removeWorker(card.dataset.worker);
+    });
+
+    outputEl.addEventListener("click", async event => {
+      const button = event.target.closest(".apply-alternative");
+      if (!button || !state.currentSchedule) return;
+
+      const entry = Object.values(state.currentSchedule)
+        .flat()
+        .find(item => item.day?.iso === button.dataset.iso);
+      const first = state.currentWorkers.find(worker => worker.name === button.dataset.first);
+      const second = state.currentWorkers.find(worker => worker.name === button.dataset.second);
+      if (!entry || !first || !second) return;
+
+      const previousFirst = entry.first;
+      const previousSecond = entry.second;
+      const baseline = new Map(state.currentWorkers.map(worker => [worker.name, {
+        count: worker.weekCounts[entry.day.week] || 0,
+        min: getWorkerMin(worker),
+        max: worker.max
+      }]));
+      entry.first = first;
+      entry.second = second;
+      rebuildWorkerStats(state.currentSchedule, state.currentWorkers);
+      const issues = validateSchedule(state.currentSchedule, state.currentWorkers, "after smart alternative", { silent: true });
+      const createsNewLimitIssue = state.currentWorkers.some(worker => {
+        const before = baseline.get(worker.name) || { count: 0, min: getWorkerMin(worker), max: worker.max };
+        const after = worker.weekCounts[entry.day.week] || 0;
+        return (after < before.min && after < before.count)
+          || (after > before.max && after > before.count);
+      });
+
+      if (issues.length || createsNewLimitIssue) {
+        entry.first = previousFirst;
+        entry.second = previousSecond;
+        rebuildWorkerStats(state.currentSchedule, state.currentWorkers);
+        statusBadgeEl.textContent = "החלופה לא תקינה";
+        return;
+      }
+
+      state.currentWarnings = collectFinalWarnings(state.currentSchedule, state.currentWorkers);
+      await renderSchedule({
+        schedule: state.currentSchedule,
+        warnings: state.currentWarnings,
+        workers: state.currentWorkers
+      });
+      statusBadgeEl.textContent = "חלופה אושרה";
     });
 
     document.addEventListener("input", async event => {
