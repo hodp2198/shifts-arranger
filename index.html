@@ -928,6 +928,7 @@
     const STORAGE_KEY = "shifts-arranger-v2";
     const state = {
       special: {},
+      detectedWeeks: [],
       shuffleSeed: 0,
       calendar: {
         warning: ""
@@ -1032,7 +1033,8 @@
       const isEve = event => hasFlag(event, flags.EREV) || /^Erev\b/i.test(event.getDesc?.() || "") || /ערב/.test(getDesc(event));
       const isIsraeliHoliday = event => {
         const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
-        return hasFlag(event, flags.MODERN_HOLIDAY) && /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
+        return hasFlag(event, flags.MODERN_HOLIDAY)
+          || /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
       };
       const isHoliday = event => hasFlag(event, flags.CHAG) || isIsraeliHoliday(event);
 
@@ -1084,7 +1086,30 @@
       return parseUiDate(startDateEl.value);
     }
 
+    function normalizeWeekConfigs(weeks) {
+      return (weeks || [])
+        .map(week => {
+          const start = week.start instanceof Date ? week.start : parseUiDate(week.start);
+          if (!start) return null;
+          const end = week.end instanceof Date ? week.end : parseUiDate(week.end, start.getFullYear());
+          return { start, end: end || addDays(start, 6) };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.start - b.start);
+    }
+
+    function getDetectedWeekConfigs() {
+      return normalizeWeekConfigs(state.detectedWeeks);
+    }
+
+    function setDetectedWeeks(weeks) {
+      state.detectedWeeks = normalizeWeekConfigs(weeks);
+    }
+
     function getWeekConfigs() {
+      const detectedWeeks = getDetectedWeekConfigs();
+      if (detectedWeeks.length) return detectedWeeks;
+
       const weeks = Number(weekCountEl.value) || 1;
       const rows = [...document.querySelectorAll(".week-row")];
       const baseStart = getBaseStartDate();
@@ -1109,17 +1134,20 @@
     }
 
     function renderWeekSettings(savedWeeks) {
+      if (savedWeeks) setDetectedWeeks(savedWeeks);
       const baseStart = getBaseStartDate();
-      if (!baseStart && !savedWeeks?.length) {
+      const detectedWeeks = getDetectedWeekConfigs();
+      if (!baseStart && !detectedWeeks.length) {
         weekSettingsEl.innerHTML = `<p class="helper">עדיין לא זוהו שבועות. הדבק אקסל ולחץ על שייך לעובדים.</p>`;
         return;
       }
-      const current = savedWeeks || getWeekConfigs();
+      const current = detectedWeeks.length ? detectedWeeks : getWeekConfigs();
+      const title = detectedWeeks.length ? "שבועות שזוהו" : "שבועות ידניים";
       const weekItems = current.map(week => `<span class="summary-pill">${displayDate(week.start)}–${displayDate(week.end)}</span>`).join("");
       weekSettingsEl.innerHTML = `
         <div class="week-summary">
           <div class="summary-group">
-            <div class="summary-label">שבועות שזוהו: ${current.length}</div>
+            <div class="summary-label">${title}: ${current.length}</div>
             <div class="summary-list">${weekItems}</div>
           </div>
         </div>
@@ -1177,11 +1205,17 @@
       });
 
       const starts = [...startsByIso.values()].sort((a, b) => a - b);
-      if (!starts.length) return 0;
+      if (!starts.length) {
+        setDetectedWeeks([]);
+        renderWeekSettings();
+        refreshCalendarDays();
+        return 0;
+      }
 
+      setDetectedWeeks(starts.map(start => ({ start, end: addDays(start, 6) })));
       startDateEl.value = editDateValue(starts[0]);
       weekCountEl.value = String(starts.length);
-      renderWeekSettings(starts.map(start => ({ start, end: addDays(start, 6) })));
+      renderWeekSettings();
       refreshCalendarDays();
       return starts.length;
     }
@@ -1401,6 +1435,9 @@
       const holidayText = holidayEves.length
         ? holidayEves.map(day => `<span class="summary-pill">${displayDate(day.date)} — ${day.dayType.title || "ערב חג"} ללא עבודה</span>`).join("")
         : `<span class="helper">אין ערבי חג בטווח שנבחר</span>`;
+      const calendarWarning = state.calendar.warning
+        ? `<span class="helper">${state.calendar.warning}</span>`
+        : "";
       const manualText = manualDays.length
         ? manualDays.map(day => {
           const label = state.special[day.iso]?.label || "אין עבודה";
@@ -1422,6 +1459,7 @@
             <div class="summary-list">
               <span class="summary-pill">שישי קבוע</span>
               ${holidayText}
+              ${calendarWarning}
             </div>
           </div>
           <div class="summary-group">
@@ -2477,9 +2515,11 @@
     function generateSchedule() {
       const warnings = [];
       const workers = getWorkersData();
+      const weekConfigs = getWeekConfigs();
       const days = getScheduleDays();
       const schedule = {};
       const openDaysByWeek = {};
+      console.info(`[weeks]\ndetected: ${getDetectedWeekConfigs().length}\ngenerated: ${weekConfigs.length}`);
 
       if (!days.length) {
         warnings.push("בחר תאריך התחלה ראשוני ובנה שבועות לפני יצירת סידור.");
@@ -2506,7 +2546,7 @@
 
       for (const worker of workers) {
         worker.availableDaysByWeek = {};
-        for (let week = 0; week < getWeekConfigs().length; week++) {
+        for (let week = 0; week < weekConfigs.length; week++) {
           worker.availableDaysByWeek[week] = days
             .filter(day => day.week === week && !day.closed)
             .filter(day => worker.submitted?.has(day.iso))
@@ -2536,7 +2576,7 @@
       };
 
       const assignmentDays = [];
-      for (let week = 0; week < getWeekConfigs().length; week++) {
+      for (let week = 0; week < weekConfigs.length; week++) {
         const weekDays = days.filter(day => day.week === week);
         if (!state.shuffleSeed) {
           assignmentDays.push(...weekDays.sort((a, b) => a.dayIndex - b.dayIndex));
@@ -2622,7 +2662,7 @@
       fillMissingSlots(schedule, workers);
       auditSchedule("after fillMissingSlots");
 
-      const weekCount = getWeekConfigs().length;
+      const weekCount = weekConfigs.length;
       for (let week = 0; week < weekCount; week++) {
         for (const entry of schedule[week] || []) {
           if (entry.closed || !entry.first || !entry.second) continue;
@@ -2822,6 +2862,10 @@
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
         special: state.special,
+        detectedWeeks: getDetectedWeekConfigs().map(week => ({
+          start: isoDate(week.start),
+          end: isoDate(week.end)
+        })),
         workerDefs: WORKERS.map(worker => ({
           name: worker.name,
           aliases: worker.aliases || [],
@@ -2862,12 +2906,14 @@
         Object.entries(data.special || {}).forEach(([iso, item]) => {
           state.special[iso] = item?.label === "חג" ? { ...item, closed: false } : item;
         });
-        if (startDate && Array.isArray(data.weeks) && data.weeks.length) {
-          renderWeekSettings(data.weeks.map(week => ({
-            start: parseUiDate(week.start, startDate.getFullYear()),
-            end: parseUiDate(week.end, startDate.getFullYear())
-          })));
+        const savedWeeks = Array.isArray(data.detectedWeeks) && data.detectedWeeks.length
+          ? data.detectedWeeks
+          : data.weeks;
+        if (Array.isArray(savedWeeks) && savedWeeks.length) {
+          setDetectedWeeks(savedWeeks);
+          renderWeekSettings();
         } else {
+          setDetectedWeeks([]);
           renderWeekSettings();
         }
         const workersState = {};
@@ -2883,6 +2929,7 @@
     async function loadDemo() {
       WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
       renderWorkers();
+      setDetectedWeeks([]);
       startDateEl.value = "19/4";
       weekCountEl.value = "2";
       renderWeekSettings();
@@ -2928,6 +2975,7 @@
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
     document.getElementById("buildWeeks").addEventListener("click", async () => {
+      setDetectedWeeks([]);
       renderWeekSettings();
       await refreshCalendarDays();
       saveState();
@@ -2957,6 +3005,7 @@
         }
         if (event.target.closest(".week-row")) await refreshCalendarDays();
         if (event.target === startDateEl || event.target === weekCountEl) {
+          setDetectedWeeks([]);
           renderWeekSettings();
           await refreshCalendarDays();
         }
