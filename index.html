@@ -2286,11 +2286,14 @@
         if (!options.length) return "";
         return `
           <details class="alternatives-panel">
-            <summary>⋯ אפשרויות</summary>
+            <summary title="אפשרויות שיבוץ" aria-label="אפשרויות שיבוץ">↺</summary>
             <div class="alternatives-body">
-              <div class="alternative-title">${scheduleDayLabel(entry.day.dayName)} ${displayDate(entry.day.date)}</div>
-              <div class="alternative-selected">נבחר: ✓ ${workerChip(firstName)} <span>|</span> ${workerChip(secondName)}</div>
-              <div class="alternative-subtitle">אפשרויות נוספות</div>
+              <div class="alternative-title">↺ אפשרויות ל${scheduleDayLabel(entry.day.dayName)} ${displayDate(entry.day.date)}</div>
+              <div class="alternative-selected">
+                <span>נוכחי:</span>
+                <span>✓ ${workerChip(firstName)} <span>|</span> ${workerChip(secondName)}</span>
+              </div>
+              <div class="alternative-subtitle">חלופות</div>
               ${options.map(option => `
                 <div class="alternative-option">
                   <div>○ ${workerChip(option.first)} <span>|</span> ${workerChip(option.second)}</div>
@@ -2578,6 +2581,14 @@
     });
 
     outputEl.addEventListener("click", async event => {
+      const panel = event.target.closest(".alternatives-panel");
+      if (panel && event.target.closest("summary")) {
+        outputEl.querySelectorAll(".alternatives-panel[open]").forEach(openPanel => {
+          if (openPanel !== panel) openPanel.removeAttribute("open");
+        });
+        return;
+      }
+
       const button = event.target.closest(".apply-alternative");
       if (!button || !state.currentSchedule) return;
 
@@ -2621,6 +2632,11 @@
         workers: state.currentWorkers
       });
       statusBadgeEl.textContent = "חלופה אושרה";
+    });
+
+    document.addEventListener("click", event => {
+      if (event.target.closest(".alternatives-panel")) return;
+      outputEl.querySelectorAll(".alternatives-panel[open]").forEach(panel => panel.removeAttribute("open"));
     });
 
     document.addEventListener("input", async event => {

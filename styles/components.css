@@ -437,15 +437,32 @@
     .alternatives-panel {
       position: relative;
       justify-self: end;
+      line-height: 1;
     }
 
     .alternatives-panel summary {
+      width: 26px;
+      height: 26px;
+      border: 1px solid rgba(29, 29, 31, 0.075);
+      border-radius: 8px;
+      background: var(--surface-strong);
       cursor: pointer;
       color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 760;
       list-style: none;
       white-space: nowrap;
+      transition: background .16s ease, color .16s ease, border-color .16s ease;
+    }
+
+    .alternatives-panel summary:hover,
+    .alternatives-panel[open] summary {
+      background: #eef3f8;
+      border-color: rgba(0, 113, 227, 0.14);
+      color: var(--accent);
     }
 
     .alternatives-panel summary::-webkit-details-marker {
@@ -455,7 +472,7 @@
     .alternatives-body {
       position: absolute;
       z-index: 4;
-      top: 24px;
+      top: 32px;
       left: 0;
       width: min(320px, calc(100vw - 40px));
       padding: 12px;
@@ -479,6 +496,12 @@
       gap: 6px;
       color: var(--text);
       font-size: 13px;
+    }
+
+    .alternative-selected {
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      color: var(--muted);
     }
 
     .alternative-option {
