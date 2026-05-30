@@ -1,0 +1,114 @@
+    .shell {
+      width: min(1160px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 52px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 4vw, 44px);
+      line-height: 1.08;
+      letter-spacing: 0;
+      font-weight: 800;
+    }
+
+    .intro {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.62;
+      font-weight: 450;
+      max-width: 760px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .result-actions {
+      margin: 4px 0 14px;
+    }
+
+    .btn {
+      min-height: 40px;
+      padding: 0 16px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      transition: background .16s ease, opacity .16s ease;
+      font-weight: 700;
+    }
+
+    .btn:hover {
+      background: var(--accent-dark);
+    }
+
+    .btn.secondary {
+      background: var(--surface-strong);
+      color: var(--text);
+    }
+
+    .btn.secondary:hover {
+      background: #e9e9ef;
+    }
+
+    .btn.danger {
+      background: #f3dddd;
+      color: var(--danger);
+    }
+
+    .btn.danger:hover {
+      background: #ecd0d0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, .98fr) minmax(420px, 1.02fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(29, 29, 31, 0.08);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      align-self: start;
+    }
+
+    .panel-header {
+      min-height: 60px;
+      padding: 17px 20px 13px;
+      border-bottom: 1px solid rgba(29, 29, 31, 0.07);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .panel-body {
+      padding: 20px;
+    }
+
