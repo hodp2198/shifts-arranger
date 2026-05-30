@@ -2243,8 +2243,11 @@
         const good = statuses.filter(status => status.level === "good").length;
         const warn = statuses.filter(status => status.level === "warn" || status.level === "info").length;
         const bad = statuses.filter(status => status.level === "bad").length;
-        const explainedOverMax = warnings.filter(warning => warning.includes("שובץ/ה מעל המקסימום")).length;
-        return { filled, totalSlots, good, warn, bad, explainedOverMax };
+        const explainedExceptions = warnings.filter(warning => (
+          warning.includes("שובץ/ה מעל המקסימום")
+          || (warning.includes("פחות מהמינימום") && warning.includes("כי הגיש/ה רק"))
+        )).length;
+        return { filled, totalSlots, good, warn, bad, explainedExceptions };
       };
       const renderScheduleHealth = () => {
         const health = buildScheduleHealth();
@@ -2252,13 +2255,13 @@
         return `
           <details class="notice schedule-health">
             <summary>
-              <strong>מצב הסידור</strong>
+              <strong class="health-title">מצב הסידור</strong>
+              <span class="health-coverage">${health.filled}/${health.totalSlots} משמרות מולאו</span>
               <span class="health-summary">
-                <span>✓ ${health.filled}/${health.totalSlots} שובצו</span>
                 <span>🟢 ${health.good} תקינים</span>
                 <span>🟡 ${health.warn} גבוליים</span>
                 <span>🔴 ${health.bad} חוסר</span>
-                <span>⚠ ${health.explainedOverMax} חריגות מוסברות</span>
+                <span>⚠ ${health.explainedExceptions} חריגות</span>
               </span>
             </summary>
             <div class="health-details">

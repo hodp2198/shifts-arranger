@@ -608,6 +608,18 @@
       list-style-position: inside;
     }
 
+    .health-title,
+    .health-coverage {
+      display: block;
+    }
+
+    .health-coverage {
+      margin-top: 6px;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 760;
+    }
+
     .health-summary {
       display: flex;
       flex-wrap: wrap;
