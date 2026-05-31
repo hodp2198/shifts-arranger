@@ -529,76 +529,165 @@
       `;
     }
 
-    function parseWeekStartFromHeader(text) {
-      const line = String(text || "").trim();
+    function importYear() {
+      return getBaseStartDate()?.getFullYear() || new Date().getFullYear();
+    }
+
+    function safeImportDate(day, month, year = importYear()) {
+      if (!day || !month || day < 1 || day > 31) return null;
+      while (month > 12) {
+        month -= 12;
+        year += 1;
+      }
+      while (month < 1) {
+        month += 12;
+        year -= 1;
+      }
+      return new Date(year, month - 1, day, 12);
+    }
+
+    function normalizeWeekHeaderText(text) {
+      return String(text || "")
+        .replace(/[–—]/g, "-")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function weekRangeKey(range) {
+      return range ? `${isoDate(range.start)}..${isoDate(range.end)}` : "";
+    }
+
+    function weekRangeLabel(range) {
+      return range ? `${displayDate(range.start)}-${displayDate(range.end)}` : "";
+    }
+
+    function inferStartMonth(startDay, endDay, endMonth) {
+      if (startDay > endDay) return endMonth === 1 ? 12 : endMonth - 1;
+      return endMonth;
+    }
+
+    function parseWeekLabelToRange(text, rowContext = null) {
+      const line = normalizeWeekHeaderText(text);
       if (!line) return null;
 
-      const year = getBaseStartDate()?.getFullYear() || new Date().getFullYear();
-      const startWithEndMonth = line.match(/(\d{1,2})\s*[-–]\s*\d{1,2}[./](\d{1,2})/);
-      if (startWithEndMonth) {
-        const day = Number(startWithEndMonth[1]);
-        const month = Number(startWithEndMonth[2]);
-        return new Date(year, month - 1, day, 12);
+      const fullRange = line.match(/(\d{1,2})[./](\d{1,2})\s*-\s*(\d{1,2})(?:[./](\d{1,2}))?/);
+      if (fullRange) {
+        const startDay = Number(fullRange[1]);
+        const startMonth = Number(fullRange[2]);
+        const endDay = Number(fullRange[3]);
+        const endMonth = Number(fullRange[4] || (endDay < startDay ? startMonth + 1 : startMonth));
+        const start = safeImportDate(startDay, startMonth);
+        const endYear = (start?.getFullYear() || importYear()) + (endMonth < startMonth ? 1 : 0);
+        const end = safeImportDate(endDay, endMonth, endYear);
+        return start && end ? { start, end } : null;
       }
 
-      const dateMatches = [...line.matchAll(/(\d{1,2})[./](\d{1,2})/g)];
-      if (dateMatches.length) {
-        const day = Number(dateMatches[0][1]);
-        const month = Number(dateMatches[0][2]);
-        return new Date(year, month - 1, day, 12);
+      const startWithEndMonth = line.match(/(^|[^\d])(\d{1,2})\s*-\s*(\d{1,2})[./](\d{1,2})(?![./\d])/);
+      if (startWithEndMonth) {
+        const startDay = Number(startWithEndMonth[2]);
+        const endDay = Number(startWithEndMonth[3]);
+        const endMonth = Number(startWithEndMonth[4]);
+        const startMonth = inferStartMonth(startDay, endDay, endMonth);
+        const start = safeImportDate(startDay, startMonth);
+        const endYear = (start?.getFullYear() || importYear()) + (endMonth < startMonth ? 1 : 0);
+        const end = safeImportDate(endDay, endMonth, endYear);
+        return start && end ? { start, end } : null;
+      }
+
+      const startOnly = line.match(/(\d{1,2})[./](\d{1,2})/);
+      if (startOnly) {
+        const start = safeImportDate(Number(startOnly[1]), Number(startOnly[2]));
+        return start ? { start, end: addDays(start, 6) } : null;
+      }
+
+      const simpleRange = line.match(/(^|[^\d])(\d{1,2})\s*-\s*(\d{1,2})(?![./\d])/);
+      if (simpleRange && rowContext) {
+        const startDay = Number(simpleRange[2]);
+        const endDay = Number(simpleRange[3]);
+        if (startDay === rowContext.start.getDate() && endDay === rowContext.end.getDate()) {
+          return { start: new Date(rowContext.start), end: new Date(rowContext.end) };
+        }
       }
 
       return null;
     }
 
-    function resolveWeekStartFromHeader(text, lastStart = null, fallbackStart = null) {
-      const start = parseWeekStartFromHeader(text);
-      if (start) return start;
-
-      const line = String(text || "").trim();
-      const base = lastStart || fallbackStart || getBaseStartDate();
-      const fallbackYear = base?.getFullYear() || new Date().getFullYear();
-      let fallbackMonth = base?.getMonth() + 1 || null;
-      const simpleRange = line.match(/(?:תאריך\s*[:\-/]?\s*)?(\d{1,2})\s*[-–]\s*(\d{1,2})(?![./])/);
-      if (!simpleRange || !fallbackMonth) return null;
-      const day = Number(simpleRange[1]);
-      if (lastStart && day < lastStart.getDate()) fallbackMonth += 1;
-      return new Date(fallbackYear, fallbackMonth - 1, day, 12);
+    function chooseRowWeekRange(ranges) {
+      const counts = new Map();
+      ranges.forEach(range => {
+        const key = weekRangeKey(range);
+        if (!key) return;
+        const current = counts.get(key) || { range, count: 0 };
+        current.count += 1;
+        counts.set(key, current);
+      });
+      return [...counts.values()]
+        .sort((a, b) => b.count - a.count || a.range.start - b.range.start)[0]?.range || null;
     }
 
     function applyWeekDatesFromRows(rows) {
-      const startsByIso = new Map();
-      const headers = rows.flat().map(cell => String(cell || "").trim()).filter(isConstraintWeekHeader);
-      const fallbackStart = headers.map(parseWeekStartFromHeader).find(Boolean) || null;
-      let lastStart = null;
+      const rawDetected = [];
+      const normalized = [];
+      const deduplicated = new Map();
 
-      headers.forEach(text => {
-        const start = resolveWeekStartFromHeader(text, lastStart, fallbackStart);
-        if (!start) return;
-        startsByIso.set(isoDate(start), start);
-        lastStart = start;
+      rows.forEach((row, rowIndex) => {
+        const cells = (row || [])
+          .map((cell, columnIndex) => ({ columnIndex, text: String(cell || "").trim() }))
+          .filter(cell => cell.text && isConstraintWeekHeader(cell.text));
+
+        if (cells.length < 2) return;
+
+        const explicitRanges = cells
+          .map(cell => parseWeekLabelToRange(cell.text))
+          .filter(Boolean);
+        const rowRange = chooseRowWeekRange(explicitRanges);
+        if (!rowRange) return;
+
+        rawDetected.push({
+          row: rowIndex + 1,
+          labels: cells.map(cell => cell.text)
+        });
+
+        cells.forEach(cell => {
+          const range = parseWeekLabelToRange(cell.text, rowRange) || rowRange;
+          normalized.push({
+            row: rowIndex + 1,
+            column: cell.columnIndex + 1,
+            raw: cell.text,
+            canonical: weekRangeLabel(range)
+          });
+        });
+
+        const key = weekRangeKey(rowRange);
+        if (!deduplicated.has(key)) deduplicated.set(key, rowRange);
       });
 
-      const starts = [...startsByIso.values()].sort((a, b) => a - b);
+      const weeks = [...deduplicated.values()].sort((a, b) => a.start - b.start);
+      const trace = {
+        "raw detected": rawDetected,
+        normalized,
+        deduplicated: [...deduplicated.values()].map(weekRangeLabel),
+        final: weeks.map(weekRangeLabel)
+      };
+      console.info("[weeks]", trace);
+
       if (state.demoDebug) {
-        console.info("[demo weeks parse]", {
-          headers,
-          starts: starts.map(start => displayDate(start))
-        });
+        console.info("[demo weeks parse]", trace);
       }
-      if (!starts.length) {
+
+      if (!weeks.length) {
         setDetectedWeeks([]);
         renderWeekSettings();
         refreshCalendarDays();
         return 0;
       }
 
-      setDetectedWeeks(starts.map(start => ({ start, end: addDays(start, 6) })));
-      startDateEl.value = editDateValue(starts[0]);
-      weekCountEl.value = String(starts.length);
+      setDetectedWeeks(weeks);
+      startDateEl.value = editDateValue(weeks[0].start);
+      weekCountEl.value = String(weeks.length);
       renderWeekSettings();
       refreshCalendarDays();
-      return starts.length;
+      return weeks.length;
     }
 
     function getScheduleDays() {
@@ -1126,24 +1215,14 @@
     }
 
     function resolveConstraintWeekOffset(line, currentOffset, sawDate, weekConfigs) {
-      const dateMatches = [...line.matchAll(/(\d{1,2})[./](\d{1,2})/g)];
-      if (dateMatches.length) {
-        const day = Number(dateMatches[0][1]);
-        const month = Number(dateMatches[0][2]);
-        const matchedWeek = weekConfigs.findIndex(week => (
-          week.start.getDate() === day && week.start.getMonth() + 1 === month
-        ));
-        return matchedWeek >= 0 ? matchedWeek : null;
-      }
+      const parsed = parseWeekLabelToRange(line);
+      if (parsed) {
+        const key = weekRangeKey(parsed);
+        const matchedWeek = weekConfigs.findIndex(week => weekRangeKey(week) === key);
+        if (matchedWeek >= 0) return matchedWeek;
 
-      const startWithEndMonth = line.match(/(\d{1,2})\s*[-–]\s*\d{1,2}[./](\d{1,2})/);
-      if (startWithEndMonth) {
-        const day = Number(startWithEndMonth[1]);
-        const month = Number(startWithEndMonth[2]);
-        const matchedWeek = weekConfigs.findIndex(week => (
-          week.start.getDate() === day && week.start.getMonth() + 1 === month
-        ));
-        return matchedWeek >= 0 ? matchedWeek : null;
+        const matchedStart = weekConfigs.findIndex(week => isoDate(week.start) === isoDate(parsed.start));
+        return matchedStart >= 0 ? matchedStart : null;
       }
 
       const baseOffset = Number.isInteger(currentOffset) ? currentOffset : -1;
