@@ -162,6 +162,7 @@
       currentWorkers: [],
       currentWarnings: [],
       shuffleSeed: 0,
+      demoDebug: false,
       calendar: {
         warning: ""
       }
@@ -481,6 +482,12 @@
       });
 
       const starts = [...startsByIso.values()].sort((a, b) => a - b);
+      if (state.demoDebug) {
+        console.info("[demo weeks parse]", {
+          headers,
+          starts: starts.map(start => displayDate(start))
+        });
+      }
       if (!starts.length) {
         setDetectedWeeks([]);
         renderWeekSettings();
@@ -780,6 +787,7 @@
       state.currentWorkers = [];
       state.currentWarnings = [];
       state.shuffleSeed = 0;
+      state.demoDebug = false;
       state.calendar.warning = "";
 
       WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
@@ -1033,6 +1041,14 @@
       return /רוצה|מעדיף|מעדיפה|עדיפות/i.test(text);
     }
 
+    function isConstraintDayLine(line) {
+      const match = String(line || "").trim().match(/^([א-ת'׳״"]+)\s*[-:]/);
+      if (!match) return false;
+      const day = normalizeDayName(match[1]);
+      const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
+      return SCHEDULE_DAYS.includes(dayIndex);
+    }
+
     function getWorkerMin(worker) {
       if (FLEXIBLE_RESERVE_WORKERS.has(worker.name) && worker.min <= 1) return 0;
       return worker.min;
@@ -1054,7 +1070,7 @@
 
     function hasMeaningfulWorkerInput(text) {
       const lines = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-      return lines.some(line => isUnavailableText(line) || isPreferredText(line));
+      return lines.some(line => isConstraintDayLine(line) || isUnavailableText(line) || isPreferredText(line));
     }
 
     function hasQuickAvailability(text) {
@@ -1132,6 +1148,67 @@
           slotCounts: { 1: 0, 2: 0 }
         };
       }).filter(worker => worker.active);
+    }
+
+    function collectDemoDebugState() {
+      const weekConfigs = getWeekConfigs();
+      const days = getScheduleDays();
+      const workerCards = [...document.querySelectorAll(".worker")];
+      const workers = getWorkersData();
+      return {
+        startDate: startDateEl.value,
+        weekCount: weekCountEl.value,
+        detectedWeeks: getDetectedWeekConfigs().map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
+        generatedWeeks: weekConfigs.map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
+        workersLoaded: WORKERS.map(worker => worker.name),
+        activeWorkers: workers.map(worker => worker.name),
+        onlyNight2: workerCards
+          .filter(card => card.querySelector(".night2-only").checked)
+          .map(card => card.dataset.worker),
+        closedDays: days
+          .filter(day => day.closed)
+          .map(day => `${day.dayName} ${displayDate(day.date)}: ${closedDayReason(day)}`)
+      };
+    }
+
+    function logDemoWorkersAndAvailability() {
+      const workers = getWorkersData();
+      const weeks = getWeekConfigs();
+      const days = getScheduleDays();
+      console.info("[demo workers]", {
+        loaded: WORKERS.length,
+        active: workers.map(worker => worker.name),
+        onlyNight2: workers.filter(worker => worker.onlyNight2).map(worker => worker.name),
+        availableDays: workers.map(worker => ({
+          worker: worker.name,
+          weeks: weeks.map((week, index) => ({
+            week: `${displayDate(week.start)}-${displayDate(week.end)}`,
+            open: days
+              .filter(day => day.week === index && !day.closed)
+              .filter(day => worker.submitted?.has(day.iso))
+              .filter(day => !worker.blocked.has(day.iso))
+              .map(day => `${day.dayName} ${displayDate(day.date)}`)
+          }))
+        }))
+      });
+      console.info("[demo availability]", workers.flatMap(worker => weeks.map((week, index) => ({
+        worker: worker.name,
+        week: `${displayDate(week.start)}-${displayDate(week.end)}`,
+        daysOpen: days
+          .filter(day => day.week === index && !day.closed)
+          .filter(day => worker.submitted?.has(day.iso))
+          .filter(day => !worker.blocked.has(day.iso))
+          .map(day => `${day.dayName} ${displayDate(day.date)}`)
+      }))));
+      console.info("[special days]", {
+        closed: days
+          .filter(day => day.closed)
+          .map(day => ({
+            day: `${day.dayName} ${displayDate(day.date)}`,
+            reason: closedDayReason(day),
+            status: day.dayType.status
+          }))
+      });
     }
 
     function workerScore(worker, day, slot) {
@@ -2083,6 +2160,18 @@
         }
       }
 
+      if (state.demoDebug) {
+        console.info("[demo workers]", {
+          loaded: WORKERS.map(worker => worker.name),
+          active: workers.map(worker => worker.name),
+          onlyNight2: workers.filter(worker => worker.onlyNight2).map(worker => worker.name),
+          availableDays: workers.map(worker => ({
+            worker: worker.name,
+            weeks: { ...worker.availableDaysByWeek }
+          }))
+        });
+      }
+
       for (const day of days) {
         for (const worker of workers) {
           day.remainingByWorker[worker.name] = days
@@ -2230,6 +2319,23 @@
             warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
           }
         }
+      }
+
+      if (state.demoDebug) {
+        const assignments = Object.values(schedule).flat().map(entry => ({
+          week: entry.day.week,
+          day: `${entry.day.dayName} ${displayDate(entry.day.date)}`,
+          closed: Boolean(entry.closed),
+          first: entry.first?.name || "-",
+          second: entry.second?.name || "-",
+          reason: entry.closed ? closedDayReason(entry.day) : ""
+        }));
+        console.info("[scheduler]", {
+          weeks: weekConfigs.map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
+          workers: workers.map(worker => worker.name),
+          slots: days.filter(day => !day.closed).length * 2,
+          assignments
+        });
       }
 
       return { schedule, warnings: [...new Set(warnings)], workers };
@@ -2661,7 +2767,14 @@
     }
 
     async function loadDemo() {
+      console.info("[demo reset]", {
+        before: collectDemoDebugState()
+      });
       await resetApplicationState();
+      state.demoDebug = true;
+      console.info("[demo reset]", {
+        after: collectDemoDebugState()
+      });
       oneTimeRulesEl.value = "אלון חייב לקבל את יום ראשון הקרוב נייט 2 עם הוד";
 
       const demoRows = [
@@ -2704,6 +2817,7 @@
       renderWeekSettings();
       await refreshCalendarDays();
       statusBadgeEl.textContent = "נתוני דמו נטענו";
+      logDemoWorkersAndAvailability();
       saveState();
     }
 
