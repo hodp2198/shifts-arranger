@@ -31,7 +31,7 @@
 
     .actions {
       display: flex;
-      gap: 8px;
+      gap: 10px;
       flex-wrap: wrap;
       justify-content: flex-start;
     }
@@ -41,26 +41,34 @@
     }
 
     .btn {
-      min-height: 40px;
-      padding: 0 16px;
-      border-radius: 10px;
+      min-height: 46px;
+      padding: 0 20px;
+      border-radius: 15px;
       background: var(--accent);
       color: #fff;
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       white-space: nowrap;
-      transition: background .16s ease, opacity .16s ease;
+      transition: background .16s ease, opacity .16s ease, transform .16s ease, box-shadow .16s ease;
       font-weight: 700;
+      box-shadow: 0 8px 18px rgba(0, 113, 227, 0.16);
     }
 
     .btn:hover {
       background: var(--accent-dark);
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      transform: scale(.98);
     }
 
     .btn.secondary {
       background: var(--surface-strong);
       color: var(--text);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.045);
     }
 
     .btn.secondary:hover {
@@ -70,10 +78,16 @@
     .btn.danger {
       background: #f3dddd;
       color: var(--danger);
+      box-shadow: 0 6px 16px rgba(150, 45, 45, 0.08);
     }
 
     .btn.danger:hover {
       background: #ecd0d0;
+    }
+
+    .btn.subtle {
+      opacity: .82;
+      font-weight: 650;
     }
 
     .grid {
@@ -111,4 +125,3 @@
     .panel-body {
       padding: 20px;
     }
-

@@ -33,8 +33,9 @@
             <div class="intake-status" id="bulkExcelStatus"></div>
             <div class="intake-status" id="demoStatus"></div>
             <div class="mini-actions excel-actions">
-              <button class="btn secondary" id="quickReset" type="button">ניקוי</button>
+              <button class="btn secondary" id="quickReset" type="button">ניקוי סידור</button>
               <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
+              <button class="btn danger subtle" id="fullReset" type="button">איפוס מלא</button>
             </div>
           </div>
           <div class="employee-tools">
@@ -259,11 +260,10 @@
         };
       };
 
-      if (Array.isArray(saved?.workerDefs) && saved.workerDefs.length) {
-        const byName = new Map(saved.workerDefs.map(worker => [worker.name, normalizeWorker(worker)]));
-        return [...byName.values()];
+      if (Array.isArray(saved?.workerDefs)) {
+        return saved.workerDefs.map(normalizeWorker);
       }
-      return [];
+      return DEFAULT_WORKERS.map(normalizeWorker);
     }
 
     function isoDate(date) {
@@ -885,7 +885,27 @@
       importRowsMatrix(rows, bulkExcelStatusEl);
     }
 
-    async function resetApplicationState({ clearStorage = true, restoreDefaultWorkers = false } = {}) {
+    function getPersistentWorkerState() {
+      const stateByName = {};
+      document.querySelectorAll(".worker").forEach(card => {
+        syncWorkerShiftBounds(card);
+        stateByName[card.dataset.worker] = {
+          active: false,
+          onlyNight2: card.querySelector(".night2-only").checked,
+          min: card.querySelector(".min-shifts").value,
+          max: card.querySelector(".max-shifts").value,
+          constraints: "",
+          quickAvailability: ""
+        };
+      });
+      return stateByName;
+    }
+
+    async function resetApplicationState({ clearStorage = false, resetWorkers = false } = {}) {
+      const preservedWorkers = resetWorkers
+        ? []
+        : WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
+      const preservedWorkerState = resetWorkers ? {} : getPersistentWorkerState();
       if (clearStorage) {
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -900,10 +920,9 @@
       state.currentImportSource = null;
       state.calendar.warning = "";
 
-      WORKERS = restoreDefaultWorkers
-        ? DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }))
-        : [];
+      WORKERS = preservedWorkers;
       renderWorkers();
+      applyWorkerState(preservedWorkerState);
       startDateEl.value = "";
       weekCountEl.value = "2";
       bulkExcelNotesEl.value = "";
@@ -916,14 +935,22 @@
       manualOffDateEl.value = "";
       renderWeekSettings();
       await refreshCalendarDays();
+      updateOneTimeIndicators();
       statusBadgeEl.textContent = "נוקה";
       if (autosaveStatusEl) autosaveStatusEl.textContent = "התחלה נקייה";
     }
 
     async function quickResetState() {
-      const approved = window.confirm("פעולה זו תנקה נתונים שמורים ותתחיל סידור חדש");
+      const approved = window.confirm("פעולה זו תנקה את הסידור והאילוצים הזמניים, אבל תשמור עובדים והגדרות קבועות. להמשיך?");
       if (!approved) return;
       await resetApplicationState();
+      saveState();
+    }
+
+    async function fullResetState() {
+      const approved = window.confirm("פעולה זו תמחק את כל העובדים וההגדרות הקבועות. להמשיך?");
+      if (!approved) return;
+      await resetApplicationState({ clearStorage: true, resetWorkers: true });
       saveState();
     }
 
@@ -2916,11 +2943,10 @@
       console.info("[demo reset]", {
         before: collectDemoDebugState()
       });
-      await resetApplicationState();
-      WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
-      renderWorkers();
+      await resetApplicationState({ resetWorkers: true });
       state.demoMode = true;
       state.demoDebug = true;
+      state.currentImportSource = "demo";
       renderDemoSummary();
       console.info("[demo reset]", {
         after: collectDemoDebugState()
@@ -2947,6 +2973,14 @@
 
       bulkExcelNotesEl.value = `${demoRows.map(row => row.join("\t")).join("\n")}\nהערות\n${oneTimeRulesEl.value}`;
       importRowsMatrix(demoRows, bulkExcelStatusEl, { demo: true });
+      DEFAULT_WORKERS.forEach(worker => {
+        const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
+        if (!card) return;
+        const settings = normalizeWorkerSettings(worker);
+        card.querySelector(".min-shifts").value = settings.min;
+        card.querySelector(".max-shifts").value = settings.max;
+        card.querySelector(".night2-only").checked = settings.onlyNight2;
+      });
       const demoTrace = {
         reset: true,
         "weeks expected": 2,
@@ -2968,6 +3002,20 @@
       await refreshCalendarDays();
       statusBadgeEl.textContent = "נתוני דמו נטענו";
       logDemoWorkersAndAvailability();
+      const demoResult = generateSchedule();
+      const demoAssignments = Object.values(demoResult.schedule).flat().filter(entry => !entry.closed);
+      const demoErrors = [];
+      if (getWeekConfigs().length !== 2) demoErrors.push(`Expected 2 weeks, got ${getWeekConfigs().length}`);
+      if (!demoAssignments.length) demoErrors.push("No schedule assignments were generated");
+      console.info("[demo]", {
+        "loaded workers": WORKERS.map(worker => worker.name),
+        "loaded weeks": getWeekConfigs().map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
+        "generated schedule": `${demoAssignments.length}/${getScheduleDays().filter(day => !day.closed).length} days`,
+        errors: demoErrors
+      });
+      if (demoErrors.length) console.warn("[demo] failed validation", demoErrors);
+      await renderSchedule(demoResult);
+      statusBadgeEl.textContent = demoErrors.length ? "דמו נטען עם בעיות" : "דמו נטען";
       saveState();
     }
 
@@ -2990,6 +3038,7 @@
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
     document.getElementById("quickReset").addEventListener("click", quickResetState);
+    document.getElementById("fullReset").addEventListener("click", fullResetState);
     document.getElementById("loadDemoData").addEventListener("click", loadDemo);
     document.getElementById("buildWeeks").addEventListener("click", async () => {
       setDetectedWeeks([]);
