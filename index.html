@@ -416,17 +416,17 @@
       if (!line) return null;
 
       const year = getBaseStartDate()?.getFullYear() || new Date().getFullYear();
-      const dateMatches = [...line.matchAll(/(\d{1,2})[./](\d{1,2})/g)];
-      if (dateMatches.length) {
-        const day = Number(dateMatches[0][1]);
-        const month = Number(dateMatches[0][2]);
-        return new Date(year, month - 1, day, 12);
-      }
-
       const startWithEndMonth = line.match(/(\d{1,2})\s*[-–]\s*\d{1,2}[./](\d{1,2})/);
       if (startWithEndMonth) {
         const day = Number(startWithEndMonth[1]);
         const month = Number(startWithEndMonth[2]);
+        return new Date(year, month - 1, day, 12);
+      }
+
+      const dateMatches = [...line.matchAll(/(\d{1,2})[./](\d{1,2})/g)];
+      if (dateMatches.length) {
+        const day = Number(dateMatches[0][1]);
+        const month = Number(dateMatches[0][2]);
         return new Date(year, month - 1, day, 12);
       }
 
@@ -743,11 +743,10 @@
       importRowsMatrix(rows, bulkExcelStatusEl);
     }
 
-    async function quickResetState() {
-      const approved = window.confirm("פעולה זו תנקה נתונים שמורים ותתחיל סידור חדש");
-      if (!approved) return;
-
-      localStorage.removeItem(STORAGE_KEY);
+    async function resetApplicationState({ clearStorage = true } = {}) {
+      if (clearStorage) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
       Object.keys(state.special).forEach(key => delete state.special[key]);
       setDetectedWeeks([]);
       state.currentSchedule = null;
@@ -771,6 +770,12 @@
       await refreshCalendarDays();
       statusBadgeEl.textContent = "נוקה";
       if (autosaveStatusEl) autosaveStatusEl.textContent = "התחלה נקייה";
+    }
+
+    async function quickResetState() {
+      const approved = window.confirm("פעולה זו תנקה נתונים שמורים ותתחיל סידור חדש");
+      if (!approved) return;
+      await resetApplicationState();
     }
 
     function removeWorker(name) {
@@ -2615,27 +2620,19 @@
     }
 
     async function loadDemo() {
-      WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
-      renderWorkers();
-      setDetectedWeeks([]);
-      Object.keys(state.special).forEach(key => delete state.special[key]);
-      startDateEl.value = "";
-      weekCountEl.value = "2";
+      await resetApplicationState();
       oneTimeRulesEl.value = "אלון חייב לקבל את יום ראשון הקרוב נייט 2 עם הוד";
-      plainResultEl.value = "";
-      outputEl.innerHTML = "";
-      warningsEl.innerHTML = "";
 
       const demoRows = [
         ["הוד", "סיואר", "הדס", "דניאל", "שדא", "אשרקת", "יהלי", "נעמי", "אלון"],
-        ["תאריך: 31-6", "31.5 - 6.6", "שבוע של 31/05:", "תאריך- 31/5", "שבוע 31.05 - 06.06", "תאריך: 31-6", "31/5-6.6", "31/5-6.6", "31/5-6.6"],
+        ["31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6"],
         ["א' - רוצה", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", "א-"],
         ["ב' -", "ב' -", "ב' -", "ב' -", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", "ב- לא פנויה"],
         ["ג' -", "ג' -", "ג' - לא יכולה", "ג' -", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", "ג- לא פנויה"],
         ["ד' -", "ד' -", "ד' -", "ד' -", "ד' -", "ד' - לא יכולה", "ד- לא פנויה", "ד- לא פנויה", "ד- לא פנויה"],
         ["ה' - לא יכול", "ה' - רוצה", "ה' - לא יכולה", "ה' - לא יכול", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", "ה- לא פנויה"],
         ["שבת - יכול ורוצה", "שבת -", "שבת -", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת-", "שבת- לא פנויה"],
-        ["תאריך: 7-13", "7.6 - 13.6", "שבוע של 07/06:", "תאריך : 7-13/6", "שבוע 7.06-13.06", "תאריך: 7-13", "7/6-13/6", "7/6-13/6", "7/6-13/6"],
+        ["7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6"],
         ["א' -", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", "א- לא פנויה"],
         ["ב' -", "ב' - לא יכולה", "ב' -", "ב' - לא יכול", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", "ב- לא פנויה"],
         ["ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", "ג- לא פנויה"],
@@ -2646,11 +2643,17 @@
 
       bulkExcelNotesEl.value = `${demoRows.map(row => row.join("\t")).join("\n")}\nהערות\n${oneTimeRulesEl.value}`;
       importRowsMatrix(demoRows, bulkExcelStatusEl);
-      console.info("[demo]", {
+      const demoTrace = {
+        reset: true,
+        "weeks expected": 2,
         "weeks detected": getDetectedWeekConfigs().length,
         "weeks generated": getWeekConfigs().length,
-        source: getDetectedWeekConfigs().length ? "detectedWeeks" : "manualFallback"
-      });
+        "workers loaded": WORKERS.length
+      };
+      console.info("[demo]", demoTrace);
+      if (demoTrace["weeks generated"] !== 2) {
+        console.warn("[demo] unexpected week count", demoTrace);
+      }
 
       ["הדס", "יהלי"].forEach(name => {
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
