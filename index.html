@@ -247,6 +247,17 @@
       Object.entries(readSavedWorkerSettings()).forEach(([name, settings]) => {
         byName[name] = normalizeWorkerSettings(settings);
       });
+      if (saved?.demoMode) {
+        console.info("[settings]", {
+          loaded: Object.entries(byName).map(([worker, settings]) => ({
+            worker,
+            min: settings.min,
+            max: settings.max,
+            onlyNight2: settings.onlyNight2
+          }))
+        });
+        return byName;
+      }
       (saved?.workerDefs || []).forEach(worker => {
         if (!worker?.name || byName[worker.name]) return;
         byName[worker.name] = normalizeWorkerSettings(worker);
@@ -2878,7 +2889,9 @@
           onlyNight2: settings.onlyNight2
         };
       });
-      writeSavedWorkerSettings(workerSettingsByName);
+      if (!state.demoMode) {
+        writeSavedWorkerSettings(workerSettingsByName);
+      }
       const data = {
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
