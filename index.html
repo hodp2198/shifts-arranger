@@ -195,8 +195,25 @@
       }
     }
 
+    function getSavedOnlyNight2ByName(saved = readSavedData()) {
+      const byName = {};
+      Object.entries(saved?.onlyNight2ByName || {}).forEach(([name, value]) => {
+        byName[name] = Boolean(value);
+      });
+      (saved?.workerDefs || []).forEach(worker => {
+        if (!worker?.name || Object.prototype.hasOwnProperty.call(byName, worker.name)) return;
+        byName[worker.name] = Boolean(worker.onlyNight2);
+      });
+      (saved?.workers || []).forEach(worker => {
+        if (!worker?.name) return;
+        byName[worker.name] = Boolean(worker.onlyNight2);
+      });
+      return byName;
+    }
+
     function loadWorkerDefinitions() {
       const saved = readSavedData();
+      const onlyNight2ByName = getSavedOnlyNight2ByName(saved);
       const normalizeWorker = worker => {
         const name = worker.name;
         return {
@@ -204,7 +221,9 @@
           aliases: worker.aliases || [],
           min: Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
           max: Number.isFinite(Number(worker.max)) ? Number(worker.max) : 2,
-          onlyNight2: Boolean(worker.onlyNight2),
+          onlyNight2: Object.prototype.hasOwnProperty.call(onlyNight2ByName, name)
+            ? onlyNight2ByName[name]
+            : Boolean(worker.onlyNight2),
           fixedMin: Boolean(worker.fixedMin)
         };
       };
@@ -589,6 +608,7 @@
       const cleanName = String(name || "").trim();
       const normalized = normalizeWorkerName(cleanName);
       const candidates = [...existingWorkers, ...DEFAULT_WORKERS];
+      const savedOnlyNight2 = getSavedOnlyNight2ByName();
       const match = candidates.find(worker => (
         normalizeWorkerName(worker.name) === normalized
         || (worker.aliases || []).some(alias => normalizeWorkerName(alias) === normalized)
@@ -597,7 +617,10 @@
       if (match) {
         return {
           ...match,
-          aliases: match.aliases || []
+          aliases: match.aliases || [],
+          onlyNight2: Object.prototype.hasOwnProperty.call(savedOnlyNight2, match.name)
+            ? savedOnlyNight2[match.name]
+            : Boolean(match.onlyNight2)
         };
       }
 
@@ -688,8 +711,12 @@
       renderWorkers();
       const importState = {};
       importedDefinitions.forEach(worker => {
+        const existingWorkerState = existingState[worker.name] || {};
         importState[worker.name] = {
-          ...(existingState[worker.name] || {}),
+          ...existingWorkerState,
+          min: existingWorkerState.min ?? worker.min ?? 1,
+          max: existingWorkerState.max ?? worker.max ?? 2,
+          onlyNight2: existingWorkerState.onlyNight2 ?? worker.onlyNight2 ?? false,
           active: false,
           constraints: "",
           quickAvailability: ""
@@ -2538,6 +2565,19 @@
         const date = parseUiDate(value, startDate?.getFullYear());
         return date ? isoDate(date) : "";
       };
+      const workerCards = [...document.querySelectorAll(".worker")];
+      const liveWorkerState = new Map(workerCards.map(card => [card.dataset.worker, {
+        active: card.querySelector(".active-worker").checked,
+        onlyNight2: card.querySelector(".night2-only").checked,
+        min: card.querySelector(".min-shifts").value,
+        max: card.querySelector(".max-shifts").value,
+        constraints: card.querySelector(".constraints").value,
+        quickAvailability: card.querySelector(".quick-availability-input").value
+      }]));
+      const onlyNight2ByName = {};
+      liveWorkerState.forEach((workerState, name) => {
+        onlyNight2ByName[name] = Boolean(workerState.onlyNight2);
+      });
       const data = {
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
@@ -2549,26 +2589,27 @@
           start: isoDate(week.start),
           end: isoDate(week.end)
         })),
-        workerDefs: WORKERS.map(worker => ({
-          name: worker.name,
-          aliases: worker.aliases || [],
-          min: Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
-          max: Number.isFinite(Number(worker.max)) ? Number(worker.max) : 2,
-          onlyNight2: Boolean(worker.onlyNight2),
-          fixedMin: Boolean(worker.fixedMin)
-        })),
+        onlyNight2ByName,
+        workerDefs: WORKERS.map(worker => {
+          const live = liveWorkerState.get(worker.name);
+          return {
+            name: worker.name,
+            aliases: worker.aliases || [],
+            min: Number.isFinite(Number(live?.min)) ? Number(live.min) : Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
+            max: Number.isFinite(Number(live?.max)) ? Number(live.max) : Number.isFinite(Number(worker.max)) ? Number(worker.max) : 2,
+            onlyNight2: Object.prototype.hasOwnProperty.call(onlyNight2ByName, worker.name)
+              ? onlyNight2ByName[worker.name]
+              : Boolean(worker.onlyNight2),
+            fixedMin: Boolean(worker.fixedMin)
+          };
+        }),
         weeks: [...document.querySelectorAll(".week-row")].map(row => ({
           start: saveDateValue(row.querySelector(".week-start").value),
           end: saveDateValue(row.querySelector(".week-end").value)
         })),
-        workers: [...document.querySelectorAll(".worker")].map(card => ({
+        workers: workerCards.map(card => ({
           name: card.dataset.worker,
-          active: card.querySelector(".active-worker").checked,
-          onlyNight2: card.querySelector(".night2-only").checked,
-          min: card.querySelector(".min-shifts").value,
-          max: card.querySelector(".max-shifts").value,
-          constraints: card.querySelector(".constraints").value,
-          quickAvailability: card.querySelector(".quick-availability-input").value
+          ...liveWorkerState.get(card.dataset.worker)
         }))
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -2790,6 +2831,11 @@
         }
         saveState();
       }
+    });
+
+    document.addEventListener("change", event => {
+      if (!event.target.closest(".worker")) return;
+      saveState();
     });
 
     renderWorkers();
