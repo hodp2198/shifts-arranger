@@ -30,12 +30,12 @@
             <label for="bulkExcelNotes">הדבקת הערות מאקסל</label>
             <div class="intake-status">העתק מאקסל טווח שבו השורה הראשונה היא שמות עובדים, והעמודות הן האילוצים.</div>
             <textarea id="bulkExcelNotes" placeholder="מדביקים כאן טווח שהועתק מאקסל"></textarea>
-            <div class="intake-status" id="bulkExcelStatus"></div>
-            <div class="intake-status" id="demoStatus"></div>
             <div class="mini-actions excel-actions">
               <button class="btn secondary" id="quickReset" type="button">ניקוי סידור</button>
               <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
             </div>
+            <div class="intake-status" id="bulkExcelStatus"></div>
+            <div class="intake-status" id="demoStatus"></div>
           </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
@@ -2792,35 +2792,39 @@
               <div class="health-details-title">פרטי מצב הסידור</div>
               ${warningGroups.length
                 ? warningGroups.map(renderWarningGroup).join("")
-                : `<div class="health-detail good">🟢 כל הימים מולאו בלי נקודות לבדיקה.</div>`}
+                : `<div class="health-detail good">🟢 כל הימים מולאו בלי בעיות.</div>`}
             </div>
           </details>
         `;
       };
       const canUseAlternativeWorker = (worker, day, slot, otherName) => (
         worker
-        && worker.max > 0
         && worker.name !== otherName
         && !worker.blocked.has(day.iso)
         && worker.submitted?.has(day.iso)
         && !(slot === 1 && worker.onlyNight2)
       );
+      const getAlternativeSlotCandidates = (entry, slot, otherName = null) => workers
+        .filter(worker => canUseAlternativeWorker(worker, entry.day, slot, otherName))
+        .sort((a, b) => a.name.localeCompare(b.name, "he"));
       const getAlternativePairs = entry => {
-        if (entry.closed || !entry.first || !entry.second) return [];
-        const originalFirst = entry.first;
-        const originalSecond = entry.second;
+        if (entry.closed) return [];
+        const originalFirst = entry.first || null;
+        const originalSecond = entry.second || null;
         const baseline = new Map(workers.map(worker => [worker.name, {
           count: worker.weekCounts[entry.day.week] || 0,
           min: getWorkerMin(worker),
-          max: worker.max
+          max: worker.max,
+          slot1: worker.slotCounts?.[1] || 0,
+          slot2: worker.slotCounts?.[2] || 0
         }]));
         const options = [];
 
-        for (const first of workers) {
+        for (const first of getAlternativeSlotCandidates(entry, 1)) {
           if (!canUseAlternativeWorker(first, entry.day, 1, null)) continue;
-          for (const second of workers) {
+          for (const second of getAlternativeSlotCandidates(entry, 2, first.name)) {
             if (!canUseAlternativeWorker(second, entry.day, 2, first.name)) continue;
-            if (first.name === originalFirst.name && second.name === originalSecond.name) continue;
+            if (first.name === originalFirst?.name && second.name === originalSecond?.name) continue;
 
             entry.first = first;
             entry.second = second;
@@ -2837,6 +2841,12 @@
               if (after < before.min && after < before.count) {
                 severity = "warn";
                 impact.push(`⚠ ${worker.name} ירד מתחת למינימום`);
+              }
+              const beforeSlotDiff = Math.abs((before.slot1 || 0) - (before.slot2 || 0));
+              const afterSlotDiff = Math.abs((worker.slotCounts?.[1] || 0) - (worker.slotCounts?.[2] || 0));
+              if (afterSlotDiff > beforeSlotDiff + 1) {
+                severity = "warn";
+                impact.push(`⚠ ${worker.name} יהיה פחות מאוזן בין נייט 1/2`);
               }
             });
             if (!impact.length) impact.push("✓ תקין");
@@ -2856,8 +2866,11 @@
             || a.second.localeCompare(b.second, "he"));
       };
       const renderAlternativePanel = (entry, firstName, secondName) => {
+        if (entry.closed) return "";
+        const n1Candidates = getAlternativeSlotCandidates(entry, 1).map(worker => workerChip(worker.name)).join("");
+        const n2Candidates = getAlternativeSlotCandidates(entry, 2).map(worker => workerChip(worker.name)).join("");
         const options = getAlternativePairs(entry);
-        if (!options.length) return "";
+        if (!options.length && !n1Candidates && !n2Candidates) return "";
         return `
           <details class="alternatives-panel">
             <summary title="אפשרויות שיבוץ" aria-label="אפשרויות שיבוץ">↺</summary>
@@ -2867,8 +2880,12 @@
                 <span>נוכחי:</span>
                 <span>✓ ${workerChip(firstName)} <span>|</span> ${workerChip(secondName)}</span>
               </div>
+              <div class="alternative-slots">
+                <div><strong>נייט 1:</strong> ${n1Candidates || "-"}</div>
+                <div><strong>נייט 2:</strong> ${n2Candidates || "-"}</div>
+              </div>
               <div class="alternative-subtitle">חלופות</div>
-              ${options.map(option => `
+              ${options.length ? options.map(option => `
                 <div class="alternative-option ${option.severity}">
                   <div>○ ${workerChip(option.first)} <span>|</span> ${workerChip(option.second)} <span class="alternative-status">${option.severity === "good" ? "✓ תקין" : "⚠ השפעה"}</span></div>
                   <div class="alternative-impact">
@@ -2880,7 +2897,7 @@
                   </div>
                   <button class="btn secondary apply-alternative" type="button" data-iso="${entry.day.iso}" data-first="${option.first}" data-second="${option.second}">החלף שיבוץ</button>
                 </div>
-              `).join("")}
+              `).join("") : `<div class="alternative-impact">אין זוג חלופי מלא שעומד בכללי נייט 1/2 ואי-כפילות.</div>`}
             </div>
           </details>
         `;
@@ -2960,7 +2977,7 @@
       }
 
       warningsEl.innerHTML = renderScheduleHealth();
-      statusBadgeEl.textContent = warnings.length ? "נוצר עם נקודות לבדיקה" : "נוצר בהצלחה";
+      statusBadgeEl.textContent = warnings.length ? "נוצר עם מצב לבדיקה" : "נוצר בהצלחה";
 
       outputEl.innerHTML = html;
       plainResultEl.value = plain.join("\n").trim();
