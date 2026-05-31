@@ -87,6 +87,10 @@
       line-height: 1.5;
     }
 
+    .intake-status:empty {
+      display: none;
+    }
+
     .import-summary {
       display: flex;
       flex-wrap: wrap;
@@ -729,7 +733,7 @@
 
     .excel-actions {
       justify-content: flex-end;
-      margin-top: 8px;
+      margin-top: 0;
     }
 
     .copy-area {
