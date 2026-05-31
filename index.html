@@ -31,6 +31,7 @@
             <div class="intake-status">העתק מאקסל טווח שבו השורה הראשונה היא שמות עובדים, והעמודות הן האילוצים.</div>
             <textarea id="bulkExcelNotes" placeholder="מדביקים כאן טווח שהועתק מאקסל"></textarea>
             <div class="intake-status" id="bulkExcelStatus"></div>
+            <div class="intake-status" id="demoStatus"></div>
             <div class="mini-actions excel-actions">
               <button class="btn secondary" id="quickReset" type="button">ניקוי מהיר</button>
               <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
@@ -163,6 +164,7 @@
       currentWarnings: [],
       shuffleSeed: 0,
       demoDebug: false,
+      demoMode: false,
       calendar: {
         warning: ""
       }
@@ -180,6 +182,7 @@
     const statusBadgeEl = document.getElementById("statusBadge");
     const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
     const bulkExcelStatusEl = document.getElementById("bulkExcelStatus");
+    const demoStatusEl = document.getElementById("demoStatus");
     const oneTimeRulesEl = document.getElementById("oneTimeRules");
     const manualOffDateEl = document.getElementById("manualOffDate");
     const manualOffLabelEl = document.getElementById("manualOffLabel");
@@ -584,6 +587,7 @@
             <div class="worker-name">${worker.name}</div>
             <span class="worker-meta">${worker.min}/${worker.max}</span>
             <span class="quick-indicator" hidden>Quick</span>
+            <span class="one-time-indicator" hidden>חד־פעמי</span>
             <label class="toggle-line">
               <input type="checkbox" class="night2-only" ${worker.onlyNight2 ? "checked" : ""}>
               רק נייט 2
@@ -690,6 +694,7 @@
         card.querySelector(".quick-availability-input").value = saved.quickAvailability || "";
         updateQuickIndicator(card);
       }
+      updateOneTimeIndicators();
     }
 
     function syncWorkerShiftBounds(card, changedInput = null) {
@@ -718,6 +723,54 @@
       if (indicator) indicator.hidden = !quickText;
     }
 
+    function clearDemoMode() {
+      state.demoMode = false;
+      state.demoDebug = false;
+      if (demoStatusEl) demoStatusEl.innerHTML = "";
+    }
+
+    function renderDemoSummary() {
+      if (!demoStatusEl) return;
+      demoStatusEl.innerHTML = `
+        <div class="demo-summary">
+          <strong>נתוני הדמו כוללים:</strong>
+          <span>2 שבועות</span>
+          <span>עובדים רגילים</span>
+          <span>עובדים רק נייט 2</span>
+          <span>חסימות</span>
+          <span>העדפות</span>
+          <span>הערה חד־פעמית</span>
+          <span>עובד שמופעל רק בגלל הערה חד־פעמית</span>
+          <div class="demo-note">אלון נוסף לדמו בגלל הערה חד־פעמית: אלון חייב לקבל את יום ראשון הקרוב נייט 2 עם הוד</div>
+        </div>
+      `;
+    }
+
+    function getOneTimeOnlyNames() {
+      const text = oneTimeRulesEl.value || "";
+      if (!text.trim()) return new Set();
+      const names = new Set();
+      WORKERS.forEach(worker => {
+        const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
+        const constraints = card?.querySelector(".constraints")?.value.trim() || "";
+        const quick = card?.querySelector(".quick-availability-input")?.value.trim() || "";
+        const mentionedAsHod = worker.name === "הוד" && (/\bאני\b|איתי|אתי/.test(text));
+        const mentioned = text.includes(worker.name) || mentionedAsHod;
+        if (mentioned && !hasMeaningfulWorkerInput(constraints) && !hasQuickAvailability(quick)) {
+          names.add(worker.name);
+        }
+      });
+      return names;
+    }
+
+    function updateOneTimeIndicators() {
+      const oneTimeNames = getOneTimeOnlyNames();
+      document.querySelectorAll(".worker").forEach(card => {
+        const indicator = card.querySelector(".one-time-indicator");
+        if (indicator) indicator.hidden = !oneTimeNames.has(card.dataset.worker);
+      });
+    }
+
     function addWorker() {
       const input = document.getElementById("newWorkerName");
       const name = input.value.trim();
@@ -739,7 +792,8 @@
       saveState();
     }
 
-    function importRowsMatrix(rows, statusEl) {
+    function importRowsMatrix(rows, statusEl, options = {}) {
+      if (!options.demo) clearDemoMode();
       const headers = rows[0] || [];
       let imported = 0;
       const issues = [];
@@ -806,6 +860,7 @@
         issues.push(`עובדים שלא הופיעו בייבוא החדש נוקו: ${removedWorkers.join(", ")}.`);
       }
       renderImportSummary({ imported, importedWeeks, issues });
+      updateOneTimeIndicators();
       saveState();
     }
 
@@ -837,6 +892,7 @@
       state.currentWarnings = [];
       state.shuffleSeed = 0;
       state.demoDebug = false;
+      state.demoMode = false;
       state.calendar.warning = "";
 
       WORKERS = DEFAULT_WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
@@ -845,6 +901,7 @@
       weekCountEl.value = "2";
       bulkExcelNotesEl.value = "";
       bulkExcelStatusEl.textContent = "";
+      if (demoStatusEl) demoStatusEl.innerHTML = "";
       oneTimeRulesEl.value = "";
       plainResultEl.value = "";
       outputEl.innerHTML = "";
@@ -1149,6 +1206,7 @@
     function renderImportSummary({ imported, importedWeeks, issues = [] }) {
       const counts = countImportedConstraints();
       const rows = [
+        state.demoMode ? "✓ מצב דמו" : "✓ נתוני אמת מיובאים",
         `✓ זוהו ${imported} עובדים`,
         `✓ זוהו ${importedWeeks || getWeekConfigs().length || 0} שבועות`,
         `✓ זוהו ${counts.blocked} חסימות`,
@@ -2755,6 +2813,7 @@
         bulkExcelNotes: bulkExcelNotesEl.value,
         oneTimeRules: oneTimeRulesEl.value,
         plainResult: plainResultEl.value,
+        demoMode: state.demoMode,
         special: state.special,
         detectedWeeks: getDetectedWeekConfigs().map(week => ({
           start: isoDate(week.start),
@@ -2805,6 +2864,9 @@
         bulkExcelNotesEl.value = data.bulkExcelNotes || "";
         oneTimeRulesEl.value = data.oneTimeRules || "";
         plainResultEl.value = data.plainResult || "";
+        state.demoMode = Boolean(data.demoMode);
+        if (state.demoMode) renderDemoSummary();
+        else clearDemoMode();
         Object.entries(data.special || {}).forEach(([iso, item]) => {
           state.special[iso] = item;
         });
@@ -2831,6 +2893,7 @@
           workersState[name] = settings;
         });
         applyWorkerState(workersState);
+        updateOneTimeIndicators();
         if (data.bulkExcelNotes) {
           renderImportSummary({ imported: (data.workers || []).filter(worker => worker.constraints || worker.quickAvailability).length, importedWeeks: getDetectedWeekConfigs().length });
         }
@@ -2844,7 +2907,9 @@
         before: collectDemoDebugState()
       });
       await resetApplicationState();
+      state.demoMode = true;
       state.demoDebug = true;
+      renderDemoSummary();
       console.info("[demo reset]", {
         after: collectDemoDebugState()
       });
@@ -2853,23 +2918,23 @@
       const demoRows = [
         ["הוד", "סיואר", "הדס", "דניאל", "שדא", "אשרקת", "יהלי", "נעמי", "אלון"],
         ["31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6"],
-        ["א' - רוצה", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", "א-"],
-        ["ב' -", "ב' -", "ב' -", "ב' -", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", "ב- לא פנויה"],
-        ["ג' -", "ג' -", "ג' - לא יכולה", "ג' -", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", "ג- לא פנויה"],
-        ["ד' -", "ד' -", "ד' -", "ד' -", "ד' -", "ד' - לא יכולה", "ד- לא פנויה", "ד- לא פנויה", "ד- לא פנויה"],
-        ["ה' - לא יכול", "ה' - רוצה", "ה' - לא יכולה", "ה' - לא יכול", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", "ה- לא פנויה"],
-        ["שבת - יכול ורוצה", "שבת -", "שבת -", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת-", "שבת- לא פנויה"],
+        ["א' - רוצה", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", ""],
+        ["ב' -", "ב' -", "ב' -", "ב' -", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", ""],
+        ["ג' -", "ג' -", "ג' - לא יכולה", "ג' -", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", ""],
+        ["ד' -", "ד' -", "ד' -", "ד' -", "ד' -", "ד' - לא יכולה", "ד- לא פנויה", "ד- לא פנויה", ""],
+        ["ה' - לא יכול", "ה' - רוצה", "ה' - לא יכולה", "ה' - לא יכול", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", ""],
+        ["שבת - יכול ורוצה", "שבת -", "שבת -", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת-", ""],
         ["7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6"],
-        ["א' -", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", "א- לא פנויה"],
-        ["ב' -", "ב' - לא יכולה", "ב' -", "ב' - לא יכול", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", "ב- לא פנויה"],
-        ["ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", "ג- לא פנויה"],
-        ["ד' -", "ד' -", "ד' - לא יכולה", "ד' -", "ד' - לא יכולה", "ד' -", "ד- לא פנויה", "ד- לא פנויה", "ד- לא פנויה"],
-        ["ה' -", "ה' -", "ה' - לא יכולה", "ה' -", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", "ה- לא פנויה"],
-        ["שבת - לא יכול", "שבת -", "שבת - לא יכולה", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת- לא פנויה", "שבת- לא פנויה"]
+        ["א' -", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", ""],
+        ["ב' -", "ב' - לא יכולה", "ב' -", "ב' - לא יכול", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", ""],
+        ["ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", ""],
+        ["ד' -", "ד' -", "ד' - לא יכולה", "ד' -", "ד' - לא יכולה", "ד' -", "ד- לא פנויה", "ד- לא פנויה", ""],
+        ["ה' -", "ה' -", "ה' - לא יכולה", "ה' -", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", ""],
+        ["שבת - לא יכול", "שבת -", "שבת - לא יכולה", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת- לא פנויה", ""]
       ];
 
       bulkExcelNotesEl.value = `${demoRows.map(row => row.join("\t")).join("\n")}\nהערות\n${oneTimeRulesEl.value}`;
-      importRowsMatrix(demoRows, bulkExcelStatusEl);
+      importRowsMatrix(demoRows, bulkExcelStatusEl, { demo: true });
       const demoTrace = {
         reset: true,
         "weeks expected": 2,
@@ -3012,6 +3077,9 @@
           if (hasQuickAvailability(event.target.value)) {
             card.querySelector(".active-worker").checked = true;
           }
+        }
+        if (event.target.closest(".worker") || event.target === oneTimeRulesEl) {
+          updateOneTimeIndicators();
         }
         if (event.target.closest(".week-row")) await refreshCalendarDays();
         if (event.target === startDateEl || event.target === weekCountEl) {
