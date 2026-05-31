@@ -196,35 +196,61 @@
       }
     }
 
-    function getSavedOnlyNight2ByName(saved = readSavedData()) {
+    function clampShiftValue(value, fallback = 0) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return fallback;
+      return Math.min(6, Math.max(0, Math.round(number)));
+    }
+
+    function normalizeWorkerSettings(settings = {}, fallback = {}) {
+      let min = clampShiftValue(settings.minShiftsPerWeek ?? settings.min ?? fallback.min, clampShiftValue(fallback.min, 1));
+      let max = clampShiftValue(settings.maxShiftsPerWeek ?? settings.max ?? fallback.max, clampShiftValue(fallback.max, 2));
+      if (min > max) max = min;
+      return {
+        min,
+        max,
+        onlyNight2: Boolean(settings.onlyNight2 ?? fallback.onlyNight2)
+      };
+    }
+
+    function getSavedWorkerSettingsByName(saved = readSavedData()) {
       const byName = {};
-      Object.entries(saved?.onlyNight2ByName || {}).forEach(([name, value]) => {
-        byName[name] = Boolean(value);
-      });
       (saved?.workerDefs || []).forEach(worker => {
-        if (!worker?.name || Object.prototype.hasOwnProperty.call(byName, worker.name)) return;
-        byName[worker.name] = Boolean(worker.onlyNight2);
+        if (!worker?.name || byName[worker.name]) return;
+        byName[worker.name] = normalizeWorkerSettings(worker);
       });
       (saved?.workers || []).forEach(worker => {
         if (!worker?.name) return;
-        byName[worker.name] = Boolean(worker.onlyNight2);
+        byName[worker.name] = normalizeWorkerSettings(worker, byName[worker.name]);
+      });
+      Object.entries(saved?.workerSettingsByName || {}).forEach(([name, settings]) => {
+        byName[name] = normalizeWorkerSettings(settings, byName[name]);
+      });
+      Object.entries(saved?.onlyNight2ByName || {}).forEach(([name, value]) => {
+        byName[name] = normalizeWorkerSettings({ ...(byName[name] || {}), onlyNight2: value }, byName[name]);
       });
       return byName;
     }
 
+    function getSavedOnlyNight2ByName(saved = readSavedData()) {
+      return Object.fromEntries(
+        Object.entries(getSavedWorkerSettingsByName(saved)).map(([name, settings]) => [name, Boolean(settings.onlyNight2)])
+      );
+    }
+
     function loadWorkerDefinitions() {
       const saved = readSavedData();
-      const onlyNight2ByName = getSavedOnlyNight2ByName(saved);
+      const settingsByName = getSavedWorkerSettingsByName(saved);
       const normalizeWorker = worker => {
         const name = worker.name;
+        const savedSettings = settingsByName[name];
+        const settings = normalizeWorkerSettings(savedSettings, worker);
         return {
           name,
           aliases: worker.aliases || [],
-          min: Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
-          max: Number.isFinite(Number(worker.max)) ? Number(worker.max) : 2,
-          onlyNight2: Object.prototype.hasOwnProperty.call(onlyNight2ByName, name)
-            ? onlyNight2ByName[name]
-            : Boolean(worker.onlyNight2),
+          min: settings.min,
+          max: settings.max,
+          onlyNight2: settings.onlyNight2,
           fixedMin: Boolean(worker.fixedMin)
         };
       };
@@ -615,19 +641,20 @@
       const cleanName = String(name || "").trim();
       const normalized = normalizeWorkerName(cleanName);
       const candidates = [...existingWorkers, ...DEFAULT_WORKERS];
-      const savedOnlyNight2 = getSavedOnlyNight2ByName();
+      const savedSettingsByName = getSavedWorkerSettingsByName();
       const match = candidates.find(worker => (
         normalizeWorkerName(worker.name) === normalized
         || (worker.aliases || []).some(alias => normalizeWorkerName(alias) === normalized)
       ));
 
       if (match) {
+        const settings = normalizeWorkerSettings(savedSettingsByName[match.name], match);
         return {
           ...match,
           aliases: match.aliases || [],
-          onlyNight2: Object.prototype.hasOwnProperty.call(savedOnlyNight2, match.name)
-            ? savedOnlyNight2[match.name]
-            : Boolean(match.onlyNight2)
+          min: settings.min,
+          max: settings.max,
+          onlyNight2: settings.onlyNight2
         };
       }
 
@@ -637,6 +664,7 @@
     function getCurrentWorkerState() {
       const data = {};
       document.querySelectorAll(".worker").forEach(card => {
+        syncWorkerShiftBounds(card);
         data[card.dataset.worker] = {
           active: card.querySelector(".active-worker").checked,
           onlyNight2: card.querySelector(".night2-only").checked,
@@ -653,14 +681,35 @@
       for (const [name, saved] of Object.entries(stateByName || {})) {
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
         if (!card) continue;
+        const settings = normalizeWorkerSettings(saved, { min: 1, max: 2, onlyNight2: false });
         card.querySelector(".active-worker").checked = Boolean(saved.active);
-        card.querySelector(".night2-only").checked = Boolean(saved.onlyNight2);
-        card.querySelector(".min-shifts").value = saved.min ?? 1;
-        card.querySelector(".max-shifts").value = saved.max ?? 2;
+        card.querySelector(".night2-only").checked = Boolean(settings.onlyNight2);
+        card.querySelector(".min-shifts").value = settings.min;
+        card.querySelector(".max-shifts").value = settings.max;
         card.querySelector(".constraints").value = saved.constraints || "";
         card.querySelector(".quick-availability-input").value = saved.quickAvailability || "";
         updateQuickIndicator(card);
       }
+    }
+
+    function syncWorkerShiftBounds(card, changedInput = null) {
+      if (!card) return;
+      const minEl = card.querySelector(".min-shifts");
+      const maxEl = card.querySelector(".max-shifts");
+      const previousMin = clampShiftValue(minEl.value, 1);
+      const previousMax = clampShiftValue(maxEl.value, 2);
+      let min = previousMin;
+      let max = previousMax;
+      if (min > max) {
+        if (changedInput?.classList.contains("max-shifts")) {
+          min = max;
+        } else {
+          max = min;
+        }
+        statusBadgeEl.textContent = "מינימום לא יכול להיות גדול מהמקסימום";
+      }
+      minEl.value = min;
+      maxEl.value = max;
     }
 
     function updateQuickIndicator(card) {
@@ -1118,9 +1167,15 @@
 
     function getWorkersData() {
       return [...document.querySelectorAll(".worker")].map(card => {
+        syncWorkerShiftBounds(card);
         const name = card.dataset.worker;
         const constraintsText = card.querySelector(".constraints").value.trim();
         const quickText = card.querySelector(".quick-availability-input").value.trim();
+        const settings = normalizeWorkerSettings({
+          min: card.querySelector(".min-shifts").value,
+          max: card.querySelector(".max-shifts").value,
+          onlyNight2: card.querySelector(".night2-only").checked
+        });
         const parsedConstraints = parseConstraints(constraintsText);
         const quickAvailability = parseQuickAvailability(quickText);
         quickAvailability.blocked.forEach(iso => parsedConstraints.blocked.add(iso));
@@ -1133,9 +1188,9 @@
           name,
           active: (manuallyActive && hasWorkerInput) || oneTimeActive,
           oneTimeOnly: oneTimeActive && !hasWorkerInput,
-          onlyNight2: card.querySelector(".night2-only").checked,
-          min: Number(card.querySelector(".min-shifts").value) || 0,
-          max: Number.isFinite(Number(card.querySelector(".max-shifts").value)) ? Number(card.querySelector(".max-shifts").value) : 1,
+          onlyNight2: settings.onlyNight2,
+          min: settings.min,
+          max: settings.max,
           blocked: parsedConstraints.blocked,
           preferred: parsedConstraints.preferred,
           submitted: parsedConstraints.submitted,
@@ -2672,6 +2727,7 @@
         return date ? isoDate(date) : "";
       };
       const workerCards = [...document.querySelectorAll(".worker")];
+      workerCards.forEach(card => syncWorkerShiftBounds(card));
       const liveWorkerState = new Map(workerCards.map(card => [card.dataset.worker, {
         active: card.querySelector(".active-worker").checked,
         onlyNight2: card.querySelector(".night2-only").checked,
@@ -2683,6 +2739,15 @@
       const onlyNight2ByName = {};
       liveWorkerState.forEach((workerState, name) => {
         onlyNight2ByName[name] = Boolean(workerState.onlyNight2);
+      });
+      const workerSettingsByName = {};
+      liveWorkerState.forEach((workerState, name) => {
+        const settings = normalizeWorkerSettings(workerState);
+        workerSettingsByName[name] = {
+          minShiftsPerWeek: settings.min,
+          maxShiftsPerWeek: settings.max,
+          onlyNight2: settings.onlyNight2
+        };
       });
       const data = {
         startDate: startDate ? isoDate(startDate) : "",
@@ -2696,16 +2761,16 @@
           end: isoDate(week.end)
         })),
         onlyNight2ByName,
+        workerSettingsByName,
         workerDefs: WORKERS.map(worker => {
           const live = liveWorkerState.get(worker.name);
+          const settings = normalizeWorkerSettings(live, worker);
           return {
             name: worker.name,
             aliases: worker.aliases || [],
-            min: Number.isFinite(Number(live?.min)) ? Number(live.min) : Number.isFinite(Number(worker.min)) ? Number(worker.min) : 1,
-            max: Number.isFinite(Number(live?.max)) ? Number(live.max) : Number.isFinite(Number(worker.max)) ? Number(worker.max) : 2,
-            onlyNight2: Object.prototype.hasOwnProperty.call(onlyNight2ByName, worker.name)
-              ? onlyNight2ByName[worker.name]
-              : Boolean(worker.onlyNight2),
+            min: settings.min,
+            max: settings.max,
+            onlyNight2: settings.onlyNight2,
             fixedMin: Boolean(worker.fixedMin)
           };
         }),
@@ -2754,9 +2819,17 @@
           renderWeekSettings();
         }
         const workersState = {};
+        const savedSettingsByName = getSavedWorkerSettingsByName(data);
         for (const saved of data.workers || []) {
-          workersState[saved.name] = saved;
+          workersState[saved.name] = {
+            ...saved,
+            ...(savedSettingsByName[saved.name] || {})
+          };
         }
+        Object.entries(savedSettingsByName).forEach(([name, settings]) => {
+          if (workersState[name]) return;
+          workersState[name] = settings;
+        });
         applyWorkerState(workersState);
         if (data.bulkExcelNotes) {
           renderImportSummary({ imported: (data.workers || []).filter(worker => worker.constraints || worker.quickAvailability).length, importedWeeks: getDetectedWeekConfigs().length });
@@ -2927,6 +3000,9 @@
         || event.target === oneTimeRulesEl;
 
       if (shouldAutoSave) {
+        if (event.target.classList.contains("min-shifts") || event.target.classList.contains("max-shifts")) {
+          syncWorkerShiftBounds(event.target.closest(".worker"), event.target);
+        }
         if (event.target.classList.contains("constraints") && event.target.value.trim()) {
           event.target.closest(".worker").querySelector(".active-worker").checked = true;
         }
@@ -2949,6 +3025,9 @@
 
     document.addEventListener("change", event => {
       if (!event.target.closest(".worker")) return;
+      if (event.target.classList.contains("min-shifts") || event.target.classList.contains("max-shifts")) {
+        syncWorkerShiftBounds(event.target.closest(".worker"), event.target);
+      }
       saveState();
     });
 
