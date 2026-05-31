@@ -149,6 +149,7 @@
       "נעמי": ["#fff0ee", "#85403b", "#efc4bf"],
       "אלון": ["#eef6e8", "#4e672e", "#cbdcb8"]
     };
+    const FALLBACK_WORKER_COLOR = ["#eef3f1", "#263b34", "#c9d8d1"];
     const LEARNED_PAIR_PREFERENCES = [
       { dayIndex: 0, names: ["סיואר", "שדא"], bonus: 420 },
       { dayIndex: 1, names: ["סיואר", "הדס"], bonus: 500 },
@@ -220,7 +221,8 @@
           worker,
           min: settings.minShiftsPerWeek,
           max: settings.maxShiftsPerWeek,
-          onlyNight2: settings.onlyNight2
+          onlyNight2: settings.onlyNight2,
+          color: settings.color
         }))
       });
     }
@@ -238,8 +240,28 @@
       return {
         min,
         max,
-        onlyNight2: Boolean(settings.onlyNight2 ?? fallback.onlyNight2)
+        onlyNight2: Boolean(settings.onlyNight2 ?? fallback.onlyNight2),
+        color: normalizeWorkerColor(settings.color || fallback.color)
       };
+    }
+
+    function normalizeWorkerColor(color) {
+      return Array.isArray(color) && color.length >= 3 ? color.slice(0, 3) : null;
+    }
+
+    function getWorkerColor(name, fallbackColor = null) {
+      const saved = readSavedWorkerSettings();
+      return normalizeWorkerColor(saved[name]?.color)
+        || normalizeWorkerColor(fallbackColor)
+        || normalizeWorkerColor(WORKER_COLORS[name])
+        || FALLBACK_WORKER_COLOR;
+    }
+
+    function shiftOptions(selected) {
+      const value = clampShiftValue(selected, 0);
+      return Array.from({ length: 7 }, (_, index) => (
+        `<option value="${index}" ${index === value ? "selected" : ""}>${index}</option>`
+      )).join("");
     }
 
     function getSavedWorkerSettingsByName(saved = readSavedData()) {
@@ -253,7 +275,8 @@
             worker,
             min: settings.min,
             max: settings.max,
-            onlyNight2: settings.onlyNight2
+            onlyNight2: settings.onlyNight2,
+            color: settings.color
           }))
         });
         return byName;
@@ -277,7 +300,8 @@
           worker,
           min: settings.min,
           max: settings.max,
-          onlyNight2: settings.onlyNight2
+          onlyNight2: settings.onlyNight2,
+          color: settings.color
         }))
       });
       return byName;
@@ -302,6 +326,7 @@
           min: settings.min,
           max: settings.max,
           onlyNight2: settings.onlyNight2,
+          color: settings.color || getWorkerColor(name, worker.color),
           fixedMin: Boolean(worker.fixedMin)
         };
       };
@@ -644,11 +669,11 @@
               <div class="worker-options">
                 <div>
                   <label>מינימום בשבוע</label>
-                  <input type="number" class="min-shifts" min="0" max="6" value="${worker.min}">
+                  <select class="min-shifts">${shiftOptions(worker.min)}</select>
                 </div>
                 <div>
                   <label>מקסימום בשבוע</label>
-                  <input type="number" class="max-shifts" min="0" max="6" value="${worker.max}">
+                  <select class="max-shifts">${shiftOptions(worker.max)}</select>
                 </div>
               </div>
               <textarea class="constraints" placeholder="אילוצים לעובד הזה"></textarea>
@@ -678,7 +703,7 @@
       if (existing) return existing;
 
       const existingState = getCurrentWorkerState();
-      const worker = { name: cleanName, aliases: [], min: 1, max: 2 };
+      const worker = { name: cleanName, aliases: [], min: 1, max: 2, color: getWorkerColor(cleanName) };
       WORKERS.push(worker);
       renderWorkers();
       applyWorkerState(existingState);
@@ -702,11 +727,12 @@
           aliases: match.aliases || [],
           min: settings.min,
           max: settings.max,
-          onlyNight2: settings.onlyNight2
+          onlyNight2: settings.onlyNight2,
+          color: settings.color || getWorkerColor(match.name, match.color)
         };
       }
 
-      return { name: cleanName, aliases: [], min: 1, max: 2 };
+      return { name: cleanName, aliases: [], min: 1, max: 2, color: getWorkerColor(cleanName) };
     }
 
     function getCurrentWorkerState() {
@@ -827,7 +853,7 @@
       }
 
       const existingState = getCurrentWorkerState();
-      WORKERS.push({ name, aliases: [], min: 1, max: 2 });
+      WORKERS.push({ name, aliases: [], min: 1, max: 2, color: getWorkerColor(name) });
       renderWorkers();
       applyWorkerState(existingState);
 
@@ -940,6 +966,7 @@
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
+          color: getWorkerColor(card.dataset.worker),
           constraints: "",
           quickAvailability: ""
         };
@@ -1005,6 +1032,9 @@
       const existingState = getCurrentWorkerState();
       delete existingState[name];
       WORKERS = WORKERS.filter(worker => worker.name !== name);
+      const savedSettings = readSavedWorkerSettings();
+      delete savedSettings[name];
+      writeSavedWorkerSettings(savedSettings);
       renderWorkers();
       applyWorkerState(existingState);
       saveState();
@@ -2551,11 +2581,11 @@
       };
       const workerChip = name => {
         if (name === "-") return "-";
-        const [bg, fg, border] = WORKER_COLORS[name] || ["#eef3f1", "#263b34", "#c9d8d1"];
+        const [bg, fg, border] = getWorkerColor(name);
         return `<span class="worker-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name}</span>`;
       };
       const workerCountChip = (name, count) => {
-        const [bg, fg, border] = WORKER_COLORS[name] || ["#eef3f1", "#263b34", "#c9d8d1"];
+        const [bg, fg, border] = getWorkerColor(name);
         return `<span class="worker-chip count-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name} ${count}</span>`;
       };
       const displayWorker = worker => workerChip(displayWorkerName(worker));
@@ -2886,7 +2916,8 @@
         workerSettingsByName[name] = {
           minShiftsPerWeek: settings.min,
           maxShiftsPerWeek: settings.max,
-          onlyNight2: settings.onlyNight2
+          onlyNight2: settings.onlyNight2,
+          color: settings.color || getWorkerColor(name)
         };
       });
       if (!state.demoMode) {
@@ -2916,6 +2947,7 @@
             min: settings.min,
             max: settings.max,
             onlyNight2: settings.onlyNight2,
+            color: settings.color || getWorkerColor(worker.name, worker.color),
             fixedMin: Boolean(worker.fixedMin)
           };
         }),
