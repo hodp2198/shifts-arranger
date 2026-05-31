@@ -35,7 +35,6 @@
             <div class="mini-actions excel-actions">
               <button class="btn secondary" id="quickReset" type="button">ניקוי סידור</button>
               <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
-              <button class="btn danger subtle" id="fullReset" type="button">איפוס מלא</button>
             </div>
           </div>
           <div class="employee-tools">
@@ -104,7 +103,6 @@
           </details>
           <div class="actions result-actions">
             <button class="btn" id="buildSchedule" type="button">צור סידור</button>
-            <button class="btn secondary" id="loadDemoData" type="button">טען נתוני דמו</button>
           </div>
           <div class="preview-title">תצוגת סידור</div>
           <div id="scheduleOutput" class="schedule-output"></div>
@@ -3223,8 +3221,6 @@
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
     document.getElementById("quickReset").addEventListener("click", quickResetState);
-    document.getElementById("fullReset").addEventListener("click", fullResetState);
-    document.getElementById("loadDemoData").addEventListener("click", loadDemo);
     document.getElementById("buildWeeks").addEventListener("click", async () => {
       setDetectedWeeks([]);
       renderWeekSettings();
