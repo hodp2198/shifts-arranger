@@ -394,7 +394,7 @@
 
       const holiday = events.find(isHoliday);
       if (holiday) {
-        return { status: "holiday", isWorkday: false, reason: "חג", title: getDesc(holiday) };
+        return { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) };
       }
 
       return { status: "workday", isWorkday: true, reason: "יום רגיל" };
@@ -409,16 +409,12 @@
           .trim();
         return `ערב חג${cleanTitle ? ` ${cleanTitle}` : ""} אין משמרת`;
       }
-      if (dayType?.status === "holiday") {
-        const cleanTitle = title.replace(/^חג\s+/, "").trim();
-        return `חג${cleanTitle ? ` ${cleanTitle}` : ""} אין משמרת`;
-      }
       if (dayType?.status === "off") return "אין משמרת";
       return "";
     }
 
     function closedDayReason(day) {
-      if (day.dayType?.status === "holiday" || day.dayType?.status === "holidayEve") {
+      if (day.dayType?.status === "holidayEve") {
         return holidayClosedReason(day.dayType);
       }
       return day.label || "אין משמרת";
@@ -1133,13 +1129,11 @@
         specialDaysEl.innerHTML = "";
         return;
       }
-      const calendarClosedDays = days.filter(day => (
-        day.dayType.status === "holidayEve" || day.dayType.status === "holiday"
-      ));
+      const calendarClosedDays = days.filter(day => day.dayType.status === "holidayEve");
       const manualDays = days.filter(day => state.special[day.iso]);
       const holidayText = calendarClosedDays.length
         ? calendarClosedDays.map(day => `<span class="summary-pill">${displayDate(day.date)} — ${closedDayReason(day)}</span>`).join("")
-        : `<span class="helper">אין חגים או ערבי חג בטווח שנבחר</span>`;
+        : `<span class="helper">אין ערבי חג בטווח שנבחר</span>`;
       const calendarWarning = state.calendar.warning
         ? `<span class="helper">${state.calendar.warning}</span>`
         : "";
