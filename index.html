@@ -157,6 +157,7 @@
       { dayIndex: 6, names: ["דניאל", "אשרקת"], bonus: 500 }
     ];
     const STORAGE_KEY = "shifts-arranger-v2";
+    const WORKER_SETTINGS_KEY = "shifts-arranger-worker-settings-v1";
     const state = {
       special: {},
       detectedWeeks: [],
@@ -201,6 +202,29 @@
       }
     }
 
+    function readSavedWorkerSettings() {
+      const raw = localStorage.getItem(WORKER_SETTINGS_KEY);
+      if (!raw) return {};
+      try {
+        return JSON.parse(raw) || {};
+      } catch (error) {
+        localStorage.removeItem(WORKER_SETTINGS_KEY);
+        return {};
+      }
+    }
+
+    function writeSavedWorkerSettings(settingsByName) {
+      localStorage.setItem(WORKER_SETTINGS_KEY, JSON.stringify(settingsByName || {}));
+      console.info("[settings]", {
+        saved: Object.entries(settingsByName || {}).map(([worker, settings]) => ({
+          worker,
+          min: settings.minShiftsPerWeek,
+          max: settings.maxShiftsPerWeek,
+          onlyNight2: settings.onlyNight2
+        }))
+      });
+    }
+
     function clampShiftValue(value, fallback = 0) {
       const number = Number(value);
       if (!Number.isFinite(number)) return fallback;
@@ -220,6 +244,9 @@
 
     function getSavedWorkerSettingsByName(saved = readSavedData()) {
       const byName = {};
+      Object.entries(readSavedWorkerSettings()).forEach(([name, settings]) => {
+        byName[name] = normalizeWorkerSettings(settings);
+      });
       (saved?.workerDefs || []).forEach(worker => {
         if (!worker?.name || byName[worker.name]) return;
         byName[worker.name] = normalizeWorkerSettings(worker);
@@ -233,6 +260,14 @@
       });
       Object.entries(saved?.onlyNight2ByName || {}).forEach(([name, value]) => {
         byName[name] = normalizeWorkerSettings({ ...(byName[name] || {}), onlyNight2: value }, byName[name]);
+      });
+      console.info("[settings]", {
+        loaded: Object.entries(byName).map(([worker, settings]) => ({
+          worker,
+          min: settings.min,
+          max: settings.max,
+          onlyNight2: settings.onlyNight2
+        }))
       });
       return byName;
     }
@@ -950,6 +985,7 @@
     async function fullResetState() {
       const approved = window.confirm("פעולה זו תמחק את כל העובדים וההגדרות הקבועות. להמשיך?");
       if (!approved) return;
+      localStorage.removeItem(WORKER_SETTINGS_KEY);
       await resetApplicationState({ clearStorage: true, resetWorkers: true });
       saveState();
     }
@@ -2842,6 +2878,7 @@
           onlyNight2: settings.onlyNight2
         };
       });
+      writeSavedWorkerSettings(workerSettingsByName);
       const data = {
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
@@ -3003,19 +3040,43 @@
       statusBadgeEl.textContent = "נתוני דמו נטענו";
       logDemoWorkersAndAvailability();
       const demoResult = generateSchedule();
-      const demoAssignments = Object.values(demoResult.schedule).flat().filter(entry => !entry.closed);
+      const demoEntries = Object.values(demoResult.schedule).flat();
+      const demoAssignments = demoEntries.filter(entry => !entry.closed && (entry.first || entry.second));
+      const activeDemoWorkers = getWorkersData();
+      const demoDays = getScheduleDays();
+      const availabilityLoaded = activeDemoWorkers.map(worker => ({
+        worker: worker.name,
+        openDays: demoDays
+          .filter(day => !day.closed)
+          .filter(day => worker.submitted?.has(day.iso))
+          .filter(day => !worker.blocked.has(day.iso))
+          .map(day => `${day.dayName} ${displayDate(day.date)}`)
+      }));
+      const blockedDays = activeDemoWorkers.map(worker => ({
+        worker: worker.name,
+        blocked: demoDays
+          .filter(day => worker.blocked?.has(day.iso))
+          .map(day => `${day.dayName} ${displayDate(day.date)}`)
+      }));
       const demoErrors = [];
       if (getWeekConfigs().length !== 2) demoErrors.push(`Expected 2 weeks, got ${getWeekConfigs().length}`);
-      if (!demoAssignments.length) demoErrors.push("No schedule assignments were generated");
+      if (!activeDemoWorkers.length) demoErrors.push("No active demo workers loaded");
+      if (!availabilityLoaded.some(item => item.openDays.length)) demoErrors.push("No demo availability loaded");
+      if (demoEntries.length && !demoAssignments.length) demoErrors.push("Generated schedule has no assignments");
       console.info("[demo]", {
-        "loaded workers": WORKERS.map(worker => worker.name),
-        "loaded weeks": getWeekConfigs().map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
-        "generated schedule": `${demoAssignments.length}/${getScheduleDays().filter(day => !day.closed).length} days`,
+        "reset done": true,
+        "workers loaded": WORKERS.map(worker => worker.name),
+        "weeks loaded": getWeekConfigs().map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
+        "availability loaded": availabilityLoaded,
+        "blocked days": blockedDays,
+        "generated schedule": `${demoAssignments.length}/${demoDays.filter(day => !day.closed).length} days`,
         errors: demoErrors
       });
       if (demoErrors.length) console.warn("[demo] failed validation", demoErrors);
-      await renderSchedule(demoResult);
-      statusBadgeEl.textContent = demoErrors.length ? "דמו נטען עם בעיות" : "דמו נטען";
+      outputEl.innerHTML = "";
+      warningsEl.innerHTML = "";
+      plainResultEl.value = "";
+      statusBadgeEl.textContent = demoErrors.length ? "דמו נטען עם בעיות" : "דמו נטען - לחץ צור סידור";
       saveState();
     }
 

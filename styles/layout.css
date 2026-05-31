@@ -34,10 +34,11 @@
       gap: 10px;
       flex-wrap: wrap;
       justify-content: flex-start;
+      align-items: center;
     }
 
     .result-actions {
-      margin: 4px 0 14px;
+      margin: 0 0 12px;
     }
 
     .btn {
