@@ -386,11 +386,20 @@
         return hasFlag(event, flags.MODERN_HOLIDAY)
           || /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
       };
+      const isIsraeliClosedEveTarget = event => {
+        const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
+        return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
+      };
       const isHoliday = event => hasFlag(event, flags.CHAG) || isIsraeliHoliday(event);
 
       const holidayEve = events.find(isEve);
       if (holidayEve) {
         return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) };
+      }
+
+      const nextDayHoliday = getHebcalEvents(addDays(date, 1)).find(isIsraeliClosedEveTarget);
+      if (nextDayHoliday) {
+        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHoliday) };
       }
 
       const holiday = events.find(isHoliday);
@@ -408,6 +417,9 @@
           .replace(/^Erev\s+/i, "")
           .replace(/^ערב\s+(חג\s+)?/, "")
           .trim();
+        if (/^יום\s+/.test(cleanTitle)) {
+          return `ערב ${cleanTitle} אין משמרת`;
+        }
         return `ערב חג${cleanTitle ? ` ${cleanTitle}` : ""} אין משמרת`;
       }
       if (dayType?.status === "off") return "אין משמרת";
