@@ -156,6 +156,7 @@
     ];
     const STORAGE_KEY = "shifts-arranger-v2";
     const WORKER_SETTINGS_KEY = "shifts-arranger-worker-settings-v1";
+    const DELETED_WORKERS_KEY = "shifts-arranger-deleted-workers-v1";
     const state = {
       special: {},
       detectedWeeks: [],
@@ -210,6 +211,34 @@
 
     function writeSavedWorkerSettings(settingsByName) {
       localStorage.setItem(WORKER_SETTINGS_KEY, JSON.stringify(settingsByName || {}));
+    }
+
+    function readDeletedWorkerNames() {
+      const raw = localStorage.getItem(DELETED_WORKERS_KEY);
+      if (!raw) return new Set();
+      try {
+        const names = JSON.parse(raw);
+        return new Set(Array.isArray(names) ? names : []);
+      } catch (error) {
+        localStorage.removeItem(DELETED_WORKERS_KEY);
+        return new Set();
+      }
+    }
+
+    function writeDeletedWorkerNames(names) {
+      localStorage.setItem(DELETED_WORKERS_KEY, JSON.stringify([...names]));
+    }
+
+    function markWorkerDeleted(name) {
+      const deleted = readDeletedWorkerNames();
+      deleted.add(name);
+      writeDeletedWorkerNames(deleted);
+    }
+
+    function restoreWorkerName(name) {
+      const deleted = readDeletedWorkerNames();
+      if (!deleted.delete(name)) return;
+      writeDeletedWorkerNames(deleted);
     }
 
     function clampShiftValue(value, fallback = 0) {
@@ -280,6 +309,7 @@
     function loadWorkerDefinitions() {
       const saved = readSavedData();
       const settingsByName = getSavedWorkerSettingsByName(saved);
+      const deletedWorkers = readDeletedWorkerNames();
       const normalizeWorker = worker => {
         const name = worker.name;
         const savedSettings = settingsByName[name];
@@ -295,10 +325,20 @@
         };
       };
 
-      if (Array.isArray(saved?.workerDefs)) {
-        return saved.workerDefs.map(normalizeWorker);
-      }
-      return DEFAULT_WORKERS.map(normalizeWorker);
+      const registry = new Map();
+      const addToRegistry = worker => {
+        if (!worker?.name || deletedWorkers.has(worker.name)) return;
+        registry.set(worker.name, normalizeWorker(worker));
+      };
+
+      DEFAULT_WORKERS.forEach(addToRegistry);
+      (saved?.workerDefs || []).forEach(addToRegistry);
+      Object.entries(settingsByName).forEach(([name, settings]) => {
+        if (deletedWorkers.has(name) || registry.has(name)) return;
+        addToRegistry({ name, aliases: [], min: settings.min, max: settings.max, onlyNight2: settings.onlyNight2, color: settings.color });
+      });
+
+      return [...registry.values()];
     }
 
     function isoDate(date) {
@@ -334,10 +374,35 @@
       }
     }
 
+    function calendarDebug(date, events, result) {
+      const core = window.hebcal;
+      let hebrew = "";
+      try {
+        hebrew = core?.HDate ? new core.HDate(date).render("he-x-NoNikud") : "";
+      } catch (error) {
+        hebrew = "";
+      }
+      console.info("[calendar]", {
+        date: isoDate(date),
+        gregorian: displayDate(date),
+        hebrew,
+        events: (events || []).map(event => ({
+          desc: event.getDesc?.() || "",
+          hebrew: event.render?.("he-x-NoNikud") || "",
+          flags: event.getFlags?.() || 0
+        })),
+        isHoliday: result.status === "holiday",
+        isHolidayEve: result.status === "holidayEve",
+        isClosed: !result.isWorkday,
+        reason: result.title || result.reason || ""
+      });
+      return result;
+    }
+
     function getDayType(date) {
       const dayIndex = date.getDay();
       if (dayIndex === 5) {
-        return { status: "off", isWorkday: false, reason: "יום שישי" };
+        return calendarDebug(date, getHebcalEvents(date), { status: "off", isWorkday: false, reason: "יום שישי" });
       }
 
       const core = window.hebcal;
@@ -360,27 +425,32 @@
 
       const holidayEve = events.find(isEve);
       if (holidayEve) {
-        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) };
+        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) });
       }
 
       const nextDayEvents = getHebcalEvents(addDays(date, 1));
+      const nextDayHolidayEve = dayIndex === 4 ? nextDayEvents.find(isEve) : null;
+      if (nextDayHolidayEve) {
+        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHolidayEve) });
+      }
+
       const nextDayHoliday = nextDayEvents.find(isIsraeliClosedEveTarget);
       if (nextDayHoliday) {
-        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHoliday) };
+        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHoliday) });
       }
 
       const todayIsJewishHoliday = events.some(isJewishHoliday);
       const nextDayJewishHoliday = nextDayEvents.find(isJewishHoliday);
       if (!todayIsJewishHoliday && dayIndex !== 6 && nextDayJewishHoliday) {
-        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayJewishHoliday) };
+        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayJewishHoliday) });
       }
 
       const holiday = events.find(isHoliday);
       if (holiday) {
-        return { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) };
+        return calendarDebug(date, events, { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) });
       }
 
-      return { status: "workday", isWorkday: true, reason: "יום רגיל" };
+      return calendarDebug(date, events, { status: "workday", isWorkday: true, reason: "יום רגיל" });
     }
 
     function holidayEveDisplayTitle(title) {
@@ -800,6 +870,7 @@
       if (existing) return existing;
 
       const existingState = getCurrentWorkerState();
+      restoreWorkerName(cleanName);
       const worker = { name: cleanName, aliases: [], min: 1, max: 2, color: getWorkerColor(cleanName) };
       WORKERS.push(worker);
       renderWorkers();
@@ -926,6 +997,7 @@
       }
 
       const existingState = getCurrentWorkerState();
+      restoreWorkerName(name);
       WORKERS.push({ name, aliases: [], min: 1, max: 2, color: getWorkerColor(name) });
       renderWorkers();
       applyWorkerState(existingState);
@@ -952,6 +1024,7 @@
         const worker = getWorkerDefinitionForImport(name, existingWorkers);
         if (importedNames.has(worker.name)) return;
         importedNames.add(worker.name);
+        restoreWorkerName(worker.name);
         importedDefinitions.push(worker);
       });
 
@@ -1087,6 +1160,7 @@
       const existingState = getCurrentWorkerState();
       delete existingState[name];
       WORKERS = WORKERS.filter(worker => worker.name !== name);
+      markWorkerDeleted(name);
       const savedSettings = readSavedWorkerSettings();
       delete savedSettings[name];
       writeSavedWorkerSettings(savedSettings);
