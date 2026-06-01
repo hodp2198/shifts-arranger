@@ -35,7 +35,6 @@
               <button class="btn secondary" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
             </div>
             <div class="intake-status" id="bulkExcelStatus"></div>
-            <div class="intake-status" id="demoStatus"></div>
           </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
@@ -164,9 +163,6 @@
       currentWorkers: [],
       currentWarnings: [],
       shuffleSeed: 0,
-      demoDebug: false,
-      demoMode: false,
-      currentImportSource: null,
       weekDetectionWarnings: [],
       calendar: {
         warning: ""
@@ -185,7 +181,6 @@
     const statusBadgeEl = document.getElementById("statusBadge");
     const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
     const bulkExcelStatusEl = document.getElementById("bulkExcelStatus");
-    const demoStatusEl = document.getElementById("demoStatus");
     const oneTimeRulesEl = document.getElementById("oneTimeRules");
     const manualOffDateEl = document.getElementById("manualOffDate");
     const manualOffLabelEl = document.getElementById("manualOffLabel");
@@ -215,15 +210,6 @@
 
     function writeSavedWorkerSettings(settingsByName) {
       localStorage.setItem(WORKER_SETTINGS_KEY, JSON.stringify(settingsByName || {}));
-      console.info("[settings]", {
-        saved: Object.entries(settingsByName || {}).map(([worker, settings]) => ({
-          worker,
-          min: settings.minShiftsPerWeek,
-          max: settings.maxShiftsPerWeek,
-          onlyNight2: settings.onlyNight2,
-          color: settings.color
-        }))
-      });
     }
 
     function clampShiftValue(value, fallback = 0) {
@@ -268,18 +254,6 @@
       Object.entries(readSavedWorkerSettings()).forEach(([name, settings]) => {
         byName[name] = normalizeWorkerSettings(settings);
       });
-      if (saved?.demoMode) {
-        console.info("[settings]", {
-          loaded: Object.entries(byName).map(([worker, settings]) => ({
-            worker,
-            min: settings.min,
-            max: settings.max,
-            onlyNight2: settings.onlyNight2,
-            color: settings.color
-          }))
-        });
-        return byName;
-      }
       (saved?.workerDefs || []).forEach(worker => {
         if (!worker?.name || byName[worker.name]) return;
         byName[worker.name] = normalizeWorkerSettings(worker);
@@ -293,15 +267,6 @@
       });
       Object.entries(saved?.onlyNight2ByName || {}).forEach(([name, value]) => {
         byName[name] = normalizeWorkerSettings({ ...(byName[name] || {}), onlyNight2: value }, byName[name]);
-      });
-      console.info("[settings]", {
-        loaded: Object.entries(byName).map(([worker, settings]) => ({
-          worker,
-          min: settings.min,
-          max: settings.max,
-          onlyNight2: settings.onlyNight2,
-          color: settings.color
-        }))
       });
       return byName;
     }
@@ -701,10 +666,6 @@
       };
       console.info("[weeks]", trace);
 
-      if (state.demoDebug) {
-        console.info("[demo weeks parse]", trace);
-      }
-
       if (!weeks.length) {
         setDetectedWeeks([]);
         if (state.weekDetectionWarnings.length) {
@@ -916,30 +877,6 @@
       if (indicator) indicator.hidden = !quickText;
     }
 
-    function clearDemoMode() {
-      state.demoMode = false;
-      state.demoDebug = false;
-      state.currentImportSource = null;
-      if (demoStatusEl) demoStatusEl.innerHTML = "";
-    }
-
-    function renderDemoSummary() {
-      if (!demoStatusEl) return;
-      demoStatusEl.innerHTML = `
-        <div class="demo-summary">
-          <strong>נתוני הדמו כוללים:</strong>
-          <span>2 שבועות</span>
-          <span>עובדים רגילים</span>
-          <span>עובדים רק נייט 2</span>
-          <span>חסימות</span>
-          <span>העדפות</span>
-          <span>הערה חד־פעמית</span>
-          <span>עובד שמופעל רק בגלל הערה חד־פעמית</span>
-          <div class="demo-note">אלון נוסף לדמו בגלל הערה חד־פעמית: אלון חייב לקבל את יום ראשון הקרוב נייט 2 עם הוד</div>
-        </div>
-      `;
-    }
-
     function getOneTimeOnlyNames() {
       const text = oneTimeRulesEl.value || "";
       if (!text.trim()) return new Set();
@@ -986,13 +923,7 @@
       saveState();
     }
 
-    function importRowsMatrix(rows, statusEl, options = {}) {
-      if (options.demo) {
-        state.currentImportSource = "demo";
-      } else {
-        clearDemoMode();
-        state.currentImportSource = "import";
-      }
+    function importRowsMatrix(rows, statusEl) {
       const headers = rows[0] || [];
       let imported = 0;
       const issues = [];
@@ -1097,23 +1028,15 @@
       return stateByName;
     }
 
-    async function resetApplicationState({ clearStorage = false, resetWorkers = false } = {}) {
-      const preservedWorkers = resetWorkers
-        ? []
-        : WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
-      const preservedWorkerState = resetWorkers ? {} : getPersistentWorkerState();
-      if (clearStorage) {
-        localStorage.removeItem(STORAGE_KEY);
-      }
+    async function resetApplicationState() {
+      const preservedWorkers = WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
+      const preservedWorkerState = getPersistentWorkerState();
       Object.keys(state.special).forEach(key => delete state.special[key]);
       setDetectedWeeks([]);
       state.currentSchedule = null;
       state.currentWorkers = [];
       state.currentWarnings = [];
       state.shuffleSeed = 0;
-      state.demoDebug = false;
-      state.demoMode = false;
-      state.currentImportSource = null;
       state.weekDetectionWarnings = [];
       state.calendar.warning = "";
 
@@ -1124,7 +1047,6 @@
       weekCountEl.value = "2";
       bulkExcelNotesEl.value = "";
       bulkExcelStatusEl.textContent = "";
-      if (demoStatusEl) demoStatusEl.innerHTML = "";
       oneTimeRulesEl.value = "";
       plainResultEl.value = "";
       outputEl.innerHTML = "";
@@ -1141,14 +1063,6 @@
       const approved = window.confirm("פעולה זו תנקה את הסידור והאילוצים הזמניים, אבל תשמור עובדים והגדרות קבועות. להמשיך?");
       if (!approved) return;
       await resetApplicationState();
-      saveState();
-    }
-
-    async function fullResetState() {
-      const approved = window.confirm("פעולה זו תמחק את כל העובדים וההגדרות הקבועות. להמשיך?");
-      if (!approved) return;
-      localStorage.removeItem(WORKER_SETTINGS_KEY);
-      await resetApplicationState({ clearStorage: true, resetWorkers: true });
       saveState();
     }
 
@@ -1432,7 +1346,7 @@
       const counts = countImportedConstraints();
       issues.push(...state.weekDetectionWarnings);
       const rows = [
-        state.demoMode ? "✓ מצב דמו" : "✓ נתוני אמת מיובאים",
+        "✓ נתוני אמת מיובאים",
         `✓ זוהו ${imported} עובדים`,
         `✓ זוהו ${importedWeeks || getWeekConfigs().length || 0} שבועות`,
         `✓ זוהו ${counts.blocked} חסימות`,
@@ -1487,67 +1401,6 @@
           slotCounts: { 1: 0, 2: 0 }
         };
       }).filter(worker => worker.active);
-    }
-
-    function collectDemoDebugState() {
-      const weekConfigs = getWeekConfigs();
-      const days = getScheduleDays();
-      const workerCards = [...document.querySelectorAll(".worker")];
-      const workers = getWorkersData();
-      return {
-        startDate: startDateEl.value,
-        weekCount: weekCountEl.value,
-        detectedWeeks: getDetectedWeekConfigs().map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
-        generatedWeeks: weekConfigs.map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
-        workersLoaded: WORKERS.map(worker => worker.name),
-        activeWorkers: workers.map(worker => worker.name),
-        onlyNight2: workerCards
-          .filter(card => card.querySelector(".night2-only").checked)
-          .map(card => card.dataset.worker),
-        closedDays: days
-          .filter(day => day.closed)
-          .map(day => `${day.dayName} ${displayDate(day.date)}: ${closedDayReason(day)}`)
-      };
-    }
-
-    function logDemoWorkersAndAvailability() {
-      const workers = getWorkersData();
-      const weeks = getWeekConfigs();
-      const days = getScheduleDays();
-      console.info("[demo workers]", {
-        loaded: WORKERS.length,
-        active: workers.map(worker => worker.name),
-        onlyNight2: workers.filter(worker => worker.onlyNight2).map(worker => worker.name),
-        availableDays: workers.map(worker => ({
-          worker: worker.name,
-          weeks: weeks.map((week, index) => ({
-            week: `${displayDate(week.start)}-${displayDate(week.end)}`,
-            open: days
-              .filter(day => day.week === index && !day.closed)
-              .filter(day => worker.submitted?.has(day.iso))
-              .filter(day => !worker.blocked.has(day.iso))
-              .map(day => `${day.dayName} ${displayDate(day.date)}`)
-          }))
-        }))
-      });
-      console.info("[demo availability]", workers.flatMap(worker => weeks.map((week, index) => ({
-        worker: worker.name,
-        week: `${displayDate(week.start)}-${displayDate(week.end)}`,
-        daysOpen: days
-          .filter(day => day.week === index && !day.closed)
-          .filter(day => worker.submitted?.has(day.iso))
-          .filter(day => !worker.blocked.has(day.iso))
-          .map(day => `${day.dayName} ${displayDate(day.date)}`)
-      }))));
-      console.info("[special days]", {
-        closed: days
-          .filter(day => day.closed)
-          .map(day => ({
-            day: `${day.dayName} ${displayDate(day.date)}`,
-            reason: closedDayReason(day),
-            status: day.dayType.status
-          }))
-      });
     }
 
     function workerScore(worker, day, slot) {
@@ -2502,18 +2355,6 @@
         }
       }
 
-      if (state.demoDebug) {
-        console.info("[demo workers]", {
-          loaded: WORKERS.map(worker => worker.name),
-          active: workers.map(worker => worker.name),
-          onlyNight2: workers.filter(worker => worker.onlyNight2).map(worker => worker.name),
-          availableDays: workers.map(worker => ({
-            worker: worker.name,
-            weeks: { ...worker.availableDaysByWeek }
-          }))
-        });
-      }
-
       for (const day of days) {
         for (const worker of workers) {
           day.remainingByWorker[worker.name] = days
@@ -2661,23 +2502,6 @@
             warnings.push(`${weekLabel(week)}: ${worker.name} קיבל/ה ${count} משמרות, מעל המקסימום ${worker.max}.`);
           }
         }
-      }
-
-      if (state.demoDebug) {
-        const assignments = Object.values(schedule).flat().map(entry => ({
-          week: entry.day.week,
-          day: `${entry.day.dayName} ${displayDate(entry.day.date)}`,
-          closed: Boolean(entry.closed),
-          first: entry.first?.name || "-",
-          second: entry.second?.name || "-",
-          reason: entry.closed ? closedDayReason(entry.day) : ""
-        }));
-        console.info("[scheduler]", {
-          weeks: weekConfigs.map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
-          workers: workers.map(worker => worker.name),
-          slots: days.filter(day => !day.closed).length * 2,
-          assignments
-        });
       }
 
       return { schedule, warnings: [...new Set(warnings)], workers };
@@ -3054,17 +2878,13 @@
           color: settings.color || getWorkerColor(name)
         };
       });
-      if (!state.demoMode) {
-        writeSavedWorkerSettings(workerSettingsByName);
-      }
+      writeSavedWorkerSettings(workerSettingsByName);
       const data = {
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
         bulkExcelNotes: bulkExcelNotesEl.value,
         oneTimeRules: oneTimeRulesEl.value,
         plainResult: plainResultEl.value,
-        demoMode: state.demoMode,
-        currentImportSource: state.currentImportSource,
         special: state.special,
         detectedWeeks: getDetectedWeekConfigs().map(week => ({
           start: isoDate(week.start),
@@ -3116,10 +2936,6 @@
         bulkExcelNotesEl.value = data.bulkExcelNotes || "";
         oneTimeRulesEl.value = data.oneTimeRules || "";
         plainResultEl.value = data.plainResult || "";
-        state.demoMode = Boolean(data.demoMode);
-        state.currentImportSource = data.currentImportSource || (state.demoMode ? "demo" : null);
-        if (state.demoMode) renderDemoSummary();
-        else clearDemoMode();
         Object.entries(data.special || {}).forEach(([iso, item]) => {
           state.special[iso] = item;
         });
@@ -3153,110 +2969,6 @@
       } catch (error) {
         localStorage.removeItem(STORAGE_KEY);
       }
-    }
-
-    async function loadDemo() {
-      console.info("[demo reset]", {
-        before: collectDemoDebugState()
-      });
-      await resetApplicationState({ resetWorkers: true });
-      state.demoMode = true;
-      state.demoDebug = true;
-      state.currentImportSource = "demo";
-      renderDemoSummary();
-      console.info("[demo reset]", {
-        after: collectDemoDebugState()
-      });
-      oneTimeRulesEl.value = "אלון חייב לקבל את יום ראשון הקרוב נייט 2 עם הוד";
-
-      const demoRows = [
-        ["הוד", "סיואר", "הדס", "דניאל", "שדא", "אשרקת", "יהלי", "נעמי", "אלון"],
-        ["31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6", "31.5 - 6.6"],
-        ["א' - רוצה", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", ""],
-        ["ב' -", "ב' -", "ב' -", "ב' -", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", ""],
-        ["ג' -", "ג' -", "ג' - לא יכולה", "ג' -", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", ""],
-        ["ד' -", "ד' -", "ד' -", "ד' -", "ד' -", "ד' - לא יכולה", "ד- לא פנויה", "ד- לא פנויה", ""],
-        ["ה' - לא יכול", "ה' - רוצה", "ה' - לא יכולה", "ה' - לא יכול", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", ""],
-        ["שבת - יכול ורוצה", "שבת -", "שבת -", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת-", ""],
-        ["7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6", "7.6 - 13.6"],
-        ["א' -", "א' -", "א' -", "א' - לא יכול", "א' -", "א' - לא יכולה", "א- לא פנויה", "א- לא פנויה", ""],
-        ["ב' -", "ב' - לא יכולה", "ב' -", "ב' - לא יכול", "ב' - לא יכולה", "ב' - לא יכולה", "ב- לא פנויה", "ב- לא פנויה", ""],
-        ["ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג' - לא יכול", "ג' - לא יכולה", "ג' - לא יכולה", "ג- לא פנויה", "ג- לא פנויה", ""],
-        ["ד' -", "ד' -", "ד' - לא יכולה", "ד' -", "ד' - לא יכולה", "ד' -", "ד- לא פנויה", "ד- לא פנויה", ""],
-        ["ה' -", "ה' -", "ה' - לא יכולה", "ה' -", "ה' - לא יכולה", "ה' - לא יכולה", "ה- לא פנויה", "ה- לא פנויה", ""],
-        ["שבת - לא יכול", "שבת -", "שבת - לא יכולה", "שבת -", "שבת -", "שבת -", "שבת- לא פנויה", "שבת- לא פנויה", ""]
-      ];
-
-      bulkExcelNotesEl.value = `${demoRows.map(row => row.join("\t")).join("\n")}\nהערות\n${oneTimeRulesEl.value}`;
-      importRowsMatrix(demoRows, bulkExcelStatusEl, { demo: true });
-      DEFAULT_WORKERS.forEach(worker => {
-        const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
-        if (!card) return;
-        const settings = normalizeWorkerSettings(worker);
-        card.querySelector(".min-shifts").value = settings.min;
-        card.querySelector(".max-shifts").value = settings.max;
-        card.querySelector(".night2-only").checked = settings.onlyNight2;
-      });
-      const demoTrace = {
-        reset: true,
-        "weeks expected": 2,
-        "weeks detected": getDetectedWeekConfigs().length,
-        "weeks generated": getWeekConfigs().length,
-        "workers loaded": WORKERS.length
-      };
-      console.info("[demo]", demoTrace);
-      if (demoTrace["weeks generated"] !== 2) {
-        console.warn("[demo] unexpected week count", demoTrace);
-      }
-
-      ["הדס", "יהלי"].forEach(name => {
-        const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
-        if (card) card.querySelector(".night2-only").checked = true;
-      });
-
-      renderWeekSettings();
-      await refreshCalendarDays();
-      statusBadgeEl.textContent = "נתוני דמו נטענו";
-      logDemoWorkersAndAvailability();
-      const demoResult = generateSchedule();
-      const demoEntries = Object.values(demoResult.schedule).flat();
-      const demoAssignments = demoEntries.filter(entry => !entry.closed && (entry.first || entry.second));
-      const activeDemoWorkers = getWorkersData();
-      const demoDays = getScheduleDays();
-      const availabilityLoaded = activeDemoWorkers.map(worker => ({
-        worker: worker.name,
-        openDays: demoDays
-          .filter(day => !day.closed)
-          .filter(day => worker.submitted?.has(day.iso))
-          .filter(day => !worker.blocked.has(day.iso))
-          .map(day => `${day.dayName} ${displayDate(day.date)}`)
-      }));
-      const blockedDays = activeDemoWorkers.map(worker => ({
-        worker: worker.name,
-        blocked: demoDays
-          .filter(day => worker.blocked?.has(day.iso))
-          .map(day => `${day.dayName} ${displayDate(day.date)}`)
-      }));
-      const demoErrors = [];
-      if (getWeekConfigs().length !== 2) demoErrors.push(`Expected 2 weeks, got ${getWeekConfigs().length}`);
-      if (!activeDemoWorkers.length) demoErrors.push("No active demo workers loaded");
-      if (!availabilityLoaded.some(item => item.openDays.length)) demoErrors.push("No demo availability loaded");
-      if (demoEntries.length && !demoAssignments.length) demoErrors.push("Generated schedule has no assignments");
-      console.info("[demo]", {
-        "reset done": true,
-        "workers loaded": WORKERS.map(worker => worker.name),
-        "weeks loaded": getWeekConfigs().map(week => `${displayDate(week.start)}-${displayDate(week.end)}`),
-        "availability loaded": availabilityLoaded,
-        "blocked days": blockedDays,
-        "generated schedule": `${demoAssignments.length}/${demoDays.filter(day => !day.closed).length} days`,
-        errors: demoErrors
-      });
-      if (demoErrors.length) console.warn("[demo] failed validation", demoErrors);
-      outputEl.innerHTML = "";
-      warningsEl.innerHTML = "";
-      plainResultEl.value = "";
-      statusBadgeEl.textContent = demoErrors.length ? "דמו נטען עם בעיות" : "דמו נטען - לחץ צור סידור";
-      saveState();
     }
 
     document.getElementById("buildSchedule").addEventListener("click", async () => {

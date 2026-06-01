@@ -98,34 +98,6 @@
       align-items: center;
     }
 
-    .demo-summary {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 8px;
-      align-items: center;
-      color: var(--muted);
-      margin-top: 6px;
-    }
-
-    .demo-summary strong,
-    .demo-note {
-      flex-basis: 100%;
-      color: var(--text);
-    }
-
-    .demo-summary span {
-      display: inline-flex;
-      align-items: center;
-      min-height: 22px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(29, 29, 31, 0.08);
-      background: var(--surface);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 650;
-    }
-
     .import-issues {
       flex-basis: 100%;
       color: #7a5a00;
