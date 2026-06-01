@@ -167,6 +167,7 @@
       demoDebug: false,
       demoMode: false,
       currentImportSource: null,
+      weekDetectionWarnings: [],
       calendar: {
         warning: ""
       }
@@ -555,6 +556,20 @@
       return range ? `${displayDate(range.start)}-${displayDate(range.end)}` : "";
     }
 
+    function weekRangeDebug(range) {
+      return range ? {
+        label: weekRangeLabel(range),
+        startDate: isoDate(range.start),
+        endDate: isoDate(range.end)
+      } : null;
+    }
+
+    function simpleWeekRangeLabel(text) {
+      const line = normalizeWeekHeaderText(text);
+      const simpleRange = line.match(/(^|[^\d])(\d{1,2})\s*-\s*(\d{1,2})(?![./\d])/);
+      return simpleRange ? `${Number(simpleRange[2])}-${Number(simpleRange[3])}` : "";
+    }
+
     function inferStartMonth(startDay, endDay, endMonth) {
       if (startDay > endDay) return endMonth === 1 ? 12 : endMonth - 1;
       return endMonth;
@@ -623,6 +638,8 @@
       const rawDetected = [];
       const normalized = [];
       const deduplicated = new Map();
+      const missingMonthWarnings = new Set();
+      state.weekDetectionWarnings = [];
 
       rows.forEach((row, rowIndex) => {
         const cells = (row || [])
@@ -635,7 +652,12 @@
           .map(cell => parseWeekLabelToRange(cell.text))
           .filter(Boolean);
         const rowRange = chooseRowWeekRange(explicitRanges);
-        if (!rowRange) return;
+        if (!rowRange) {
+          cells.map(cell => simpleWeekRangeLabel(cell.text)).filter(Boolean).forEach(label => {
+            missingMonthWarnings.add(`לא זוהה חודש עבור השבוע ${label}, לא ניתן לבדוק חגים.`);
+          });
+          return;
+        }
 
         rawDetected.push({
           row: rowIndex + 1,
@@ -648,7 +670,7 @@
             row: rowIndex + 1,
             column: cell.columnIndex + 1,
             raw: cell.text,
-            canonical: weekRangeLabel(range)
+            canonical: weekRangeDebug(range)
           });
         });
 
@@ -657,11 +679,13 @@
       });
 
       const weeks = [...deduplicated.values()].sort((a, b) => a.start - b.start);
+      state.weekDetectionWarnings = [...missingMonthWarnings];
       const trace = {
         "raw detected": rawDetected,
         normalized,
-        deduplicated: [...deduplicated.values()].map(weekRangeLabel),
-        final: weeks.map(weekRangeLabel)
+        deduplicated: [...deduplicated.values()].map(weekRangeDebug),
+        final: weeks.map(weekRangeDebug),
+        warnings: state.weekDetectionWarnings
       };
       console.info("[weeks]", trace);
 
@@ -671,6 +695,10 @@
 
       if (!weeks.length) {
         setDetectedWeeks([]);
+        if (state.weekDetectionWarnings.length) {
+          startDateEl.value = "";
+          weekCountEl.value = "0";
+        }
         renderWeekSettings();
         refreshCalendarDays();
         return 0;
@@ -1074,6 +1102,7 @@
       state.demoDebug = false;
       state.demoMode = false;
       state.currentImportSource = null;
+      state.weekDetectionWarnings = [];
       state.calendar.warning = "";
 
       WORKERS = preservedWorkers;
@@ -1203,7 +1232,8 @@
         || /^שבוע\s+של\s+\d{1,2}[./]\d{1,2}/i.test(line)
         || /^שבוע\s+\d{1,2}[./]\d{1,2}/i.test(line)
         || /^\d{1,2}[./]\d{1,2}\s*[-–]\s*\d{1,2}(?:[./]\d{1,2})?/i.test(line)
-        || /^\d{1,2}\s*[-–]\s*\d{1,2}[./]\d{1,2}/i.test(line);
+        || /^\d{1,2}\s*[-–]\s*\d{1,2}[./]\d{1,2}/i.test(line)
+        || /^\d{1,2}\s*[-–]\s*\d{1,2}$/i.test(line);
     }
 
     function resolveConstraintWeekOffset(line, currentOffset, sawDate, weekConfigs) {
@@ -1388,6 +1418,7 @@
 
     function renderImportSummary({ imported, importedWeeks, issues = [] }) {
       const counts = countImportedConstraints();
+      issues.push(...state.weekDetectionWarnings);
       const rows = [
         state.demoMode ? "✓ מצב דמו" : "✓ נתוני אמת מיובאים",
         `✓ זוהו ${imported} עובדים`,
@@ -2382,6 +2413,7 @@
       const days = getScheduleDays();
       const weekCount = getWeekConfigs().length;
 
+      warnings.push(...state.weekDetectionWarnings);
       if (state.calendar.warning) warnings.push(state.calendar.warning);
       addSubmissionWarnings(days, workers, warnings);
 
@@ -2422,9 +2454,11 @@
       console.info(`[weeks]\ndetected: ${getDetectedWeekConfigs().length}\ngenerated: ${weekConfigs.length}`);
 
       if (!days.length) {
+        warnings.push(...state.weekDetectionWarnings);
         warnings.push("בחר תאריך התחלה ראשוני ובנה שבועות לפני יצירת סידור.");
         return { schedule, warnings, workers };
       }
+      warnings.push(...state.weekDetectionWarnings);
       if (state.calendar.warning) {
         warnings.push(state.calendar.warning);
       }
