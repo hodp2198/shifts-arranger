@@ -425,6 +425,16 @@
       background: transparent;
     }
 
+    .shift-line.closed-day {
+      grid-template-columns: 22px 48px minmax(0, 1fr);
+      background: #fff8e8;
+      color: #6f5200;
+    }
+
+    .shift-line.closed-day .shift-assignment {
+      font-weight: 700;
+    }
+
     .shift-day {
       font-weight: 760;
       display: flex;
