@@ -2625,7 +2625,7 @@
         return (!name || name === "לא שובץ" || name === "חסר") ? "-" : name;
       };
       const workerChip = name => {
-        if (name === "-") return "-";
+        if (name === "-") return `<span class="missing-slot">-</span>`;
         const [bg, fg, border] = getWorkerColor(name);
         return `<span class="worker-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name}</span>`;
       };
@@ -2924,16 +2924,19 @@
           const secondName = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorkerName(entry.second) : "-";
           const first = displayWorker(entry.first);
           const second = entry.second?.name && entry.second.name !== entry.first?.name ? displayWorker(entry.second) : "-";
+          const assignment = firstName !== "-" && secondName !== "-"
+            ? `${first}<span>ו</span>${second}`
+            : firstName !== "-"
+              ? `${first}<span class="missing-slot">-</span>`
+              : secondName !== "-"
+                ? `<span class="missing-slot">-</span>${second}`
+                : `<span class="missing-slot">-</span>`;
           const alternatives = renderAlternativePanel(entry, firstName, secondName);
           html += `
             <div class="shift-line ${status.level}">
               <span class="status-mark" title="${status.label}">${statusIcon(status.level)}</span>
               <span class="shift-day">${dayName}${dayTag(entry.day)}</span>
-              <span class="shift-assignment">
-                ${first}
-                <span>ו</span>
-                ${second}
-              </span>
+              <span class="shift-assignment">${assignment}</span>
               ${alternatives}
             </div>
           `;
