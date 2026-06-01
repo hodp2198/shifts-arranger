@@ -390,7 +390,7 @@
 
     .shift-line {
       display: grid;
-      grid-template-columns: 22px 48px minmax(0, 1fr) auto;
+      grid-template-columns: 22px 48px minmax(0, 1fr) auto auto;
       gap: 6px;
       padding: 8px 2px;
       border-bottom: 1px solid rgba(29, 29, 31, 0.045);
@@ -485,8 +485,19 @@
       line-height: 1;
     }
 
+    .holiday-row-label {
+      justify-self: end;
+      align-self: center;
+      color: #8a6500;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
     .alternatives-panel {
       position: relative;
+      grid-column: 5;
       justify-self: end;
       line-height: 1;
     }
@@ -828,6 +839,10 @@
 
       .worker-head, .worker-options, .day-row, .shift-line, .week-row, .whatsapp-row {
         grid-template-columns: 1fr;
+      }
+
+      .alternatives-panel {
+        grid-column: auto;
       }
 
       .worker-head {

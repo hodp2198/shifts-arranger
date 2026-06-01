@@ -2879,8 +2879,10 @@
         const label = day.label || calendarStatusLabel(day.dayType.status);
         if (!label || label === "יום רגיל") return "";
         const status = day.dayType.status === "workday" && day.closed ? "off" : day.dayType.status;
+        if (status === "holiday") return "";
         return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;
       };
+      const holidayRowLabel = day => day.dayType.status === "holiday" ? `<span class="holiday-row-label">משמרת חג</span>` : "";
       const workerCounts = new Map();
       Object.values(schedule).flat().forEach(entry => {
         [entry.first, entry.second].forEach(worker => {
@@ -2932,11 +2934,13 @@
                 ? `<span class="missing-slot">-</span>${second}`
                 : `<span class="missing-slot">-</span>`;
           const alternatives = renderAlternativePanel(entry, firstName, secondName);
+          const rowLabel = holidayRowLabel(entry.day);
           html += `
             <div class="shift-line ${status.level}">
               <span class="status-mark" title="${status.label}">${statusIcon(status.level)}</span>
               <span class="shift-day">${dayName}${dayTag(entry.day)}</span>
               <span class="shift-assignment">${assignment}</span>
+              ${rowLabel}
               ${alternatives}
             </div>
           `;
