@@ -821,7 +821,7 @@
           <div class="worker-head">
             <input type="checkbox" class="active-worker" aria-label="הכנס את ${worker.name} לסידור">
             <div class="worker-name">${worker.name}</div>
-            <span class="worker-meta">${worker.min}/${worker.max}</span>
+            <span class="worker-meta" style="direction: ltr; display: inline-block;">${worker.min}/${worker.max}</span>
             <span class="quick-indicator" hidden>Quick</span>
             <span class="one-time-indicator" hidden>חד־פעמי</span>
             <label class="toggle-line">
@@ -931,6 +931,7 @@
         card.querySelector(".constraints").value = saved.constraints || "";
         card.querySelector(".quick-availability-input").value = saved.quickAvailability || "";
         updateQuickIndicator(card);
+        updateWorkerMeta(card);
       }
       updateOneTimeIndicators();
     }
@@ -953,12 +954,24 @@
       }
       minEl.value = min;
       maxEl.value = max;
+      updateWorkerMeta(card);
     }
 
     function updateQuickIndicator(card) {
       const indicator = card.querySelector(".quick-indicator");
       const quickText = card.querySelector(".quick-availability-input")?.value.trim();
       if (indicator) indicator.hidden = !quickText;
+    }
+
+    function updateWorkerMeta(card) {
+      if (!card) return;
+      const min = card.querySelector('.min-shifts')?.value ?? '';
+      const max = card.querySelector('.max-shifts')?.value ?? '';
+      const meta = card.querySelector('.worker-meta');
+      if (meta) {
+        meta.style.direction = 'ltr';
+        meta.textContent = `${min}/${max}`;
+      }
     }
 
     function getOneTimeOnlyNames() {
