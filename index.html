@@ -955,15 +955,19 @@
         importedDefinitions.push(worker);
       });
 
-      const removedWorkers = existingWorkers
+      const inactiveWorkers = existingWorkers
         .filter(worker => !importedNames.has(worker.name))
         .filter(worker => existingState[worker.name]?.active || existingState[worker.name]?.constraints || existingState[worker.name]?.quickAvailability)
         .map(worker => worker.name);
+      const registryByName = new Map(existingWorkers.map(worker => [worker.name, worker]));
+      importedDefinitions.forEach(worker => {
+        registryByName.set(worker.name, worker);
+      });
 
-      WORKERS = importedDefinitions;
+      WORKERS = [...registryByName.values()];
       renderWorkers();
       const importState = {};
-      importedDefinitions.forEach(worker => {
+      WORKERS.forEach(worker => {
         const existingWorkerState = existingState[worker.name] || {};
         importState[worker.name] = {
           ...existingWorkerState,
@@ -999,8 +1003,8 @@
       });
 
       if (!imported) issues.push("לא זוהו עמודות עובדים.");
-      if (removedWorkers.length) {
-        issues.push(`עובדים שלא הופיעו בייבוא החדש נוקו: ${removedWorkers.join(", ")}.`);
+      if (inactiveWorkers.length) {
+        issues.push(`עובדים שלא הופיעו בייבוא החדש סומנו כלא פעילים לסידור הזה: ${inactiveWorkers.join(", ")}.`);
       }
       renderImportSummary({ imported, importedWeeks, issues });
       updateOneTimeIndicators();
