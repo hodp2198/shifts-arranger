@@ -355,6 +355,7 @@
         const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
         return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
       };
+      const isJewishHoliday = event => hasFlag(event, flags.CHAG);
       const isHoliday = event => hasFlag(event, flags.CHAG) || isIsraeliHoliday(event);
 
       const holidayEve = events.find(isEve);
@@ -362,9 +363,16 @@
         return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) };
       }
 
-      const nextDayHoliday = getHebcalEvents(addDays(date, 1)).find(isIsraeliClosedEveTarget);
+      const nextDayEvents = getHebcalEvents(addDays(date, 1));
+      const nextDayHoliday = nextDayEvents.find(isIsraeliClosedEveTarget);
       if (nextDayHoliday) {
         return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHoliday) };
+      }
+
+      const todayIsJewishHoliday = events.some(isJewishHoliday);
+      const nextDayJewishHoliday = nextDayEvents.find(isJewishHoliday);
+      if (!todayIsJewishHoliday && dayIndex !== 6 && nextDayJewishHoliday) {
+        return { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayJewishHoliday) };
       }
 
       const holiday = events.find(isHoliday);
@@ -375,17 +383,22 @@
       return { status: "workday", isWorkday: true, reason: "יום רגיל" };
     }
 
+    function holidayEveDisplayTitle(title) {
+      const cleanTitle = String(title || "")
+        .replace(/^Erev\s+/i, "")
+        .replace(/^ערב\s+(חג\s+)?/, "")
+        .trim();
+      if (/^Pesach VII\b/i.test(cleanTitle) || /^פסח\s+ז/.test(cleanTitle)) {
+        return "שביעי של פסח";
+      }
+      return cleanTitle;
+    }
+
     function holidayClosedReason(dayType) {
       const title = String(dayType?.title || "").trim();
       if (dayType?.status === "holidayEve") {
-        const cleanTitle = title
-          .replace(/^Erev\s+/i, "")
-          .replace(/^ערב\s+(חג\s+)?/, "")
-          .trim();
-        if (/^יום\s+/.test(cleanTitle)) {
-          return `ערב ${cleanTitle} אין משמרת`;
-        }
-        return `ערב חג${cleanTitle ? ` ${cleanTitle}` : ""} אין משמרת`;
+        const cleanTitle = holidayEveDisplayTitle(title);
+        return `ערב${cleanTitle ? ` ${cleanTitle}` : " חג"} אין משמרת`;
       }
       if (dayType?.status === "off") return "אין משמרת";
       return "";
