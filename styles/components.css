@@ -390,8 +390,9 @@
 
     .shift-line {
       display: grid;
-      grid-template-columns: 22px 48px minmax(0, 1fr) auto auto;
-      gap: 6px;
+      grid-template-columns: 22px 48px minmax(0, 1fr) minmax(88px, auto) auto;
+      column-gap: 8px;
+      row-gap: 4px;
       padding: 8px 2px;
       border-bottom: 1px solid rgba(29, 29, 31, 0.045);
       align-items: center;
@@ -486,7 +487,7 @@
     }
 
     .holiday-row-label {
-      justify-self: end;
+      justify-self: center;
       align-self: center;
       color: #8a6500;
       font-size: 12px;
