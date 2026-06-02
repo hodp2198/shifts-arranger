@@ -968,8 +968,7 @@
     function isActiveOneTimeNote(text) {
       const clean = String(text || "").trim();
       if (!clean) return false;
-      if (isoFromRuleText(clean, getScheduleDays())) return true;
-      return /חייב|חייבת|נייט|רק|השבוע|הבא|הבאה|חפיפה|אם חסר|בלבד|עם|לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה/.test(clean);
+      return /חייב|חייבת|נייט|רק|השבוע|הקרוב|הקרובה|הבא|הבאה|חפיפה|אם חסר|בלבד|עם|לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה/.test(clean);
     }
 
     function activeOneTimeLines() {
@@ -1000,13 +999,21 @@
 
     function updateOneTimeIndicators() {
       const oneTimeLabels = getOneTimeIndicatorLabels();
+      const debugRows = [];
       document.querySelectorAll(".worker").forEach(card => {
         const indicator = card.querySelector(".one-time-indicator");
         if (!indicator) return;
         const label = oneTimeLabels.get(card.dataset.worker);
         indicator.hidden = !label;
         if (label) indicator.textContent = label;
+        debugRows.push({
+          worker: card.dataset.worker,
+          hasRegularConstraints: hasMeaningfulWorkerInput(card.querySelector(".constraints")?.value || ""),
+          hasActiveOneTimeNote: Boolean(label),
+          shownTag: label || ""
+        });
       });
+      console.info("[one-time indicators]", debugRows);
     }
 
     function addWorker() {
