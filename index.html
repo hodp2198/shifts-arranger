@@ -33,7 +33,6 @@
             <div class="mini-actions excel-actions">
               <button class="btn secondary accent-action" id="quickReset" type="button">ניקוי סידור</button>
               <button class="btn secondary accent-action" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
-              <button class="btn danger" id="fullReset" type="button">איפוס מערכת</button>
             </div>
             <div class="intake-status" id="bulkExcelStatus"></div>
           </div>
@@ -121,17 +120,10 @@
 
   <script src="vendor/hebcal-core.min.js"></script>
   <script>
-    const DEFAULT_WORKERS = [];
-
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
-    const FLEXIBLE_RESERVE_WORKERS = new Set();
-    const WORKER_COLORS = {};
     const FALLBACK_WORKER_COLOR = ["#eef3f1", "#263b34", "#c9d8d1"];
-    const LEARNED_PAIR_PREFERENCES = [];
-    const STORAGE_KEY = "shifts-arranger-v2";
-    const WORKER_SETTINGS_KEY = "shifts-arranger-worker-settings-v1";
-    const DELETED_WORKERS_KEY = "shifts-arranger-deleted-workers-v1";
+    const STORAGE_KEY = "shifts-arranger-v3";
     const state = {
       special: {},
       detectedWeeks: [],
@@ -173,49 +165,6 @@
       }
     }
 
-    function readSavedWorkerSettings() {
-      const raw = localStorage.getItem(WORKER_SETTINGS_KEY);
-      if (!raw) return {};
-      try {
-        return JSON.parse(raw) || {};
-      } catch (error) {
-        localStorage.removeItem(WORKER_SETTINGS_KEY);
-        return {};
-      }
-    }
-
-    function writeSavedWorkerSettings(settingsByName) {
-      localStorage.setItem(WORKER_SETTINGS_KEY, JSON.stringify(settingsByName || {}));
-    }
-
-    function readDeletedWorkerNames() {
-      const raw = localStorage.getItem(DELETED_WORKERS_KEY);
-      if (!raw) return new Set();
-      try {
-        const names = JSON.parse(raw);
-        return new Set(Array.isArray(names) ? names : []);
-      } catch (error) {
-        localStorage.removeItem(DELETED_WORKERS_KEY);
-        return new Set();
-      }
-    }
-
-    function writeDeletedWorkerNames(names) {
-      localStorage.setItem(DELETED_WORKERS_KEY, JSON.stringify([...names]));
-    }
-
-    function markWorkerDeleted(name) {
-      const deleted = readDeletedWorkerNames();
-      deleted.add(name);
-      writeDeletedWorkerNames(deleted);
-    }
-
-    function restoreWorkerName(name) {
-      const deleted = readDeletedWorkerNames();
-      if (!deleted.delete(name)) return;
-      writeDeletedWorkerNames(deleted);
-    }
-
     function clampShiftValue(value, fallback = 0) {
       const number = Number(value);
       if (!Number.isFinite(number)) return fallback;
@@ -239,10 +188,7 @@
     }
 
     function getWorkerColor(name, fallbackColor = null) {
-      const saved = readSavedWorkerSettings();
-      return normalizeWorkerColor(saved[name]?.color)
-        || normalizeWorkerColor(fallbackColor)
-        || normalizeWorkerColor(WORKER_COLORS[name])
+      return normalizeWorkerColor(fallbackColor)
         || FALLBACK_WORKER_COLOR;
     }
 
@@ -253,42 +199,11 @@
       )).join("");
     }
 
-    function getSavedWorkerSettingsByName(saved = readSavedData()) {
-      const byName = {};
-      Object.entries(readSavedWorkerSettings()).forEach(([name, settings]) => {
-        byName[name] = normalizeWorkerSettings(settings);
-      });
-      (saved?.workerDefs || []).forEach(worker => {
-        if (!worker?.name || byName[worker.name]) return;
-        byName[worker.name] = normalizeWorkerSettings(worker);
-      });
-      (saved?.workers || []).forEach(worker => {
-        if (!worker?.name) return;
-        byName[worker.name] = normalizeWorkerSettings(worker, byName[worker.name]);
-      });
-      Object.entries(saved?.workerSettingsByName || {}).forEach(([name, settings]) => {
-        byName[name] = normalizeWorkerSettings(settings, byName[name]);
-      });
-      Object.entries(saved?.onlyNight2ByName || {}).forEach(([name, value]) => {
-        byName[name] = normalizeWorkerSettings({ ...(byName[name] || {}), onlyNight2: value }, byName[name]);
-      });
-      return byName;
-    }
-
-    function getSavedOnlyNight2ByName(saved = readSavedData()) {
-      return Object.fromEntries(
-        Object.entries(getSavedWorkerSettingsByName(saved)).map(([name, settings]) => [name, Boolean(settings.onlyNight2)])
-      );
-    }
-
     function loadWorkerDefinitions() {
       const saved = readSavedData();
-      const settingsByName = getSavedWorkerSettingsByName(saved);
-      const deletedWorkers = readDeletedWorkerNames();
       const normalizeWorker = worker => {
         const name = worker.name;
-        const savedSettings = settingsByName[name];
-        const settings = normalizeWorkerSettings(savedSettings, worker);
+        const settings = normalizeWorkerSettings(worker, worker);
         return {
           name,
           aliases: worker.aliases || [],
@@ -300,20 +215,7 @@
         };
       };
 
-      const registry = new Map();
-      const addToRegistry = worker => {
-        if (!worker?.name || deletedWorkers.has(worker.name)) return;
-        registry.set(worker.name, normalizeWorker(worker));
-      };
-
-      DEFAULT_WORKERS.forEach(addToRegistry);
-      (saved?.workerDefs || []).forEach(addToRegistry);
-      Object.entries(settingsByName).forEach(([name, settings]) => {
-        if (deletedWorkers.has(name) || registry.has(name)) return;
-        addToRegistry({ name, aliases: [], min: settings.min, max: settings.max, onlyNight2: settings.onlyNight2, color: settings.color });
-      });
-
-      return [...registry.values()];
+      return Array.isArray(saved?.workers) ? saved.workers.filter(worker => worker?.name).map(normalizeWorker) : [];
     }
 
     function isoDate(date) {
@@ -840,7 +742,6 @@
       if (existing) return existing;
 
       const existingState = getCurrentWorkerState();
-      restoreWorkerName(cleanName);
       const worker = { name: cleanName, aliases: [], min: 1, max: 2, color: getWorkerColor(cleanName) };
       WORKERS.push(worker);
       renderWorkers();
@@ -851,15 +752,14 @@
     function getWorkerDefinitionForImport(name, existingWorkers = WORKERS) {
       const cleanName = String(name || "").trim();
       const normalized = normalizeWorkerName(cleanName);
-      const candidates = [...existingWorkers, ...DEFAULT_WORKERS];
-      const savedSettingsByName = getSavedWorkerSettingsByName();
+      const candidates = [...existingWorkers];
       const match = candidates.find(worker => (
         normalizeWorkerName(worker.name) === normalized
         || (worker.aliases || []).some(alias => normalizeWorkerName(alias) === normalized)
       ));
 
       if (match) {
-        const settings = normalizeWorkerSettings(savedSettingsByName[match.name], match);
+        const settings = normalizeWorkerSettings(match, match);
         return {
           ...match,
           aliases: match.aliases || [],
@@ -1001,7 +901,6 @@
       }
 
       const existingState = getCurrentWorkerState();
-      restoreWorkerName(name);
       WORKERS.push({ name, aliases: [], min: 1, max: 2, color: getWorkerColor(name) });
       renderWorkers();
       applyWorkerState(existingState);
@@ -1028,7 +927,6 @@
         const worker = getWorkerDefinitionForImport(name, existingWorkers);
         if (importedNames.has(worker.name)) return;
         importedNames.add(worker.name);
-        restoreWorkerName(worker.name);
         importedDefinitions.push(worker);
       });
 
@@ -1104,14 +1002,17 @@
 
     function getPersistentWorkerState() {
       const stateByName = {};
+      const workerByName = new Map(WORKERS.map(worker => [worker.name, worker]));
       document.querySelectorAll(".worker").forEach(card => {
+        const name = card.dataset.worker;
+        const worker = workerByName.get(name) || {};
         syncWorkerShiftBounds(card);
-        stateByName[card.dataset.worker] = {
+        stateByName[name] = {
           active: false,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
-          color: getWorkerColor(card.dataset.worker),
+          color: getWorkerColor(name, worker.color),
           constraints: ""
         };
       });
@@ -1156,49 +1057,10 @@
       saveState();
     }
 
-    async function fullResetSystem() {
-      const approved = window.confirm("פעולה זו תמחק את כל העובדים, ההגדרות, האילוצים והסידור השמורים במכשיר הזה. להמשיך?");
-      if (!approved) return;
-
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(WORKER_SETTINGS_KEY);
-      localStorage.removeItem(DELETED_WORKERS_KEY);
-      localStorage.removeItem("cleared-default-start-date-v1");
-
-      Object.keys(state.special).forEach(key => delete state.special[key]);
-      setDetectedWeeks([]);
-      state.currentSchedule = null;
-      state.currentWorkers = [];
-      state.currentWarnings = [];
-      state.shuffleSeed = 0;
-      state.weekDetectionWarnings = [];
-      state.calendar.warning = "";
-
-      WORKERS = [];
-      renderWorkers();
-      startDateEl.value = "";
-      weekCountEl.value = "2";
-      bulkExcelNotesEl.value = "";
-      bulkExcelStatusEl.textContent = "";
-      oneTimeRulesEl.value = "";
-      plainResultEl.value = "";
-      outputEl.innerHTML = "";
-      warningsEl.innerHTML = "";
-      manualOffDateEl.value = "";
-      renderWeekSettings();
-      await refreshCalendarDays();
-      statusBadgeEl.textContent = "המערכת אופסה";
-      if (autosaveStatusEl) autosaveStatusEl.textContent = "אין נתונים שמורים";
-    }
-
     function removeWorker(name) {
       const existingState = getCurrentWorkerState();
       delete existingState[name];
       WORKERS = WORKERS.filter(worker => worker.name !== name);
-      markWorkerDeleted(name);
-      const savedSettings = readSavedWorkerSettings();
-      delete savedSettings[name];
-      writeSavedWorkerSettings(savedSettings);
       renderWorkers();
       applyWorkerState(existingState);
       saveState();
@@ -1368,22 +1230,12 @@
     }
 
     function getWorkerMin(worker) {
-      if (FLEXIBLE_RESERVE_WORKERS.has(worker.name) && worker.min <= 1) return 0;
       return worker.min;
     }
 
     function getWorkerTarget(worker, week) {
       const availableDays = worker.availableDaysByWeek?.[week] ?? worker.max;
-      if (FLEXIBLE_RESERVE_WORKERS.has(worker.name) && getWorkerMin(worker) === 0) return 0;
       return Math.min(worker.max, Math.max(getWorkerMin(worker), Math.min(availableDays, 2)));
-    }
-
-    function learnedPairBonus(first, second, day) {
-      if (!first || !second) return 0;
-      return LEARNED_PAIR_PREFERENCES
-        .filter(item => item.dayIndex === day.dayIndex)
-        .filter(item => item.names.includes(first.name) && item.names.includes(second.name))
-        .reduce((total, item) => total + item.bonus, 0);
     }
 
     function hasMeaningfulWorkerInput(text) {
@@ -1558,7 +1410,6 @@
 
           const score = workerScore(first, day, 1)
             + workerScore(second, day, 2)
-            - learnedPairBonus(first, second, day)
             + Math.random() * (state.shuffleSeed || 14);
 
           if (!best || score < best.score) {
@@ -1879,7 +1730,6 @@
 
       for (const entry of Object.values(schedule).flat()) {
         if (entry.closed) continue;
-        score -= learnedPairBonus(entry.first, entry.second, entry.day) * 1.25;
         [
           { worker: entry.first, slot: 1 },
           { worker: entry.second, slot: 2 }
@@ -2939,28 +2789,25 @@
       };
       const workerCards = [...document.querySelectorAll(".worker")];
       workerCards.forEach(card => syncWorkerShiftBounds(card));
-      const liveWorkerState = new Map(workerCards.map(card => [card.dataset.worker, {
-        active: card.querySelector(".active-worker").checked,
-        onlyNight2: card.querySelector(".night2-only").checked,
-        min: card.querySelector(".min-shifts").value,
-        max: card.querySelector(".max-shifts").value,
-        constraints: card.querySelector(".constraints").value
-      }]));
-      const onlyNight2ByName = {};
-      liveWorkerState.forEach((workerState, name) => {
-        onlyNight2ByName[name] = Boolean(workerState.onlyNight2);
-      });
-      const workerSettingsByName = {};
-      liveWorkerState.forEach((workerState, name) => {
-        const settings = normalizeWorkerSettings(workerState);
-        workerSettingsByName[name] = {
-          minShiftsPerWeek: settings.min,
-          maxShiftsPerWeek: settings.max,
+      const workerByName = new Map(WORKERS.map(worker => [worker.name, worker]));
+      const liveWorkerState = new Map(workerCards.map(card => {
+        const name = card.dataset.worker;
+        const base = workerByName.get(name) || {};
+        const settings = normalizeWorkerSettings({
+          onlyNight2: card.querySelector(".night2-only").checked,
+          min: card.querySelector(".min-shifts").value,
+          max: card.querySelector(".max-shifts").value,
+          color: base.color
+        }, base);
+        return [name, {
+          active: card.querySelector(".active-worker").checked,
           onlyNight2: settings.onlyNight2,
-          color: settings.color || getWorkerColor(name)
-        };
-      });
-      writeSavedWorkerSettings(workerSettingsByName);
+          min: settings.min,
+          max: settings.max,
+          color: settings.color || getWorkerColor(name, base.color),
+          constraints: card.querySelector(".constraints").value
+        }];
+      }));
       const data = {
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
@@ -2972,27 +2819,14 @@
           start: isoDate(week.start),
           end: isoDate(week.end)
         })),
-        onlyNight2ByName,
-        workerSettingsByName,
-        workerDefs: WORKERS.map(worker => {
-          const live = liveWorkerState.get(worker.name);
-          const settings = normalizeWorkerSettings(live, worker);
-          return {
-            name: worker.name,
-            aliases: worker.aliases || [],
-            min: settings.min,
-            max: settings.max,
-            onlyNight2: settings.onlyNight2,
-            color: settings.color || getWorkerColor(worker.name, worker.color),
-            fixedMin: Boolean(worker.fixedMin)
-          };
-        }),
         weeks: [...document.querySelectorAll(".week-row")].map(row => ({
           start: saveDateValue(row.querySelector(".week-start").value),
           end: saveDateValue(row.querySelector(".week-end").value)
         })),
         workers: workerCards.map(card => ({
           name: card.dataset.worker,
+          aliases: workerByName.get(card.dataset.worker)?.aliases || [],
+          fixedMin: Boolean(workerByName.get(card.dataset.worker)?.fixedMin),
           ...liveWorkerState.get(card.dataset.worker)
         }))
       };
@@ -3007,11 +2841,7 @@
       if (!raw) return;
       try {
         const data = JSON.parse(raw);
-        let savedStartDate = data.startDate || "";
-        if (savedStartDate === "2026-04-19" && !localStorage.getItem("cleared-default-start-date-v1")) {
-          savedStartDate = "";
-          localStorage.setItem("cleared-default-start-date-v1", "1");
-        }
+        const savedStartDate = data.startDate || "";
         const startDate = parseUiDate(savedStartDate);
         startDateEl.value = startDate ? editDateValue(startDate) : "";
         weekCountEl.value = data.weekCount || weekCountEl.value;
@@ -3032,17 +2862,7 @@
           renderWeekSettings();
         }
         const workersState = {};
-        const savedSettingsByName = getSavedWorkerSettingsByName(data);
-        for (const saved of data.workers || []) {
-          workersState[saved.name] = {
-            ...saved,
-            ...(savedSettingsByName[saved.name] || {})
-          };
-        }
-        Object.entries(savedSettingsByName).forEach(([name, settings]) => {
-          if (workersState[name]) return;
-          workersState[name] = settings;
-        });
+        for (const saved of data.workers || []) workersState[saved.name] = saved;
         applyWorkerState(workersState);
         updateOneTimeIndicators();
         if (data.bulkExcelNotes) {
@@ -3072,7 +2892,6 @@
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
     document.getElementById("quickReset").addEventListener("click", quickResetState);
-    document.getElementById("fullReset").addEventListener("click", fullResetSystem);
     document.getElementById("buildWeeks").addEventListener("click", async () => {
       setDetectedWeeks([]);
       renderWeekSettings();
