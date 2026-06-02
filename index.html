@@ -156,6 +156,7 @@
       currentWarnings: [],
       shuffleSeed: 0,
       weekDetectionWarnings: [],
+      workerColorsRepaired: false,
       calendar: {
         warning: ""
       }
@@ -233,6 +234,25 @@
       return FALLBACK_WORKER_COLOR.slice();
     }
 
+    function ensureUniqueWorkerColors(workers) {
+      let changed = false;
+      const normalizedWorkers = [];
+      const used = new Set();
+      const fallbackKey = workerColorKey(FALLBACK_WORKER_COLOR);
+
+      (workers || []).forEach(worker => {
+        const color = normalizeWorkerColor(worker.color);
+        const key = workerColorKey(color);
+        const needsColor = !color || key === fallbackKey || used.has(key);
+        const nextColor = needsColor ? createWorkerColor(normalizedWorkers) : color;
+        if (needsColor || workerColorKey(nextColor) !== key) changed = true;
+        used.add(workerColorKey(nextColor));
+        normalizedWorkers.push({ ...worker, color: nextColor });
+      });
+
+      return { workers: normalizedWorkers, changed };
+    }
+
     function getWorkerColorByName(name) {
       const worker = state.currentWorkers.find(item => item.name === name) || WORKERS.find(item => item.name === name);
       return getWorkerColor(name, worker?.color);
@@ -266,7 +286,9 @@
       saved.workers.filter(worker => worker?.name).forEach(worker => {
         workers.push(normalizeWorker(worker));
       });
-      return workers;
+      const result = ensureUniqueWorkerColors(workers);
+      state.workerColorsRepaired = result.changed;
+      return result.workers;
     }
 
     function isoDate(date) {
@@ -994,7 +1016,7 @@
         registryByName.set(worker.name, worker);
       });
 
-      WORKERS = [...registryByName.values()];
+      WORKERS = ensureUniqueWorkerColors([...registryByName.values()]).workers;
       renderWorkers();
       const importState = {};
       WORKERS.forEach(worker => {
@@ -2924,6 +2946,10 @@
         updateOneTimeIndicators();
         if (data.bulkExcelNotes) {
           renderImportSummary({ imported: (data.workers || []).filter(worker => worker.constraints).length, importedWeeks: getDetectedWeekConfigs().length });
+        }
+        if (state.workerColorsRepaired) {
+          state.workerColorsRepaired = false;
+          saveState();
         }
       } catch (error) {
         localStorage.removeItem(STORAGE_KEY);
