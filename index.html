@@ -123,6 +123,20 @@
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
     const FALLBACK_WORKER_COLOR = ["#eef3f1", "#263b34", "#c9d8d1"];
+    const WORKER_COLOR_PALETTE = [
+      ["#eaf3ff", "#184b78", "#bdd7f2"],
+      ["#eaf8ef", "#245f39", "#bee3cb"],
+      ["#fff0f5", "#8a3151", "#f2c4d3"],
+      ["#f3efff", "#563f8f", "#d4c8f3"],
+      ["#e9fbf8", "#17695f", "#b8e6df"],
+      ["#fff6df", "#7a5a00", "#efd58f"],
+      ["#f0f4f2", "#344c43", "#cad8d2"],
+      ["#eef2ff", "#354a91", "#c8d2f7"],
+      ["#fff1e8", "#8a461f", "#efc4a6"],
+      ["#edf8ff", "#1f5d82", "#b9dff2"],
+      ["#f5f8e8", "#5a641f", "#dce7a8"],
+      ["#fdf0ff", "#743878", "#e5c2e9"]
+    ];
     const STORAGE_SCHEMA_VERSION = 4;
     const STORAGE_KEY = "shifts-arranger-v4";
     const LEGACY_STORAGE_KEYS = [
@@ -207,6 +221,23 @@
         || FALLBACK_WORKER_COLOR;
     }
 
+    function workerColorKey(color) {
+      return normalizeWorkerColor(color)?.join("|") || "";
+    }
+
+    function createWorkerColor(existingWorkers = WORKERS) {
+      const used = new Set((existingWorkers || []).map(worker => workerColorKey(worker.color)).filter(Boolean));
+      const available = WORKER_COLOR_PALETTE.filter(color => !used.has(workerColorKey(color)));
+      const source = available.length ? available : WORKER_COLOR_PALETTE;
+      if (source.length) return source[Math.floor(Math.random() * source.length)].slice();
+      return FALLBACK_WORKER_COLOR.slice();
+    }
+
+    function getWorkerColorByName(name) {
+      const worker = state.currentWorkers.find(item => item.name === name) || WORKERS.find(item => item.name === name);
+      return getWorkerColor(name, worker?.color);
+    }
+
     function shiftOptions(selected) {
       const value = clampShiftValue(selected, 0);
       return Array.from({ length: 7 }, (_, index) => (
@@ -216,6 +247,7 @@
 
     function loadWorkerDefinitions() {
       const saved = readSavedData();
+      const workers = [];
       const normalizeWorker = worker => {
         const name = worker.name;
         const settings = normalizeWorkerSettings(worker, worker);
@@ -225,12 +257,16 @@
           min: settings.min,
           max: settings.max,
           onlyNight2: settings.onlyNight2,
-          color: settings.color || getWorkerColor(name, worker.color),
+          color: settings.color || createWorkerColor(workers),
           fixedMin: Boolean(worker.fixedMin)
         };
       };
 
-      return Array.isArray(saved?.workers) ? saved.workers.filter(worker => worker?.name).map(normalizeWorker) : [];
+      if (!Array.isArray(saved?.workers)) return [];
+      saved.workers.filter(worker => worker?.name).forEach(worker => {
+        workers.push(normalizeWorker(worker));
+      });
+      return workers;
     }
 
     function isoDate(date) {
@@ -708,10 +744,13 @@
     }
 
     function renderWorkers() {
-      workersEl.innerHTML = WORKERS.map(worker => `
-        <article class="worker" data-worker="${worker.name}">
+      workersEl.innerHTML = WORKERS.map(worker => {
+        const [bg, fg, border] = getWorkerColor(worker.name, worker.color);
+        return `
+        <article class="worker" data-worker="${worker.name}" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">
           <div class="worker-head">
             <input type="checkbox" class="active-worker" aria-label="הכנס את ${worker.name} לסידור">
+            <span class="worker-color-dot" aria-hidden="true"></span>
             <div class="worker-name">${worker.name}</div>
             <span class="worker-meta" style="direction: ltr; display: inline-block;">${worker.min}/${worker.max}</span>
             <span class="one-time-indicator" hidden></span>
@@ -738,7 +777,8 @@
             </div>
           </details>
       </article>
-      `).join("");
+      `;
+      }).join("");
     }
 
     function normalizeWorkerName(name) {
@@ -757,7 +797,7 @@
       if (existing) return existing;
 
       const existingState = getCurrentWorkerState();
-      const worker = { name: cleanName, aliases: [], min: 1, max: 2, color: getWorkerColor(cleanName) };
+      const worker = { name: cleanName, aliases: [], min: 1, max: 2, color: createWorkerColor() };
       WORKERS.push(worker);
       renderWorkers();
       applyWorkerState(existingState);
@@ -785,7 +825,7 @@
         };
       }
 
-      return { name: cleanName, aliases: [], min: 1, max: 2, color: getWorkerColor(cleanName) };
+      return { name: cleanName, aliases: [], min: 1, max: 2, color: createWorkerColor(existingWorkers) };
     }
 
     function getCurrentWorkerState() {
@@ -916,7 +956,7 @@
       }
 
       const existingState = getCurrentWorkerState();
-      WORKERS.push({ name, aliases: [], min: 1, max: 2, color: getWorkerColor(name) });
+      WORKERS.push({ name, aliases: [], min: 1, max: 2, color: createWorkerColor() });
       renderWorkers();
       applyWorkerState(existingState);
 
@@ -939,7 +979,7 @@
       headers.forEach(header => {
         const name = String(header || "").trim();
         if (!name) return;
-        const worker = getWorkerDefinitionForImport(name, existingWorkers);
+        const worker = getWorkerDefinitionForImport(name, [...existingWorkers, ...importedDefinitions]);
         if (importedNames.has(worker.name)) return;
         importedNames.add(worker.name);
         importedDefinitions.push(worker);
@@ -1315,6 +1355,7 @@
           active: (manuallyActive && hasWorkerInput) || oneTimeActive,
           oneTimeOnly: oneTimeActive && !hasWorkerInput,
           onlyNight2: settings.onlyNight2,
+          color: getWorkerColor(name, worker.color),
           min: settings.min,
           max: settings.max,
           blocked: parsedConstraints.blocked,
@@ -2463,11 +2504,11 @@
       };
       const workerChip = name => {
         if (name === "-") return `<span class="missing-slot">-</span>`;
-        const [bg, fg, border] = getWorkerColor(name);
+        const [bg, fg, border] = getWorkerColorByName(name);
         return `<span class="worker-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name}</span>`;
       };
       const workerCountChip = (name, count) => {
-        const [bg, fg, border] = getWorkerColor(name);
+        const [bg, fg, border] = getWorkerColorByName(name);
         return `<span class="worker-chip count-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name} ${count}</span>`;
       };
       const displayWorker = worker => workerChip(displayWorkerName(worker));

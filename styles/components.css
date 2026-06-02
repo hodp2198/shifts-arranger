@@ -145,6 +145,7 @@
 
     .worker {
       border: 1px solid rgba(29, 29, 31, 0.075);
+      border-inline-start: 4px solid var(--worker-border, rgba(29, 29, 31, 0.075));
       border-radius: 13px;
       overflow: hidden;
       background: #fff;
@@ -153,12 +154,20 @@
 
     .worker-head {
       display: grid;
-      grid-template-columns: auto minmax(76px, 1fr) auto auto auto auto auto;
+      grid-template-columns: auto auto minmax(76px, 1fr) auto auto auto auto;
       gap: 8px;
       align-items: center;
       min-height: 44px;
       padding: 8px 11px;
-      background: #fff;
+      background: linear-gradient(90deg, var(--worker-bg, #fff), #fff 38%);
+    }
+
+    .worker-color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--worker-border, rgba(29, 29, 31, 0.14));
+      box-shadow: 0 0 0 3px var(--worker-bg, rgba(29, 29, 31, 0.04));
     }
 
     .worker-name {
