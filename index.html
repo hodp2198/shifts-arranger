@@ -33,6 +33,7 @@
             <div class="mini-actions excel-actions">
               <button class="btn secondary accent-action" id="quickReset" type="button">ניקוי סידור</button>
               <button class="btn secondary accent-action" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
+              <button class="btn danger" id="fullReset" type="button">איפוס מערכת</button>
             </div>
             <div class="intake-status" id="bulkExcelStatus"></div>
           </div>
@@ -120,40 +121,14 @@
 
   <script src="vendor/hebcal-core.min.js"></script>
   <script>
-    const DEFAULT_WORKERS = [
-      { name: "הוד", min: 3, max: 3, fixedMin: true },
-      { name: "הדס", min: 1, max: 2, onlyNight2: true },
-      { name: "סיואר", aliases: ["סיוואר"], min: 1, max: 2 },
-      { name: "דניאל", min: 1, max: 2 },
-      { name: "שדא", min: 1, max: 2 },
-      { name: "אשרקת", min: 1, max: 2 },
-      { name: "נעמי", min: 1, max: 2 },
-      { name: "יהלי", min: 0, max: 2 },
-      { name: "אלון", min: 0, max: 2 }
-    ];
+    const DEFAULT_WORKERS = [];
 
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
-    const FLEXIBLE_RESERVE_WORKERS = new Set(["אלון", "יהלי"]);
-    const WORKER_COLORS = {
-      "הוד": ["#eaf3ff", "#195b92", "#bfd8f2"],
-      "סיואר": ["#edf8f1", "#28623f", "#bfdcc8"],
-      "הדס": ["#fff0f6", "#85435c", "#efc3d2"],
-      "דניאל": ["#fff7df", "#74550f", "#ead79c"],
-      "שדא": ["#f3efff", "#5a438f", "#d4c9f3"],
-      "אשרקת": ["#eafbfb", "#266a70", "#b9e0e1"],
-      "יהלי": ["#f5f1e8", "#64512f", "#ded1b7"],
-      "נעמי": ["#fff0ee", "#85403b", "#efc4bf"],
-      "אלון": ["#eef6e8", "#4e672e", "#cbdcb8"]
-    };
+    const FLEXIBLE_RESERVE_WORKERS = new Set();
+    const WORKER_COLORS = {};
     const FALLBACK_WORKER_COLOR = ["#eef3f1", "#263b34", "#c9d8d1"];
-    const LEARNED_PAIR_PREFERENCES = [
-      { dayIndex: 0, names: ["סיואר", "שדא"], bonus: 420 },
-      { dayIndex: 1, names: ["סיואר", "הדס"], bonus: 500 },
-      { dayIndex: 2, names: ["דניאל", "הדס"], bonus: 480 },
-      { dayIndex: 4, names: ["דניאל", "סיואר"], bonus: 640 },
-      { dayIndex: 6, names: ["דניאל", "אשרקת"], bonus: 500 }
-    ];
+    const LEARNED_PAIR_PREFERENCES = [];
     const STORAGE_KEY = "shifts-arranger-v2";
     const WORKER_SETTINGS_KEY = "shifts-arranger-worker-settings-v1";
     const DELETED_WORKERS_KEY = "shifts-arranger-deleted-workers-v1";
@@ -961,8 +936,7 @@
     }
 
     function oneTimeRuleMentionsWorker(text, worker) {
-      const mentionedAsHod = worker.name === "הוד" && (/\bאני\b|איתי|אתי/.test(text));
-      return text.includes(worker.name) || mentionedAsHod;
+      return text.includes(worker.name);
     }
 
     function isActiveOneTimeNote(text) {
@@ -1180,6 +1154,41 @@
       if (!approved) return;
       await resetApplicationState();
       saveState();
+    }
+
+    async function fullResetSystem() {
+      const approved = window.confirm("פעולה זו תמחק את כל העובדים, ההגדרות, האילוצים והסידור השמורים במכשיר הזה. להמשיך?");
+      if (!approved) return;
+
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(WORKER_SETTINGS_KEY);
+      localStorage.removeItem(DELETED_WORKERS_KEY);
+      localStorage.removeItem("cleared-default-start-date-v1");
+
+      Object.keys(state.special).forEach(key => delete state.special[key]);
+      setDetectedWeeks([]);
+      state.currentSchedule = null;
+      state.currentWorkers = [];
+      state.currentWarnings = [];
+      state.shuffleSeed = 0;
+      state.weekDetectionWarnings = [];
+      state.calendar.warning = "";
+
+      WORKERS = [];
+      renderWorkers();
+      startDateEl.value = "";
+      weekCountEl.value = "2";
+      bulkExcelNotesEl.value = "";
+      bulkExcelStatusEl.textContent = "";
+      oneTimeRulesEl.value = "";
+      plainResultEl.value = "";
+      outputEl.innerHTML = "";
+      warningsEl.innerHTML = "";
+      manualOffDateEl.value = "";
+      renderWeekSettings();
+      await refreshCalendarDays();
+      statusBadgeEl.textContent = "המערכת אופסה";
+      if (autosaveStatusEl) autosaveStatusEl.textContent = "אין נתונים שמורים";
     }
 
     function removeWorker(name) {
@@ -2026,13 +2035,8 @@
 
     function collectOneTimeRules(workers, days) {
       const rules = [];
-      const hodWorker = workers.find(item => item.name === "הוד");
       const workerNamesInText = text => {
-        const names = workers.filter(item => text.includes(item.name));
-        if ((/\bאני\b|איתי|אתי/.test(text)) && hodWorker && !names.some(item => item.name === hodWorker.name)) {
-          names.push(hodWorker);
-        }
-        return names;
+        return workers.filter(item => text.includes(item.name));
       };
 
       const addRule = text => {
@@ -2051,7 +2055,7 @@
         const backup = /אם\s+חסר|רק\s+אם\s+חסר|חסר\s+עובד/.test(clean);
 
         if (slot) {
-          const slottedWorker = workersInRule.find(worker => worker.name !== "הוד") || workersInRule[0];
+          const slottedWorker = workersInRule[0];
           if (!backup) workersInRule.forEach(worker => worker.submitted.add(iso));
           rules.push({ worker: slottedWorker, iso, slot, only, backup });
           workersInRule
@@ -3068,6 +3072,7 @@
     });
     document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
     document.getElementById("quickReset").addEventListener("click", quickResetState);
+    document.getElementById("fullReset").addEventListener("click", fullResetSystem);
     document.getElementById("buildWeeks").addEventListener("click", async () => {
       setDetectedWeeks([]);
       renderWeekSettings();
