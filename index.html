@@ -123,7 +123,17 @@
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
     const FALLBACK_WORKER_COLOR = ["#eef3f1", "#263b34", "#c9d8d1"];
-    const STORAGE_KEY = "shifts-arranger-v3";
+    const STORAGE_SCHEMA_VERSION = 4;
+    const STORAGE_KEY = "shifts-arranger-v4";
+    const LEGACY_STORAGE_KEYS = [
+      "shifts-arranger-v1",
+      "shifts-arranger-v2",
+      "shifts-arranger-v3",
+      "shifts-arranger-worker-settings-v1",
+      "shifts-arranger-deleted-workers-v1",
+      "cleared-default-start-date-v1"
+    ];
+    LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
     const state = {
       special: {},
       detectedWeeks: [],
@@ -158,7 +168,12 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       try {
-        return JSON.parse(raw);
+        const data = JSON.parse(raw);
+        if (data?.schemaVersion !== STORAGE_SCHEMA_VERSION) {
+          localStorage.removeItem(STORAGE_KEY);
+          return null;
+        }
+        return data;
       } catch (error) {
         localStorage.removeItem(STORAGE_KEY);
         return null;
@@ -2809,6 +2824,7 @@
         }];
       }));
       const data = {
+        schemaVersion: STORAGE_SCHEMA_VERSION,
         startDate: startDate ? isoDate(startDate) : "",
         weekCount: weekCountEl.value,
         bulkExcelNotes: bulkExcelNotesEl.value,
@@ -2837,10 +2853,9 @@
     }
 
     function loadState() {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
       try {
-        const data = JSON.parse(raw);
+        const data = readSavedData();
+        if (!data) return;
         const savedStartDate = data.startDate || "";
         const startDate = parseUiDate(savedStartDate);
         startDateEl.value = startDate ? editDateValue(startDate) : "";
