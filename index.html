@@ -822,7 +822,7 @@
             <input type="checkbox" class="active-worker" aria-label="הכנס את ${worker.name} לסידור">
             <div class="worker-name">${worker.name}</div>
             <span class="worker-meta" style="direction: ltr; display: inline-block;">${worker.min}/${worker.max}</span>
-            <span class="one-time-indicator" hidden>חד־פעמי</span>
+            <span class="one-time-indicator" hidden></span>
             <label class="toggle-line">
               <input type="checkbox" class="night2-only" ${worker.onlyNight2 ? "checked" : ""}>
               רק נייט 2
@@ -1005,7 +1005,7 @@
         if (!indicator) return;
         const label = oneTimeLabels.get(card.dataset.worker);
         indicator.hidden = !label;
-        if (label) indicator.textContent = label;
+        indicator.textContent = label || "";
         debugRows.push({
           worker: card.dataset.worker,
           hasRegularConstraints: hasMeaningfulWorkerInput(card.querySelector(".constraints")?.value || ""),

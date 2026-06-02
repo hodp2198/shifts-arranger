@@ -200,6 +200,10 @@
       color: #7a5a00;
     }
 
+    .one-time-indicator[hidden] {
+      display: none;
+    }
+
     .toggle-line {
       display: flex;
       align-items: center;
