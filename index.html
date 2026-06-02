@@ -2048,20 +2048,21 @@
 
         const slot = /נייט\s*1/.test(clean) ? 1 : (/נייט\s*2/.test(clean) ? 2 : null);
         const only = /רק/.test(clean);
+        const backup = /אם\s+חסר|רק\s+אם\s+חסר|חסר\s+עובד/.test(clean);
 
         if (slot) {
           const slottedWorker = workersInRule.find(worker => worker.name !== "הוד") || workersInRule[0];
-          workersInRule.forEach(worker => worker.submitted.add(iso));
-          rules.push({ worker: slottedWorker, iso, slot, only });
+          if (!backup) workersInRule.forEach(worker => worker.submitted.add(iso));
+          rules.push({ worker: slottedWorker, iso, slot, only, backup });
           workersInRule
             .filter(worker => worker.name !== slottedWorker.name)
-            .forEach(worker => rules.push({ worker, iso, slot: slot === 1 ? 2 : 1, only: false }));
+            .forEach(worker => rules.push({ worker, iso, slot: slot === 1 ? 2 : 1, only: false, backup }));
           return;
         }
 
         workersInRule.forEach(worker => {
-          worker.submitted.add(iso);
-          rules.push({ worker, iso, slot: null, only });
+          if (!backup) worker.submitted.add(iso);
+          rules.push({ worker, iso, slot: null, only, backup });
         });
       };
 
@@ -2116,7 +2117,7 @@
       const entriesByIso = new Map(Object.values(schedule).flat().map(entry => [entry.day.iso, entry]));
       rebuildWorkerStats(schedule, workers);
 
-      for (const rule of rules) {
+      for (const rule of rules.filter(item => !item.backup)) {
         const entry = entriesByIso.get(rule.iso);
         if (!entry || entry.closed) continue;
 
@@ -2141,7 +2142,7 @@
 
     function enforceMaximumCaps(schedule, workers, rules, warnings) {
       const isForced = (worker, day, slot) => rules.some(rule => (
-        rule.worker.name === worker.name && rule.iso === day.iso && (!rule.slot || rule.slot === slot)
+        !rule.backup && rule.worker.name === worker.name && rule.iso === day.iso && (!rule.slot || rule.slot === slot)
       ));
 
       const assignedSlots = (worker, week) => (schedule[week] || [])
@@ -2205,7 +2206,24 @@
       rebuildWorkerStats(schedule, workers);
     }
 
-    function fillMissingSlots(schedule, workers) {
+    function findBackupWorker(rules, entry, slot, alreadyChosen) {
+      const matchingRules = rules.filter(rule => (
+        rule.backup
+        && rule.iso === entry.day.iso
+        && (!rule.slot || rule.slot === slot)
+      ));
+      for (const rule of matchingRules) {
+        const worker = rule.worker;
+        if (!worker || alreadyChosen.includes(worker.name)) continue;
+        if (slot === 1 && worker.onlyNight2) continue;
+        if (worker.max <= 0 || worker.blocked.has(entry.day.iso)) continue;
+        if ((worker.weekCounts[entry.day.week] || 0) >= worker.max) continue;
+        return worker;
+      }
+      return null;
+    }
+
+    function fillMissingSlots(schedule, workers, rules = []) {
       let changes = 0;
 
       for (const entry of Object.values(schedule).flat()) {
@@ -2220,8 +2238,10 @@
           const alreadyChosen = otherName ? [otherName] : [];
           let replacement = chooseWorker(workers, entry.day, option.slot, alreadyChosen);
           if (!replacement) replacement = chooseWorker(workers, entry.day, option.slot, alreadyChosen, { allowOverMax: true });
+          if (!replacement) replacement = findBackupWorker(rules, entry, option.slot, alreadyChosen);
           if (!replacement) continue;
 
+          if (!replacement.submitted?.has(entry.day.iso)) replacement.submitted.add(entry.day.iso);
           entry[option.key] = replacement;
           assign(replacement, entry.day, option.slot);
           changes += 1;
@@ -2444,7 +2464,7 @@
           continue;
         }
 
-        const forcedRules = oneTimeRules.filter(rule => rule.iso === day.iso);
+        const forcedRules = oneTimeRules.filter(rule => rule.iso === day.iso && !rule.backup);
         let forcedFirst = forcedRules.find(rule => rule.slot === 1)?.worker || null;
         let forcedSecond = forcedRules.find(rule => rule.slot === 2)?.worker || null;
         if (forcedFirst && !canAssign(forcedFirst, day, 1)) forcedFirst = null;
@@ -2510,7 +2530,7 @@
       enforceOneTimeRules(schedule, workers, oneTimeRules, warnings);
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
       auditSchedule("after enforceMaximumCaps");
-      fillMissingSlots(schedule, workers);
+      fillMissingSlots(schedule, workers, oneTimeRules);
       auditSchedule("after fillMissingSlots");
 
       const weekCount = weekConfigs.length;
@@ -2527,7 +2547,7 @@
       rebuildWorkerStats(schedule, workers);
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
       auditSchedule("after final enforceMaximumCaps");
-      fillMissingSlots(schedule, workers);
+      fillMissingSlots(schedule, workers, oneTimeRules);
       auditSchedule("after final fillMissingSlots");
       enforceMaximumCaps(schedule, workers, oneTimeRules, warnings);
       auditSchedule("after closing enforceMaximumCaps");
