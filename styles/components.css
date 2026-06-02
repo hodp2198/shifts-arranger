@@ -181,7 +181,6 @@
       color: var(--muted-soft);
     }
 
-    .quick-indicator,
     .one-time-indicator {
       display: inline-flex;
       align-items: center;
@@ -245,15 +244,6 @@
       border-color: rgba(29, 29, 31, 0.06);
       border-radius: 10px;
       background: #ffffff;
-    }
-
-    .quick-availability {
-      display: grid;
-      gap: 6px;
-    }
-
-    .worker .quick-availability-input {
-      min-height: 58px;
     }
 
     .days {

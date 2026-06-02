@@ -27,7 +27,7 @@
         </div>
         <div class="panel-body">
           <div class="whatsapp-intake">
-            <label for="bulkExcelNotes">הדבקת הערות מאקסל</label>
+            <label for="bulkExcelNotes">הדבקת אילוצים</label>
             <div class="intake-status">העתק מאקסל טווח שבו השורה הראשונה היא שמות עובדים, והעמודות הן האילוצים.</div>
             <textarea id="bulkExcelNotes" placeholder="מדביקים כאן טווח שהועתק מאקסל"></textarea>
             <div class="mini-actions excel-actions">
@@ -822,7 +822,6 @@
             <input type="checkbox" class="active-worker" aria-label="הכנס את ${worker.name} לסידור">
             <div class="worker-name">${worker.name}</div>
             <span class="worker-meta" style="direction: ltr; display: inline-block;">${worker.min}/${worker.max}</span>
-            <span class="quick-indicator" hidden>Quick</span>
             <span class="one-time-indicator" hidden>חד־פעמי</span>
             <label class="toggle-line">
               <input type="checkbox" class="night2-only" ${worker.onlyNight2 ? "checked" : ""}>
@@ -844,10 +843,6 @@
                 </div>
               </div>
               <textarea class="constraints" placeholder="אילוצים לעובד הזה"></textarea>
-              <div class="quick-availability">
-                <label>זמינות מהירה</label>
-                <textarea class="quick-availability-input" placeholder="לדוגמה: אני יכולה רק בשבת / יכול רק ג' / רק 6/6"></textarea>
-              </div>
             </div>
           </details>
       </article>
@@ -912,8 +907,7 @@
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
-          constraints: card.querySelector(".constraints").value,
-          quickAvailability: card.querySelector(".quick-availability-input").value
+          constraints: card.querySelector(".constraints").value
         };
       });
       return data;
@@ -929,8 +923,6 @@
         card.querySelector(".min-shifts").value = settings.min;
         card.querySelector(".max-shifts").value = settings.max;
         card.querySelector(".constraints").value = saved.constraints || "";
-        card.querySelector(".quick-availability-input").value = saved.quickAvailability || "";
-        updateQuickIndicator(card);
         updateWorkerMeta(card);
       }
       updateOneTimeIndicators();
@@ -957,12 +949,6 @@
       updateWorkerMeta(card);
     }
 
-    function updateQuickIndicator(card) {
-      const indicator = card.querySelector(".quick-indicator");
-      const quickText = card.querySelector(".quick-availability-input")?.value.trim();
-      if (indicator) indicator.hidden = !quickText;
-    }
-
     function updateWorkerMeta(card) {
       if (!card) return;
       const min = card.querySelector('.min-shifts')?.value ?? '';
@@ -981,10 +967,9 @@
       WORKERS.forEach(worker => {
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
         const constraints = card?.querySelector(".constraints")?.value.trim() || "";
-        const quick = card?.querySelector(".quick-availability-input")?.value.trim() || "";
         const mentionedAsHod = worker.name === "הוד" && (/\bאני\b|איתי|אתי/.test(text));
         const mentioned = text.includes(worker.name) || mentionedAsHod;
-        if (mentioned && !hasMeaningfulWorkerInput(constraints) && !hasQuickAvailability(quick)) {
+        if (mentioned && !hasMeaningfulWorkerInput(constraints)) {
           names.add(worker.name);
         }
       });
@@ -1043,7 +1028,7 @@
 
       const inactiveWorkers = existingWorkers
         .filter(worker => !importedNames.has(worker.name))
-        .filter(worker => existingState[worker.name]?.active || existingState[worker.name]?.constraints || existingState[worker.name]?.quickAvailability)
+        .filter(worker => existingState[worker.name]?.active || existingState[worker.name]?.constraints)
         .map(worker => worker.name);
       const registryByName = new Map(existingWorkers.map(worker => [worker.name, worker]));
       importedDefinitions.forEach(worker => {
@@ -1061,8 +1046,7 @@
           max: existingWorkerState.max ?? worker.max ?? 2,
           onlyNight2: existingWorkerState.onlyNight2 ?? worker.onlyNight2 ?? false,
           active: false,
-          constraints: "",
-          quickAvailability: ""
+          constraints: ""
         };
       });
       applyWorkerState(importState);
@@ -1082,8 +1066,6 @@
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
         if (!card) return;
         card.querySelector(".constraints").value = text;
-        card.querySelector(".quick-availability-input").value = "";
-        updateQuickIndicator(card);
         card.querySelector(".active-worker").checked = hasMeaningfulWorkerInput(text);
         imported += 1;
       });
@@ -1124,8 +1106,7 @@
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
           color: getWorkerColor(card.dataset.worker),
-          constraints: "",
-          quickAvailability: ""
+          constraints: ""
         };
       });
       return stateByName;
@@ -1329,59 +1310,6 @@
       return { blocked, preferred, submitted };
     }
 
-    function parseQuickAvailability(text) {
-      const blocked = new Set();
-      const submitted = new Set();
-      const raw = String(text || "").trim();
-      if (!raw) return { blocked, submitted, active: false };
-
-      const days = getScheduleDays().filter(day => !day.closed);
-      const allowed = new Set();
-      const normalized = raw
-        .replace(/[׳״"]/g, "'")
-        .replace(/[.,;]+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      for (const match of normalized.matchAll(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/g)) {
-        const date = parseUiDate(match[0], getBaseStartDate()?.getFullYear());
-        if (date) allowed.add(isoDate(date));
-      }
-
-      days.forEach(day => {
-        if (day.dayName === "שבת" && /שבת/.test(normalized)) allowed.add(day.iso);
-      });
-
-      const afterOnly = normalized.includes("רק")
-        ? normalized.slice(normalized.lastIndexOf("רק") + 2)
-        : normalized;
-      const tokens = afterOnly
-        .replace(/ביום|יום|ב-/g, " ")
-        .split(/\s+/)
-        .map(token => token.replace(/[^א-ת']/g, "").replace(/'/g, ""))
-        .filter(Boolean);
-
-      for (const token of tokens) {
-        const dayToken = token.includes("שבת")
-          ? "שבת"
-          : (token.startsWith("ב") && token.length === 2 ? token[1] : token[0]);
-        const dayIndex = dayToken === "שבת" ? 6 : DAY_NAMES.indexOf(dayToken);
-        if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
-        days
-          .filter(day => day.dayIndex === dayIndex)
-          .forEach(day => allowed.add(day.iso));
-      }
-
-      if (!allowed.size) return { blocked, submitted, active: false };
-
-      days.forEach(day => {
-        if (allowed.has(day.iso)) submitted.add(day.iso);
-        else blocked.add(day.iso);
-      });
-
-      return { blocked, submitted, active: true };
-    }
-
     function isUnavailableText(text) {
       return /לא\s*יכול|לא\s*יכולה|לא\s*יוכלה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(text);
     }
@@ -1422,10 +1350,6 @@
       return lines.some(line => isConstraintDayLine(line) || isUnavailableText(line) || isPreferredText(line));
     }
 
-    function hasQuickAvailability(text) {
-      return parseQuickAvailability(text).active;
-    }
-
     function countImportedConstraints() {
       let blocked = 0;
       let preferred = 0;
@@ -1433,14 +1357,11 @@
 
       document.querySelectorAll(".worker").forEach(card => {
         const text = card.querySelector(".constraints").value.trim();
-        const quickText = card.querySelector(".quick-availability-input").value.trim();
-        if (!text && !quickText) return;
+        if (!text) return;
         const parsed = parseConstraints(text);
-        const quick = parseQuickAvailability(quickText);
         blocked += parsed.blocked.size;
-        blocked += quick.blocked.size;
         preferred += parsed.preferred.size;
-        if (hasMeaningfulWorkerInput(text) || quick.active) activeWorkers += 1;
+        if (hasMeaningfulWorkerInput(text)) activeWorkers += 1;
       });
 
       return { blocked, preferred, activeWorkers };
@@ -1472,20 +1393,16 @@
         syncWorkerShiftBounds(card);
         const name = card.dataset.worker;
         const constraintsText = card.querySelector(".constraints").value.trim();
-        const quickText = card.querySelector(".quick-availability-input").value.trim();
         const settings = normalizeWorkerSettings({
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
           onlyNight2: card.querySelector(".night2-only").checked
         });
         const parsedConstraints = parseConstraints(constraintsText);
-        const quickAvailability = parseQuickAvailability(quickText);
-        quickAvailability.blocked.forEach(iso => parsedConstraints.blocked.add(iso));
-        quickAvailability.submitted.forEach(iso => parsedConstraints.submitted.add(iso));
         const manuallyActive = card.querySelector(".active-worker").checked;
         const mentionedAsHod = name === "הוד" && (/\bאני\b|איתי|אתי/.test(oneTimeRulesEl.value));
         const oneTimeActive = oneTimeRulesEl.value.includes(name) || mentionedAsHod;
-        const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText) || quickAvailability.active;
+        const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText);
         return {
           name,
           active: (manuallyActive && hasWorkerInput) || oneTimeActive,
@@ -2972,8 +2889,7 @@
         onlyNight2: card.querySelector(".night2-only").checked,
         min: card.querySelector(".min-shifts").value,
         max: card.querySelector(".max-shifts").value,
-        constraints: card.querySelector(".constraints").value,
-        quickAvailability: card.querySelector(".quick-availability-input").value
+        constraints: card.querySelector(".constraints").value
       }]));
       const onlyNight2ByName = {};
       liveWorkerState.forEach((workerState, name) => {
@@ -3075,7 +2991,7 @@
         applyWorkerState(workersState);
         updateOneTimeIndicators();
         if (data.bulkExcelNotes) {
-          renderImportSummary({ imported: (data.workers || []).filter(worker => worker.constraints || worker.quickAvailability).length, importedWeeks: getDetectedWeekConfigs().length });
+          renderImportSummary({ imported: (data.workers || []).filter(worker => worker.constraints).length, importedWeeks: getDetectedWeekConfigs().length });
         }
       } catch (error) {
         localStorage.removeItem(STORAGE_KEY);
@@ -3192,13 +3108,6 @@
         }
         if (event.target.classList.contains("constraints") && event.target.value.trim()) {
           event.target.closest(".worker").querySelector(".active-worker").checked = true;
-        }
-        if (event.target.classList.contains("quick-availability-input")) {
-          const card = event.target.closest(".worker");
-          updateQuickIndicator(card);
-          if (hasQuickAvailability(event.target.value)) {
-            card.querySelector(".active-worker").checked = true;
-          }
         }
         if (event.target.closest(".worker") || event.target === oneTimeRulesEl) {
           updateOneTimeIndicators();
