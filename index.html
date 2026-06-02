@@ -1346,6 +1346,7 @@
           max: card.querySelector(".max-shifts").value,
           onlyNight2: card.querySelector(".night2-only").checked
         });
+        const workerDefinition = WORKERS.find(worker => worker.name === name);
         const parsedConstraints = parseConstraints(constraintsText);
         const manuallyActive = card.querySelector(".active-worker").checked;
         const oneTimeActive = hasActiveOneTimeNoteForWorker({ name });
@@ -1355,7 +1356,7 @@
           active: (manuallyActive && hasWorkerInput) || oneTimeActive,
           oneTimeOnly: oneTimeActive && !hasWorkerInput,
           onlyNight2: settings.onlyNight2,
-          color: getWorkerColor(name, worker.color),
+          color: getWorkerColor(name, workerDefinition?.color),
           min: settings.min,
           max: settings.max,
           blocked: parsedConstraints.blocked,
