@@ -960,27 +960,52 @@
       }
     }
 
-    function getOneTimeOnlyNames() {
-      const text = oneTimeRulesEl.value || "";
-      if (!text.trim()) return new Set();
-      const names = new Set();
+    function oneTimeRuleMentionsWorker(text, worker) {
+      const mentionedAsHod = worker.name === "הוד" && (/\bאני\b|איתי|אתי/.test(text));
+      return text.includes(worker.name) || mentionedAsHod;
+    }
+
+    function isActiveOneTimeNote(text) {
+      const clean = String(text || "").trim();
+      if (!clean) return false;
+      if (isoFromRuleText(clean, getScheduleDays())) return true;
+      return /חייב|חייבת|נייט|רק|השבוע|הבא|הבאה|חפיפה|אם חסר|בלבד|עם|לא\s*יכול|לא\s*יכולה|לא\s*פנוי|לא\s*פנויה/.test(clean);
+    }
+
+    function activeOneTimeLines() {
+      return String(oneTimeRulesEl.value || "")
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(isActiveOneTimeNote);
+    }
+
+    function hasActiveOneTimeNoteForWorker(worker) {
+      return activeOneTimeLines().some(line => oneTimeRuleMentionsWorker(line, worker));
+    }
+
+    function getOneTimeIndicatorLabels() {
+      const lines = activeOneTimeLines();
+      const labels = new Map();
+      if (!lines.length) return labels;
       WORKERS.forEach(worker => {
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
         const constraints = card?.querySelector(".constraints")?.value.trim() || "";
-        const mentionedAsHod = worker.name === "הוד" && (/\bאני\b|איתי|אתי/.test(text));
-        const mentioned = text.includes(worker.name) || mentionedAsHod;
-        if (mentioned && !hasMeaningfulWorkerInput(constraints)) {
-          names.add(worker.name);
+        const mentioned = lines.some(line => oneTimeRuleMentionsWorker(line, worker));
+        if (mentioned) {
+          labels.set(worker.name, hasMeaningfulWorkerInput(constraints) ? "הערה פעילה" : "חד־פעמי");
         }
       });
-      return names;
+      return labels;
     }
 
     function updateOneTimeIndicators() {
-      const oneTimeNames = getOneTimeOnlyNames();
+      const oneTimeLabels = getOneTimeIndicatorLabels();
       document.querySelectorAll(".worker").forEach(card => {
         const indicator = card.querySelector(".one-time-indicator");
-        if (indicator) indicator.hidden = !oneTimeNames.has(card.dataset.worker);
+        if (!indicator) return;
+        const label = oneTimeLabels.get(card.dataset.worker);
+        indicator.hidden = !label;
+        if (label) indicator.textContent = label;
       });
     }
 
@@ -1400,8 +1425,7 @@
         });
         const parsedConstraints = parseConstraints(constraintsText);
         const manuallyActive = card.querySelector(".active-worker").checked;
-        const mentionedAsHod = name === "הוד" && (/\bאני\b|איתי|אתי/.test(oneTimeRulesEl.value));
-        const oneTimeActive = oneTimeRulesEl.value.includes(name) || mentionedAsHod;
+        const oneTimeActive = hasActiveOneTimeNoteForWorker({ name });
         const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText);
         return {
           name,
