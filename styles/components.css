@@ -116,19 +116,31 @@
       color: #fff;
     }
 
-    .icon-btn.remove {
-      width: 28px;
-      height: 28px;
-      min-height: 28px;
-      border-radius: 6px;
-      background: var(--surface-strong);
-      color: var(--danger);
-      font-size: 20px;
-      font-weight: 700;
-    }
-
     .icon-btn:hover {
       filter: brightness(0.94);
+    }
+
+    .remove-worker {
+      min-height: 30px;
+      padding: 0 10px;
+      border-radius: 9px;
+      border: 1px solid rgba(150, 45, 45, 0.14);
+      background: #fff5f5;
+      color: var(--danger);
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+      transition: background .16s ease, border-color .16s ease, transform .16s ease;
+    }
+
+    .remove-worker:hover {
+      background: #fceaea;
+      border-color: rgba(150, 45, 45, 0.22);
+      transform: translateY(-1px);
+    }
+
+    .remove-worker:active {
+      transform: scale(.98);
     }
 
     .worker {
@@ -863,16 +875,8 @@
         width: 100%;
       }
 
-      .worker-head .icon-btn {
-        width: 28px;
-      }
-
       .employee-tools .icon-btn {
         width: 34px;
-      }
-
-      .icon-btn.remove {
-        width: 28px;
       }
 
       .toggle-line {
