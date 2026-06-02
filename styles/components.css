@@ -159,7 +159,7 @@
       align-items: center;
       min-height: 44px;
       padding: 8px 11px;
-      background: linear-gradient(90deg, var(--worker-bg, #fff), #fff 38%);
+      background: #fff;
     }
 
     .worker-color-dot {
