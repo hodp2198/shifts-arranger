@@ -202,10 +202,7 @@
     });
   }
 
-  async function createGoogleCalendarEvents({ schedule, employeeId, calendarEmail, accessToken }) {
-    if (!isValidEmail(calendarEmail)) {
-      throw new Error("Invalid email address");
-    }
+  async function createGoogleCalendarEvents({ schedule, employeeId, accessToken }) {
     if (!accessToken) {
       throw new Error("Google authorization failed. Please sign in again.");
     }
@@ -227,7 +224,7 @@
         employeeId: event.employeeId,
         date: event.date,
         role: event.role,
-        calendarEmail,
+        calendarAccount: "primary",
         updatedAt: new Date().toISOString()
       };
       results.push(googleEvent);
