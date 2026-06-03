@@ -39,21 +39,32 @@
         <div id="eventPreview" class="employee-event-preview"></div>
 
         <div class="actions preview-actions">
-          <button class="btn" id="addToCalendar" type="button">הורד קובץ ליומן</button>
+          <button class="btn secondary" id="authorizeGoogle" type="button">התחבר עם Google</button>
+          <span class="autosave-status" id="authStatus">לא מחובר</span>
         </div>
-        <div class="helper">לאחר ההורדה, פתחו את הקובץ כדי להוסיף את המשמרות ליומן Google.</div>
+        <div class="actions preview-actions">
+          <button class="btn" id="addToCalendar" type="button" disabled>הוסף ליומן Google</button>
+          <button class="btn secondary" id="downloadCalendarFile" type="button">הורד קובץ יומן</button>
+        </div>
+        <div class="helper">הכפתור הראשי מוסיף את המשמרות ישירות ליומן Google. אם ההרשאה נכשלת, אפשר להוריד קובץ יומן כגיבוי.</div>
         <div class="intake-status" id="calendarMessage"></div>
       </div>
     </section>
   </main>
 
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="src/googleConfig.js"></script>
+  <script src="src/auth/googleOAuthService.js"></script>
   <script src="src/scheduleExport.js"></script>
   <script src="src/calendarService.js"></script>
   <script>
     const employeeSelectEl = document.getElementById("employeeSelect");
     const calendarEmailEl = document.getElementById("calendarEmail");
     const eventPreviewEl = document.getElementById("eventPreview");
+    const authorizeGoogleEl = document.getElementById("authorizeGoogle");
+    const authStatusEl = document.getElementById("authStatus");
     const addToCalendarEl = document.getElementById("addToCalendar");
+    const downloadCalendarFileEl = document.getElementById("downloadCalendarFile");
     const calendarMessageEl = document.getElementById("calendarMessage");
     const exportStatusEl = document.getElementById("exportStatus");
 
@@ -86,10 +97,12 @@
       if (!events.length) {
         eventPreviewEl.innerHTML = `<div class="employee-empty-state">No shifts found for this employee</div>`;
         exportStatusEl.textContent = "אין משמרות";
+        addToCalendarEl.disabled = true;
         return;
       }
 
       exportStatusEl.textContent = `${events.length} משמרות`;
+      addToCalendarEl.disabled = !googleOAuthService.isAuthorized();
       eventPreviewEl.innerHTML = events.map(event => `
         <div class="employee-event-row">
           <div>
@@ -101,22 +114,65 @@
       `).join("");
     }
 
-    async function handleAddToCalendar() {
+    async function handleAuthorizeGoogle() {
+      calendarMessageEl.textContent = "";
+      authStatusEl.textContent = "מתחבר...";
+      try {
+        await googleOAuthService.signIn();
+        authStatusEl.textContent = "מחובר ל-Google";
+        calendarMessageEl.textContent = "ההרשאה התקבלה. בדקו את התצוגה המקדימה ואשרו הוספה ליומן.";
+        renderPreview();
+      } catch (error) {
+        authStatusEl.textContent = "לא מחובר";
+        addToCalendarEl.disabled = true;
+        calendarMessageEl.textContent = error.message || "Authorization failed. Please retry.";
+      }
+    }
+
+    async function handleAddToGoogleCalendar() {
       const email = calendarEmailEl.value.trim();
       if (!calendarService.isValidEmail(email)) {
         calendarMessageEl.textContent = "Invalid email address";
         return;
       }
+      if (!googleOAuthService.isAuthorized()) {
+        calendarMessageEl.textContent = "יש להתחבר עם Google לפני ההוספה ליומן.";
+        return;
+      }
 
+      addToCalendarEl.disabled = true;
+      authorizeGoogleEl.disabled = true;
+      addToCalendarEl.textContent = "מוסיף ליומן...";
       try {
-        const result = await calendarService.exportCalendarFile({
+        await calendarService.createGoogleCalendarEvents({
+          schedule: finalizedSchedule,
+          employeeId: employeeSelectEl.value,
+          calendarEmail: email,
+          accessToken: googleOAuthService.getAccessToken()
+        });
+        calendarMessageEl.textContent = "המשמרות נוספו ליומן Google בהצלחה.";
+      } catch (error) {
+        calendarMessageEl.textContent = error.message || "Google Calendar authorization failed. Please retry.";
+      } finally {
+        addToCalendarEl.textContent = "הוסף ליומן Google";
+        authorizeGoogleEl.disabled = false;
+        renderPreview();
+      }
+    }
+
+    async function handleDownloadCalendarFile() {
+      const email = calendarEmailEl.value.trim();
+      if (!calendarService.isValidEmail(email)) {
+        calendarMessageEl.textContent = "Invalid email address";
+        return;
+      }
+      try {
+        await calendarService.exportCalendarFile({
           schedule: finalizedSchedule,
           employeeId: employeeSelectEl.value,
           calendarEmail: email
         });
-        calendarMessageEl.textContent = result.existingCount
-          ? `קובץ היומן נוצר מחדש עם אותם מזהי אירועים כדי למנוע כפילויות. פתחו אותו כדי לעדכן את היומן.`
-          : `קובץ היומן נוצר בהצלחה. פתחו אותו כדי להוסיף את המשמרות ליומן.`;
+        calendarMessageEl.textContent = "קובץ היומן נוצר בהצלחה. פתחו אותו כדי להוסיף את המשמרות ליומן.";
       } catch (error) {
         calendarMessageEl.textContent = error.message || "יצירת קובץ היומן נכשלה. אפשר לנסות שוב.";
       }
@@ -130,7 +186,13 @@
       renderEmployeeOptions();
       renderPreview();
       employeeSelectEl.addEventListener("change", renderPreview);
-      addToCalendarEl.addEventListener("click", handleAddToCalendar);
+      authorizeGoogleEl.addEventListener("click", handleAuthorizeGoogle);
+      addToCalendarEl.addEventListener("click", handleAddToGoogleCalendar);
+      downloadCalendarFileEl.addEventListener("click", handleDownloadCalendarFile);
+      if (!googleOAuthService.hasConfiguredClient()) {
+        authStatusEl.textContent = "Google OAuth לא מוגדר";
+        calendarMessageEl.textContent = "יש להגדיר Google OAuth Client ID לפני הוספה ישירה ליומן. ניתן להשתמש בהורדת קובץ יומן כגיבוי.";
+      }
     } catch (error) {
       renderError(error.message || "Invalid finalized schedule link");
     }
