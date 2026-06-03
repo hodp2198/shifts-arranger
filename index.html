@@ -644,6 +644,18 @@
         }
       }
 
+      if (simpleRange) {
+        const startDay = Number(simpleRange[2]);
+        const endDay = Number(simpleRange[3]);
+        if (startDay > endDay) {
+          const endMonth = new Date().getMonth() + 1;
+          const startMonth = inferStartMonth(startDay, endDay, endMonth);
+          const start = safeImportDate(startDay, startMonth);
+          const end = safeImportDate(endDay, endMonth, start?.getFullYear());
+          return start && end ? { start, end } : null;
+        }
+      }
+
       return null;
     }
 
@@ -672,7 +684,7 @@
           .map((cell, columnIndex) => ({ columnIndex, text: String(cell || "").trim() }))
           .filter(cell => cell.text && isConstraintWeekHeader(cell.text));
 
-        if (cells.length < 2) return;
+        if (!cells.length) return;
 
         const explicitRanges = cells
           .map(cell => parseWeekLabelToRange(cell.text))
