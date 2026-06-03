@@ -113,7 +113,7 @@
     URL.revokeObjectURL(url);
   }
 
-  async function addToGoogleCalendar({ schedule, employeeId, calendarEmail }) {
+  async function exportCalendarFile({ schedule, employeeId, calendarEmail }) {
     if (!isValidEmail(calendarEmail)) {
       throw new Error("Invalid email address");
     }
@@ -151,6 +151,6 @@
     readCreatedEvents,
     isValidEmail,
     shiftsForEmployee,
-    addToGoogleCalendar
+    exportCalendarFile
   };
 })();

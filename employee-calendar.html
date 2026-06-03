@@ -39,8 +39,9 @@
         <div id="eventPreview" class="employee-event-preview"></div>
 
         <div class="actions preview-actions">
-          <button class="btn" id="addToCalendar" type="button">Add to Google Calendar</button>
+          <button class="btn" id="addToCalendar" type="button">הורד קובץ ליומן</button>
         </div>
+        <div class="helper">לאחר ההורדה, פתחו את הקובץ כדי להוסיף את המשמרות ליומן Google.</div>
         <div class="intake-status" id="calendarMessage"></div>
       </div>
     </section>
@@ -108,16 +109,16 @@
       }
 
       try {
-        const result = await calendarService.addToGoogleCalendar({
+        const result = await calendarService.exportCalendarFile({
           schedule: finalizedSchedule,
           employeeId: employeeSelectEl.value,
           calendarEmail: email
         });
         calendarMessageEl.textContent = result.existingCount
-          ? `Events were already added before. Calendar file was regenerated with the same event IDs.`
-          : `Calendar file created. Import it into Google Calendar to add the shifts.`;
+          ? `קובץ היומן נוצר מחדש עם אותם מזהי אירועים כדי למנוע כפילויות. פתחו אותו כדי לעדכן את היומן.`
+          : `קובץ היומן נוצר בהצלחה. פתחו אותו כדי להוסיף את המשמרות ליומן.`;
       } catch (error) {
-        calendarMessageEl.textContent = error.message || "Google Calendar export failed. Please retry.";
+        calendarMessageEl.textContent = error.message || "יצירת קובץ היומן נכשלה. אפשר לנסות שוב.";
       }
     }
 
