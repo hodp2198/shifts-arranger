@@ -86,8 +86,26 @@
       return calendarService.shiftsForEmployee(finalizedSchedule, employeeSelectEl.value);
     }
 
+    function resetAddButton() {
+      addToCalendarEl.classList.remove("success");
+      addToCalendarEl.textContent = "הוסף ליומן Google";
+    }
+
+    function setCreatedButton() {
+      addToCalendarEl.classList.add("success");
+      addToCalendarEl.textContent = "האירוע נוצר";
+      addToCalendarEl.disabled = true;
+    }
+
+    function allSelectedEventsCreated(events = selectedEvents()) {
+      if (!events.length) return false;
+      const createdEvents = calendarService.readCreatedEvents();
+      return events.every(event => Boolean(createdEvents[event.key]?.googleEventId));
+    }
+
     function renderPreview() {
       const events = selectedEvents();
+      resetAddButton();
       if (!events.length) {
         eventPreviewEl.innerHTML = `<div class="employee-empty-state">No shifts found for this employee</div>`;
         exportStatusEl.textContent = "אין משמרות";
@@ -96,7 +114,11 @@
       }
 
       exportStatusEl.textContent = `${events.length} משמרות`;
-      addToCalendarEl.disabled = !oauthConfigured || !googleOAuthService.isAuthorized();
+      if (allSelectedEventsCreated(events)) {
+        setCreatedButton();
+      } else {
+        addToCalendarEl.disabled = !oauthConfigured || !googleOAuthService.isAuthorized();
+      }
       eventPreviewEl.innerHTML = events.map(event => `
         <div class="employee-event-row">
           <div>
@@ -128,6 +150,11 @@
     }
 
     async function handleAddToGoogleCalendar() {
+      if (allSelectedEventsCreated()) {
+        setCreatedButton();
+        calendarMessageEl.textContent = "המשמרות כבר נוספו ליומן.";
+        return;
+      }
       if (!googleOAuthService.isAuthorized()) {
         addToCalendarEl.disabled = true;
         calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
@@ -136,22 +163,27 @@
 
       addToCalendarEl.disabled = true;
       authorizeGoogleEl.disabled = true;
+      addToCalendarEl.classList.remove("success");
       addToCalendarEl.textContent = "מוסיף ליומן...";
+      let completed = false;
       try {
         const result = await calendarService.createGoogleCalendarEvents({
           schedule: finalizedSchedule,
           employeeId: employeeSelectEl.value,
           accessToken: googleOAuthService.getAccessToken()
         });
+        completed = true;
+        setCreatedButton();
         calendarMessageEl.textContent = result.existingCount >= result.events.length
           ? "המשמרות כבר נוספו ליומן."
           : "המשמרות נוספו ליומן Google בהצלחה.";
       } catch (error) {
         calendarMessageEl.textContent = error.message || "Google Calendar authorization failed. Please retry.";
       } finally {
-        addToCalendarEl.textContent = "הוסף ליומן Google";
         authorizeGoogleEl.disabled = false;
-        renderPreview();
+        if (!completed) {
+          renderPreview();
+        }
       }
     }
 

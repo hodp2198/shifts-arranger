@@ -95,6 +95,19 @@
       background: var(--surface-strong);
     }
 
+    .btn.success,
+    .btn.success:disabled,
+    .btn.success[disabled],
+    .btn.success:hover,
+    .btn.success:disabled:hover,
+    .btn.success[disabled]:hover {
+      background: var(--ok);
+      color: #fff;
+      opacity: 1;
+      box-shadow: 0 8px 18px rgba(46, 125, 50, 0.16);
+      transform: none;
+    }
+
     .btn.danger {
       background: #f3dddd;
       color: var(--danger);
