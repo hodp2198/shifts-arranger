@@ -113,12 +113,24 @@
             <button class="btn secondary" id="copyResult" type="button">העתק הודעה</button>
             <span class="autosave-status" id="autosaveStatus">נשמר אוטומטית</span>
           </div>
+          <div class="calendar-export-admin">
+            <div class="preview-title">קישור יומן לעובדים</div>
+            <div class="intake-status">יוצר קישור נפרד לסידור הסופי בלבד. העובדים יראו רק בחירת שם, אימייל, תצוגה מקדימה והוספה ליומן.</div>
+            <div class="calendar-export-row">
+              <button class="btn secondary" id="createCalendarExportLink" type="button">צור קישור יומן</button>
+              <input type="text" id="calendarExportLink" readonly placeholder="כאן יופיע קישור לעובדים">
+              <button class="btn secondary" id="copyCalendarExportLink" type="button">העתק קישור</button>
+            </div>
+            <div class="intake-status" id="calendarExportStatus"></div>
+          </div>
       </div>
       </aside>
     </section>
   </main>
 
   <script src="vendor/hebcal-core.min.js"></script>
+  <script src="src/scheduleExport.js"></script>
+  <script src="src/calendarService.js"></script>
   <script>
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
@@ -178,6 +190,10 @@
     const manualOffDateEl = document.getElementById("manualOffDate");
     const manualOffLabelEl = document.getElementById("manualOffLabel");
     const autosaveStatusEl = document.getElementById("autosaveStatus");
+    const createCalendarExportLinkEl = document.getElementById("createCalendarExportLink");
+    const calendarExportLinkEl = document.getElementById("calendarExportLink");
+    const copyCalendarExportLinkEl = document.getElementById("copyCalendarExportLink");
+    const calendarExportStatusEl = document.getElementById("calendarExportStatus");
 
     function readSavedData() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -2860,6 +2876,67 @@
       saveState();
     }
 
+    function finalizedSchedulePayload() {
+      if (!state.currentSchedule || !Object.values(state.currentSchedule).flat().length) return null;
+      const entries = Object.values(state.currentSchedule)
+        .flat()
+        .filter(entry => !entry.closed)
+        .map(entry => {
+          const first = entry.first?.name || "";
+          const second = entry.second?.name || "";
+          return {
+            date: entry.day.iso,
+            dayName: scheduleDayLabel(entry.day.dayName),
+            assignments: [
+              first ? { employeeName: first, role: "night1", title: "נייט 1" } : null,
+              second ? { employeeName: second, role: "night2", title: "נייט 2" } : null
+            ].filter(Boolean)
+          };
+        })
+        .filter(entry => entry.assignments.length);
+      const employees = [...new Set(entries.flatMap(entry => entry.assignments.map(item => item.employeeName)))]
+        .sort((a, b) => a.localeCompare(b, "he"))
+        .map(name => ({ id: scheduleExport.employeeId(name), name }));
+      if (!entries.length || !employees.length) return null;
+      return {
+        scheduleId: scheduleExport.createScheduleId(),
+        createdAt: new Date().toISOString(),
+        timezone: "Asia/Jerusalem",
+        weeks: getWeekConfigs().map((week, index) => ({
+          index,
+          label: weekCopyLabel(index),
+          startDate: isoDate(week.start),
+          endDate: isoDate(week.end)
+        })),
+        employees,
+        entries,
+        whatsappText: plainResultEl.value.trim()
+      };
+    }
+
+    async function createCalendarExportLink() {
+      if (!state.currentSchedule) await renderSchedule();
+      const payload = finalizedSchedulePayload();
+      if (!payload) {
+        calendarExportStatusEl.textContent = "אין סידור סופי ליצוא.";
+        return;
+      }
+      const link = scheduleExport.createEmployeeExportLink(payload, "employee-calendar.html");
+      calendarExportLinkEl.value = link;
+      calendarExportStatusEl.textContent = "קישור יומן נוצר לסידור הסופי.";
+    }
+
+    async function copyCalendarExportLink() {
+      if (!calendarExportLinkEl.value.trim()) await createCalendarExportLink();
+      if (!calendarExportLinkEl.value.trim()) return;
+      try {
+        await navigator.clipboard.writeText(calendarExportLinkEl.value);
+        calendarExportStatusEl.textContent = "קישור הועתק.";
+      } catch (error) {
+        calendarExportStatusEl.textContent = "הדפדפן חסם העתקה. אפשר להעתיק ידנית מהשדה.";
+      }
+    }
+
     function saveState() {
       const startDate = getBaseStartDate();
       const saveDateValue = value => {
@@ -2969,6 +3046,8 @@
         statusBadgeEl.textContent = "הדפדפן חסם העתקה";
       }
     });
+    createCalendarExportLinkEl.addEventListener("click", createCalendarExportLink);
+    copyCalendarExportLinkEl.addEventListener("click", copyCalendarExportLink);
     document.getElementById("addWorker").addEventListener("click", addWorker);
     document.getElementById("newWorkerName").addEventListener("keydown", event => {
       if (event.key === "Enter") addWorker();

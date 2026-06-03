@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>הוספת משמרות ליומן</title>
+  <link rel="stylesheet" href="styles/theme.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+  <main class="shell employee-export-shell">
+    <section class="topbar">
+      <div>
+        <h1>הוספת משמרות ליומן</h1>
+        <p class="intro">בחרו שם, בדקו את המשמרות שיוספו, ואז אשרו הוספה ליומן Google.</p>
+      </div>
+    </section>
+
+    <section class="panel employee-export-panel">
+      <div class="panel-header">
+        <h2>Google Calendar</h2>
+        <span class="badge" id="exportStatus">ממתין</span>
+      </div>
+      <div class="panel-body">
+        <div class="employee-export-form">
+          <div>
+            <label for="employeeSelect">שם עובד</label>
+            <select id="employeeSelect"></select>
+          </div>
+          <div>
+            <label for="calendarEmail">אימייל Google Calendar</label>
+            <input id="calendarEmail" type="email" dir="ltr" placeholder="name@gmail.com" autocomplete="email">
+          </div>
+        </div>
+
+        <div class="preview-title">תצוגה מקדימה</div>
+        <div id="eventPreview" class="employee-event-preview"></div>
+
+        <div class="actions preview-actions">
+          <button class="btn" id="addToCalendar" type="button">Add to Google Calendar</button>
+        </div>
+        <div class="intake-status" id="calendarMessage"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="src/scheduleExport.js"></script>
+  <script src="src/calendarService.js"></script>
+  <script>
+    const employeeSelectEl = document.getElementById("employeeSelect");
+    const calendarEmailEl = document.getElementById("calendarEmail");
+    const eventPreviewEl = document.getElementById("eventPreview");
+    const addToCalendarEl = document.getElementById("addToCalendar");
+    const calendarMessageEl = document.getElementById("calendarMessage");
+    const exportStatusEl = document.getElementById("exportStatus");
+
+    let finalizedSchedule = null;
+
+    function displayDate(value) {
+      const date = new Date(`${value}T12:00:00`);
+      return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
+    }
+
+    function renderError(message) {
+      exportStatusEl.textContent = "שגיאה";
+      calendarMessageEl.textContent = message;
+      eventPreviewEl.innerHTML = "";
+      addToCalendarEl.disabled = true;
+    }
+
+    function renderEmployeeOptions() {
+      employeeSelectEl.innerHTML = finalizedSchedule.employees
+        .map(employee => `<option value="${employee.id}">${employee.name}</option>`)
+        .join("");
+    }
+
+    function selectedEvents() {
+      return calendarService.shiftsForEmployee(finalizedSchedule, employeeSelectEl.value);
+    }
+
+    function renderPreview() {
+      const events = selectedEvents();
+      if (!events.length) {
+        eventPreviewEl.innerHTML = `<div class="employee-empty-state">No shifts found for this employee</div>`;
+        exportStatusEl.textContent = "אין משמרות";
+        return;
+      }
+
+      exportStatusEl.textContent = `${events.length} משמרות`;
+      eventPreviewEl.innerHTML = events.map(event => `
+        <div class="employee-event-row">
+          <div>
+            <strong>${event.title}</strong>
+            <span>${displayDate(event.date)} · ${event.dayName}</span>
+          </div>
+          <div dir="ltr">${event.startTime}–${event.endTime}</div>
+        </div>
+      `).join("");
+    }
+
+    async function handleAddToCalendar() {
+      const email = calendarEmailEl.value.trim();
+      if (!calendarService.isValidEmail(email)) {
+        calendarMessageEl.textContent = "Invalid email address";
+        return;
+      }
+
+      try {
+        const result = await calendarService.addToGoogleCalendar({
+          schedule: finalizedSchedule,
+          employeeId: employeeSelectEl.value,
+          calendarEmail: email
+        });
+        calendarMessageEl.textContent = result.existingCount
+          ? `Events were already added before. Calendar file was regenerated with the same event IDs.`
+          : `Calendar file created. Import it into Google Calendar to add the shifts.`;
+      } catch (error) {
+        calendarMessageEl.textContent = error.message || "Google Calendar export failed. Please retry.";
+      }
+    }
+
+    try {
+      finalizedSchedule = scheduleExport.readPayloadFromHash();
+      if (!finalizedSchedule?.scheduleId || !Array.isArray(finalizedSchedule.employees) || !Array.isArray(finalizedSchedule.entries)) {
+        throw new Error("Invalid finalized schedule link");
+      }
+      renderEmployeeOptions();
+      renderPreview();
+      employeeSelectEl.addEventListener("change", renderPreview);
+      addToCalendarEl.addEventListener("click", handleAddToCalendar);
+    } catch (error) {
+      renderError(error.message || "Invalid finalized schedule link");
+    }
+  </script>
+</body>
+</html>

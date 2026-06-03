@@ -833,6 +833,77 @@
       align-items: center;
     }
 
+    .calendar-export-admin {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(29, 29, 31, 0.07);
+    }
+
+    .calendar-export-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .calendar-export-row input {
+      direction: ltr;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .employee-export-shell {
+      max-width: 760px;
+    }
+
+    .employee-export-panel {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .employee-export-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: end;
+    }
+
+    .employee-event-preview {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .employee-event-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid rgba(29, 29, 31, 0.07);
+      border-radius: 11px;
+      background: var(--surface);
+    }
+
+    .employee-event-row strong {
+      display: block;
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .employee-event-row span,
+    .employee-empty-state {
+      color: var(--muted-soft);
+      font-size: 13px;
+    }
+
+    .employee-empty-state {
+      padding: 12px;
+      border-radius: 11px;
+      background: var(--surface);
+    }
+
     .autosave-status {
       color: var(--muted-soft);
       font-size: 13px;
@@ -850,6 +921,14 @@
 
       .actions {
         margin-top: 16px;
+      }
+
+      .calendar-export-row {
+        grid-template-columns: 1fr;
+      }
+
+      .employee-export-form {
+        grid-template-columns: 1fr;
       }
     }
 
