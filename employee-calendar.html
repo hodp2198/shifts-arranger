@@ -44,9 +44,11 @@
         </div>
         <div class="actions preview-actions">
           <button class="btn" id="addToCalendar" type="button" disabled>הוסף ליומן Google</button>
-          <button class="btn secondary" id="downloadCalendarFile" type="button">הורד קובץ יומן</button>
         </div>
-        <div class="helper">הכפתור הראשי מוסיף את המשמרות ישירות ליומן Google. אם ההרשאה נכשלת, אפשר להוריד קובץ יומן כגיבוי.</div>
+        <div class="helper">הכפתור הראשי מוסיף את המשמרות ישירות ליומן Google אחרי אישור הרשאה.</div>
+        <div class="calendar-fallback-row">
+          <button class="calendar-fallback-link" id="downloadCalendarFile" type="button">הורד קובץ יומן כגיבוי</button>
+        </div>
         <div class="intake-status" id="calendarMessage"></div>
       </div>
     </section>
@@ -144,13 +146,15 @@
       authorizeGoogleEl.disabled = true;
       addToCalendarEl.textContent = "מוסיף ליומן...";
       try {
-        await calendarService.createGoogleCalendarEvents({
+        const result = await calendarService.createGoogleCalendarEvents({
           schedule: finalizedSchedule,
           employeeId: employeeSelectEl.value,
           calendarEmail: email,
           accessToken: googleOAuthService.getAccessToken()
         });
-        calendarMessageEl.textContent = "המשמרות נוספו ליומן Google בהצלחה.";
+        calendarMessageEl.textContent = result.existingCount >= result.events.length
+          ? "המשמרות כבר נוספו ליומן."
+          : "המשמרות נוספו ליומן Google בהצלחה.";
       } catch (error) {
         calendarMessageEl.textContent = error.message || "Google Calendar authorization failed. Please retry.";
       } finally {
@@ -191,7 +195,9 @@
       downloadCalendarFileEl.addEventListener("click", handleDownloadCalendarFile);
       if (!googleOAuthService.hasConfiguredClient()) {
         authStatusEl.textContent = "Google OAuth לא מוגדר";
-        calendarMessageEl.textContent = "יש להגדיר Google OAuth Client ID לפני הוספה ישירה ליומן. ניתן להשתמש בהורדת קובץ יומן כגיבוי.";
+        authorizeGoogleEl.disabled = true;
+        addToCalendarEl.disabled = true;
+        calendarMessageEl.textContent = "הגדרת מנהל נדרשת: יש להגדיר Google OAuth Client ID בקובץ src/googleConfig.js לפני הוספה ישירה ליומן.";
       }
     } catch (error) {
       renderError(error.message || "Invalid finalized schedule link");

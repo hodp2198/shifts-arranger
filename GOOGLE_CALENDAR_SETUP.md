@@ -47,13 +47,23 @@ Edit:
 src/googleConfig.js
 ```
 
-Replace:
+Replace the placeholder:
 
 ```js
-clientId: "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com"
+const GOOGLE_CLIENT_ID = "GOOGLE_CLIENT_ID.apps.googleusercontent.com";
 ```
 
-with the client ID from Google Cloud.
+with the Web application client ID from Google Cloud, for example:
+
+```js
+const GOOGLE_CLIENT_ID = "1234567890-abc123.apps.googleusercontent.com";
+```
+
+Keep the required scope unchanged:
+
+```text
+https://www.googleapis.com/auth/calendar.events
+```
 
 ## 5. Test
 
@@ -69,4 +79,12 @@ Expected result:
 
 - Events are created in the user's primary Google Calendar.
 - Existing events are updated using the stable key instead of duplicated.
-- If OAuth is not configured or fails, employees can still use **הורד קובץ יומן** as a fallback.
+- If every event already exists for the same finalized schedule, the page shows **המשמרות כבר נוספו ליומן.**
+- If OAuth is not configured, the employee page shows an admin/developer setup message. This means the placeholder in `src/googleConfig.js` was not replaced or the updated file was not deployed.
+- The small **הורד קובץ יומן כגיבוי** link is only a fallback. The main flow is direct Google Calendar creation.
+
+## Notes
+
+- Authorized JavaScript origins must include only the origin, not the path.
+- The employee calendar page is separate from the admin scheduling page.
+- Employees only see employee selection, email input, shift preview, Google sign-in, and calendar export controls.

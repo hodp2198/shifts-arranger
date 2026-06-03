@@ -4,7 +4,11 @@
 
   function hasConfiguredClient() {
     const clientId = window.googleCalendarConfig?.clientId || "";
-    return Boolean(clientId && !clientId.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID"));
+    return Boolean(
+      clientId &&
+      !clientId.includes("GOOGLE_CLIENT_ID") &&
+      !clientId.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID")
+    );
   }
 
   function waitForGoogleIdentity() {

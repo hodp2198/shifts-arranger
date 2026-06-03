@@ -833,6 +833,25 @@
       align-items: center;
     }
 
+    .calendar-fallback-row {
+      margin-top: 4px;
+    }
+
+    .calendar-fallback-link {
+      border: 0;
+      background: transparent;
+      color: var(--muted-soft);
+      padding: 3px 0;
+      font-size: 13px;
+      font-weight: 650;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .calendar-fallback-link:hover {
+      color: var(--accent);
+    }
+
     .calendar-export-admin {
       margin-top: 16px;
       padding-top: 12px;
