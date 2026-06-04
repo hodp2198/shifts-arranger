@@ -166,6 +166,7 @@
     };
     const STORAGE_SCHEMA_VERSION = storageHelper.STORAGE_SCHEMA_VERSION;
     const STORAGE_KEY = storageHelper.STORAGE_KEY;
+    const readSavedData = storageHelper.readSavedData;
     storageHelper.clearLegacyStorage();
     const state = {
       special: {},
@@ -203,7 +204,6 @@
     const calendarExportLinkTextEl = document.getElementById("calendarExportLinkText");
     const openCalendarExportLinkEl = document.getElementById("openCalendarExportLink");
     const calendarExportStatusEl = document.getElementById("calendarExportStatus");
-    const readSavedData = storageHelper.readSavedData;
 
     function clampShiftValue(value, fallback = 0) {
       const number = Number(value);
@@ -1001,20 +1001,25 @@
     }
 
     function handleBulkExcelNotes() {
-      const text = bulkExcelNotesEl.value.trim();
-      if (!text) {
-        bulkExcelStatusEl.textContent = "הדבק כאן טווח מאקסל לפני קליטה.";
-        return;
+      try {
+        const text = bulkExcelNotesEl.value.trim();
+        if (!text) {
+          bulkExcelStatusEl.textContent = "הדבק כאן טווח מאקסל לפני קליטה.";
+          return;
+        }
+
+        const lines = text.split(/\r?\n/);
+        const notesIndex = lines.findIndex(line => line.trim() === "הערות");
+        const tableLines = notesIndex >= 0 ? lines.slice(0, notesIndex) : lines;
+        const noteLines = notesIndex >= 0 ? lines.slice(notesIndex + 1).map(line => line.trim()).filter(Boolean) : [];
+        oneTimeRulesEl.value = noteLines.join("\n");
+
+        const rows = tableLines.map(line => line.split("\t"));
+        importRowsMatrix(rows, bulkExcelStatusEl);
+      } catch (error) {
+        console.error("[bulk import]", error);
+        bulkExcelStatusEl.textContent = "שגיאה בקליטת האילוצים. בדוק את הפורמט ונסה שוב.";
       }
-
-      const lines = text.split(/\r?\n/);
-      const notesIndex = lines.findIndex(line => line.trim() === "הערות");
-      const tableLines = notesIndex >= 0 ? lines.slice(0, notesIndex) : lines;
-      const noteLines = notesIndex >= 0 ? lines.slice(notesIndex + 1).map(line => line.trim()).filter(Boolean) : [];
-      oneTimeRulesEl.value = noteLines.join("\n");
-
-      const rows = tableLines.map(line => line.split("\t"));
-      importRowsMatrix(rows, bulkExcelStatusEl);
     }
 
     function getPersistentWorkerState() {
