@@ -200,6 +200,7 @@
     const calendarExportLinkTextEl = document.getElementById("calendarExportLinkText");
     const openCalendarExportLinkEl = document.getElementById("openCalendarExportLink");
     const calendarExportStatusEl = document.getElementById("calendarExportStatus");
+    const SAFE_CALENDAR_LINK_LENGTH = 2000;
 
     function readSavedData() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -2943,7 +2944,9 @@
       calendarExportLinkEl.value = link;
       calendarExportLinkTextEl.textContent = link;
       calendarExportLinkButtonEl.classList.add("has-link");
-      calendarExportStatusEl.textContent = "קישור יומן נוצר לסידור הסופי.";
+      calendarExportStatusEl.textContent = link.length > SAFE_CALENDAR_LINK_LENGTH
+        ? "הקישור ארוך ועלול להיחתך בוואטסאפ. מומלץ לבדוק אותו לפני שליחה."
+        : "קישור יומן נוצר לסידור הסופי.";
     }
 
     function showCalendarExportCopiedStatus() {
