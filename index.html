@@ -156,9 +156,17 @@
       ["#f5f8e8", "#5a641f", "#dce7a8"],
       ["#fdf0ff", "#743878", "#e5c2e9"]
     ];
-    const STORAGE_SCHEMA_VERSION = window.stateStorage.STORAGE_SCHEMA_VERSION;
-    const STORAGE_KEY = window.stateStorage.STORAGE_KEY;
-    window.stateStorage.clearLegacyStorage();
+    const storageHelper = window.stateStorage || {
+      STORAGE_SCHEMA_VERSION: 4,
+      STORAGE_KEY: "shifts-arranger-v4",
+      clearLegacyStorage() {},
+      readSavedData() { return null; },
+      writeSavedData(data) { localStorage.setItem("shifts-arranger-v4", JSON.stringify(data)); },
+      removeSavedData() { localStorage.removeItem("shifts-arranger-v4"); }
+    };
+    const STORAGE_SCHEMA_VERSION = storageHelper.STORAGE_SCHEMA_VERSION;
+    const STORAGE_KEY = storageHelper.STORAGE_KEY;
+    storageHelper.clearLegacyStorage();
     const state = {
       special: {},
       detectedWeeks: [],
@@ -195,7 +203,7 @@
     const calendarExportLinkTextEl = document.getElementById("calendarExportLinkText");
     const openCalendarExportLinkEl = document.getElementById("openCalendarExportLink");
     const calendarExportStatusEl = document.getElementById("calendarExportStatus");
-    const readSavedData = window.stateStorage.readSavedData;
+    const readSavedData = storageHelper.readSavedData;
 
     function clampShiftValue(value, fallback = 0) {
       const number = Number(value);
@@ -304,24 +312,51 @@
       return `${date.getDate()}.${date.getMonth() + 1}`;
     }
 
+    function calendarRulesHelper() {
+      return window.calendarRules || {
+        calendarStatusLabel(status) {
+          if (status === "holiday") return "חג";
+          if (status === "holidayEve") return "ערב חג";
+          if (status === "off") return "לא משובץ";
+          return "";
+        },
+        getDayType(date) {
+          return date.getDay() === 5
+            ? { status: "off", isWorkday: false, reason: "יום שישי" }
+            : { status: "workday", isWorkday: true, reason: "יום רגיל" };
+        },
+        holidayEveDisplayTitle(title) {
+          return String(title || "").replace(/^Erev\s+/i, "").replace(/^ערב\s+(חג\s+)?/, "").trim();
+        },
+        holidayClosedReason(dayType) {
+          if (dayType?.status !== "holidayEve") return dayType?.status === "off" ? "אין משמרת" : "";
+          const cleanTitle = this.holidayEveDisplayTitle(dayType.title);
+          return `ערב${cleanTitle ? ` ${cleanTitle}` : " חג"} אין משמרת`;
+        },
+        closedDayReason(day) {
+          return day.dayType?.status === "holidayEve" ? this.holidayClosedReason(day.dayType) : (day.label || "אין משמרת");
+        }
+      };
+    }
+
     function calendarStatusLabel(status) {
-      return window.calendarRules.calendarStatusLabel(status);
+      return calendarRulesHelper().calendarStatusLabel(status);
     }
 
     function getDayType(date) {
-      return window.calendarRules.getDayType(date, { state, isoDate, displayDate, addDays });
+      return calendarRulesHelper().getDayType(date, { state, isoDate, displayDate, addDays });
     }
 
     function holidayEveDisplayTitle(title) {
-      return window.calendarRules.holidayEveDisplayTitle(title);
+      return calendarRulesHelper().holidayEveDisplayTitle(title);
     }
 
     function holidayClosedReason(dayType) {
-      return window.calendarRules.holidayClosedReason(dayType);
+      return calendarRulesHelper().holidayClosedReason(dayType);
     }
 
     function closedDayReason(day) {
-      return window.calendarRules.closedDayReason(day);
+      return calendarRulesHelper().closedDayReason(day);
     }
 
     function editDateValue(date) {
@@ -2906,7 +2941,7 @@
           ...liveWorkerState.get(card.dataset.worker)
         }))
       };
-      window.stateStorage.writeSavedData(data);
+      storageHelper.writeSavedData(data);
       if (autosaveStatusEl) {
         autosaveStatusEl.textContent = "נשמר אוטומטית";
       }
@@ -2948,7 +2983,7 @@
           saveState();
         }
       } catch (error) {
-        window.stateStorage.removeSavedData();
+        storageHelper.removeSavedData();
       }
     }
 
