@@ -123,7 +123,6 @@
                 <span class="calendar-link-text" id="calendarExportLinkText">כאן יופיע קישור לעובדים</span>
               </button>
               <input type="text" id="calendarExportLink" readonly hidden>
-              <button class="btn secondary" id="copyCalendarExportLink" type="button">העתק קישור</button>
               <button class="btn secondary" id="openCalendarExportLink" type="button">פתח קישור</button>
             </div>
             <div class="intake-status" id="calendarExportStatus"></div>
@@ -199,7 +198,6 @@
     const calendarExportLinkEl = document.getElementById("calendarExportLink");
     const calendarExportLinkButtonEl = document.getElementById("calendarExportLinkButton");
     const calendarExportLinkTextEl = document.getElementById("calendarExportLinkText");
-    const copyCalendarExportLinkEl = document.getElementById("copyCalendarExportLink");
     const openCalendarExportLinkEl = document.getElementById("openCalendarExportLink");
     const calendarExportStatusEl = document.getElementById("calendarExportStatus");
 
@@ -3087,7 +3085,6 @@
     });
     createCalendarExportLinkEl.addEventListener("click", createCalendarExportLink);
     calendarExportLinkButtonEl.addEventListener("click", copyCalendarExportLink);
-    copyCalendarExportLinkEl.addEventListener("click", copyCalendarExportLink);
     openCalendarExportLinkEl.addEventListener("click", openCalendarExportLink);
     document.getElementById("addWorker").addEventListener("click", addWorker);
     document.getElementById("newWorkerName").addEventListener("keydown", event => {
