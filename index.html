@@ -115,11 +115,16 @@
           </div>
           <div class="calendar-export-admin">
             <div class="preview-title">קישור יומן לעובדים</div>
-            <div class="intake-status">יוצר קישור נפרד לסידור הסופי בלבד. העובדים יראו רק בחירת שם, אימייל, תצוגה מקדימה והוספה ליומן.</div>
+            <div class="intake-status">יוצר קישור נפרד לסידור הסופי בלבד. העובדים יראו רק בחירת שם, תצוגה מקדימה והוספה ליומן.</div>
             <div class="calendar-export-row">
               <button class="btn secondary" id="createCalendarExportLink" type="button">צור קישור יומן</button>
-              <input type="text" id="calendarExportLink" readonly placeholder="כאן יופיע קישור לעובדים">
+              <button class="calendar-link-field" id="calendarExportLinkButton" type="button" aria-label="העתק קישור יומן">
+                <span class="calendar-link-copy-icon" aria-hidden="true">⧉</span>
+                <span class="calendar-link-text" id="calendarExportLinkText">כאן יופיע קישור לעובדים</span>
+              </button>
+              <input type="text" id="calendarExportLink" readonly hidden>
               <button class="btn secondary" id="copyCalendarExportLink" type="button">העתק קישור</button>
+              <button class="btn secondary" id="openCalendarExportLink" type="button">פתח קישור</button>
             </div>
             <div class="intake-status" id="calendarExportStatus"></div>
           </div>
@@ -192,7 +197,10 @@
     const autosaveStatusEl = document.getElementById("autosaveStatus");
     const createCalendarExportLinkEl = document.getElementById("createCalendarExportLink");
     const calendarExportLinkEl = document.getElementById("calendarExportLink");
+    const calendarExportLinkButtonEl = document.getElementById("calendarExportLinkButton");
+    const calendarExportLinkTextEl = document.getElementById("calendarExportLinkText");
     const copyCalendarExportLinkEl = document.getElementById("copyCalendarExportLink");
+    const openCalendarExportLinkEl = document.getElementById("openCalendarExportLink");
     const calendarExportStatusEl = document.getElementById("calendarExportStatus");
 
     function readSavedData() {
@@ -2935,7 +2943,19 @@
       }
       const link = scheduleExport.createEmployeeExportLink(payload, "employee-calendar.html");
       calendarExportLinkEl.value = link;
+      calendarExportLinkTextEl.textContent = link;
+      calendarExportLinkButtonEl.classList.add("has-link");
       calendarExportStatusEl.textContent = "קישור יומן נוצר לסידור הסופי.";
+    }
+
+    function showCalendarExportCopiedStatus() {
+      calendarExportStatusEl.textContent = "✓ הקישור הועתק";
+      window.clearTimeout(showCalendarExportCopiedStatus.timer);
+      showCalendarExportCopiedStatus.timer = window.setTimeout(() => {
+        if (calendarExportStatusEl.textContent === "✓ הקישור הועתק") {
+          calendarExportStatusEl.textContent = "";
+        }
+      }, 2600);
     }
 
     async function copyCalendarExportLink() {
@@ -2943,10 +2963,17 @@
       if (!calendarExportLinkEl.value.trim()) return;
       try {
         await navigator.clipboard.writeText(calendarExportLinkEl.value);
-        calendarExportStatusEl.textContent = "קישור הועתק.";
+        showCalendarExportCopiedStatus();
       } catch (error) {
         calendarExportStatusEl.textContent = "הדפדפן חסם העתקה. אפשר להעתיק ידנית מהשדה.";
       }
+    }
+
+    async function openCalendarExportLink() {
+      if (!calendarExportLinkEl.value.trim()) await createCalendarExportLink();
+      const link = calendarExportLinkEl.value.trim();
+      if (!link) return;
+      window.open(link, "_blank", "noopener,noreferrer");
     }
 
     function saveState() {
@@ -3059,7 +3086,9 @@
       }
     });
     createCalendarExportLinkEl.addEventListener("click", createCalendarExportLink);
+    calendarExportLinkButtonEl.addEventListener("click", copyCalendarExportLink);
     copyCalendarExportLinkEl.addEventListener("click", copyCalendarExportLink);
+    openCalendarExportLinkEl.addEventListener("click", openCalendarExportLink);
     document.getElementById("addWorker").addEventListener("click", addWorker);
     document.getElementById("newWorkerName").addEventListener("keydown", event => {
       if (event.key === "Enter") addWorker();
