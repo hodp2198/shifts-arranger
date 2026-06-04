@@ -133,6 +133,9 @@
   </main>
 
   <script src="vendor/hebcal-core.min.js"></script>
+  <script src="src/stateStorage.js"></script>
+  <script src="src/calendarRules.js"></script>
+  <script src="src/calendarLinkUi.js"></script>
   <script src="src/scheduleExport.js"></script>
   <script src="src/calendarService.js"></script>
   <script>
@@ -153,17 +156,9 @@
       ["#f5f8e8", "#5a641f", "#dce7a8"],
       ["#fdf0ff", "#743878", "#e5c2e9"]
     ];
-    const STORAGE_SCHEMA_VERSION = 4;
-    const STORAGE_KEY = "shifts-arranger-v4";
-    const LEGACY_STORAGE_KEYS = [
-      "shifts-arranger-v1",
-      "shifts-arranger-v2",
-      "shifts-arranger-v3",
-      "shifts-arranger-worker-settings-v1",
-      "shifts-arranger-deleted-workers-v1",
-      "cleared-default-start-date-v1"
-    ];
-    LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+    const STORAGE_SCHEMA_VERSION = window.stateStorage.STORAGE_SCHEMA_VERSION;
+    const STORAGE_KEY = window.stateStorage.STORAGE_KEY;
+    window.stateStorage.clearLegacyStorage();
     const state = {
       special: {},
       detectedWeeks: [],
@@ -200,23 +195,7 @@
     const calendarExportLinkTextEl = document.getElementById("calendarExportLinkText");
     const openCalendarExportLinkEl = document.getElementById("openCalendarExportLink");
     const calendarExportStatusEl = document.getElementById("calendarExportStatus");
-    const SAFE_CALENDAR_LINK_LENGTH = 2000;
-
-    function readSavedData() {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      try {
-        const data = JSON.parse(raw);
-        if (data?.schemaVersion !== STORAGE_SCHEMA_VERSION) {
-          localStorage.removeItem(STORAGE_KEY);
-          return null;
-        }
-        return data;
-      } catch (error) {
-        localStorage.removeItem(STORAGE_KEY);
-        return null;
-      }
-    }
+    const readSavedData = window.stateStorage.readSavedData;
 
     function clampShiftValue(value, fallback = 0) {
       const number = Number(value);
@@ -326,132 +305,23 @@
     }
 
     function calendarStatusLabel(status) {
-      if (status === "holiday") return "חג";
-      if (status === "holidayEve") return "ערב חג";
-      if (status === "off") return "לא משובץ";
-      return "";
-    }
-
-    function getHebcalEvents(date) {
-      state.calendar.warning = "";
-      const core = window.hebcal;
-      if (!core?.getHolidaysOnDate || !core?.flags) {
-        state.calendar.warning = "ספריית החגים המקומית לא נטענה, הסידור נבנה לפי ימים רגילים בלבד.";
-        return [];
-      }
-      try {
-        return core.getHolidaysOnDate(date, true) || [];
-      } catch (error) {
-        state.calendar.warning = "ספריית החגים המקומית לא נטענה, הסידור נבנה לפי ימים רגילים בלבד.";
-        return [];
-      }
-    }
-
-    function calendarDebug(date, events, result) {
-      const core = window.hebcal;
-      let hebrew = "";
-      try {
-        hebrew = core?.HDate ? new core.HDate(date).render("he-x-NoNikud") : "";
-      } catch (error) {
-        hebrew = "";
-      }
-      console.info("[calendar]", {
-        date: isoDate(date),
-        gregorian: displayDate(date),
-        hebrew,
-        events: (events || []).map(event => ({
-          desc: event.getDesc?.() || "",
-          hebrew: event.render?.("he-x-NoNikud") || "",
-          flags: event.getFlags?.() || 0
-        })),
-        isHoliday: result.status === "holiday",
-        isHolidayEve: result.status === "holidayEve",
-        isClosed: !result.isWorkday,
-        reason: result.title || result.reason || ""
-      });
-      return result;
+      return window.calendarRules.calendarStatusLabel(status);
     }
 
     function getDayType(date) {
-      const dayIndex = date.getDay();
-      if (dayIndex === 5) {
-        return calendarDebug(date, getHebcalEvents(date), { status: "off", isWorkday: false, reason: "יום שישי" });
-      }
-
-      const core = window.hebcal;
-      const flags = core?.flags || {};
-      const events = getHebcalEvents(date);
-      const hasFlag = (event, flag) => Boolean(flag && event.getFlags && (event.getFlags() & flag));
-      const getDesc = event => event.render?.("he-x-NoNikud") || event.getDesc?.() || "חג";
-      const isEve = event => hasFlag(event, flags.EREV) || /^Erev\b/i.test(event.getDesc?.() || "") || /ערב/.test(getDesc(event));
-      const isIsraeliHoliday = event => {
-        const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
-        return hasFlag(event, flags.MODERN_HOLIDAY)
-          || /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
-      };
-      const isIsraeliClosedEveTarget = event => {
-        const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
-        return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
-      };
-      const isJewishHoliday = event => hasFlag(event, flags.CHAG);
-      const isHoliday = event => hasFlag(event, flags.CHAG) || isIsraeliHoliday(event);
-
-      const holidayEve = events.find(isEve);
-      if (holidayEve) {
-        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) });
-      }
-
-      const nextDayEvents = getHebcalEvents(addDays(date, 1));
-      const nextDayHolidayEve = dayIndex === 4 ? nextDayEvents.find(isEve) : null;
-      if (nextDayHolidayEve) {
-        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHolidayEve) });
-      }
-
-      const nextDayHoliday = nextDayEvents.find(isIsraeliClosedEveTarget);
-      if (nextDayHoliday) {
-        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHoliday) });
-      }
-
-      const todayIsJewishHoliday = events.some(isJewishHoliday);
-      const nextDayJewishHoliday = nextDayEvents.find(isJewishHoliday);
-      if (!todayIsJewishHoliday && dayIndex !== 6 && nextDayJewishHoliday) {
-        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayJewishHoliday) });
-      }
-
-      const holiday = events.find(isHoliday);
-      if (holiday) {
-        return calendarDebug(date, events, { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) });
-      }
-
-      return calendarDebug(date, events, { status: "workday", isWorkday: true, reason: "יום רגיל" });
+      return window.calendarRules.getDayType(date, { state, isoDate, displayDate, addDays });
     }
 
     function holidayEveDisplayTitle(title) {
-      const cleanTitle = String(title || "")
-        .replace(/^Erev\s+/i, "")
-        .replace(/^ערב\s+(חג\s+)?/, "")
-        .trim();
-      if (/^Pesach VII\b/i.test(cleanTitle) || /^פסח\s+ז/.test(cleanTitle)) {
-        return "שביעי של פסח";
-      }
-      return cleanTitle;
+      return window.calendarRules.holidayEveDisplayTitle(title);
     }
 
     function holidayClosedReason(dayType) {
-      const title = String(dayType?.title || "").trim();
-      if (dayType?.status === "holidayEve") {
-        const cleanTitle = holidayEveDisplayTitle(title);
-        return `ערב${cleanTitle ? ` ${cleanTitle}` : " חג"} אין משמרת`;
-      }
-      if (dayType?.status === "off") return "אין משמרת";
-      return "";
+      return window.calendarRules.holidayClosedReason(dayType);
     }
 
     function closedDayReason(day) {
-      if (day.dayType?.status === "holidayEve") {
-        return holidayClosedReason(day.dayType);
-      }
-      return day.label || "אין משמרת";
+      return window.calendarRules.closedDayReason(day);
     }
 
     function editDateValue(date) {
@@ -2349,6 +2219,13 @@
       return [...new Set(warnings)];
     }
 
+    /*
+      Schedule generation phases:
+      1. Build worker/day availability from imported constraints and one-time notes.
+      2. Create an initial pair assignment per open day.
+      3. Run bounded improvement passes for minimums, maximums, variety and duplicates.
+      4. Enforce hard caps/rules, fill genuine missing slots, then validate final output.
+    */
     function generateSchedule() {
       const warnings = [];
       const workers = getWorkersData();
@@ -2547,6 +2424,23 @@
       return { schedule, warnings: [...new Set(warnings)], workers };
     }
 
+    function displayScheduleWorkerName(worker) {
+      const name = worker?.name || worker || "";
+      return (!name || name === "לא שובץ" || name === "חסר") ? "-" : name;
+    }
+
+    function renderWorkerChip(name, extraClass = "") {
+      if (name === "-") return `<span class="missing-slot">-</span>`;
+      const [bg, fg, border] = getWorkerColorByName(name);
+      const className = extraClass ? `worker-chip ${extraClass}` : "worker-chip";
+      return `<span class="${className}" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name}</span>`;
+    }
+
+    function renderWorkerCountChip(name, count) {
+      const [bg, fg, border] = getWorkerColorByName(name);
+      return `<span class="worker-chip count-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name} ${count}</span>`;
+    }
+
     async function renderSchedule(existing = null) {
       const result = existing || generateSchedule();
       const { schedule, warnings, workers } = result;
@@ -2556,19 +2450,9 @@
       const weekCount = getWeekConfigs().length;
       const plain = [];
       let html = "";
-      const displayWorkerName = worker => {
-        const name = worker?.name || worker || "";
-        return (!name || name === "לא שובץ" || name === "חסר") ? "-" : name;
-      };
-      const workerChip = name => {
-        if (name === "-") return `<span class="missing-slot">-</span>`;
-        const [bg, fg, border] = getWorkerColorByName(name);
-        return `<span class="worker-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name}</span>`;
-      };
-      const workerCountChip = (name, count) => {
-        const [bg, fg, border] = getWorkerColorByName(name);
-        return `<span class="worker-chip count-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name} ${count}</span>`;
-      };
+      const displayWorkerName = displayScheduleWorkerName;
+      const workerChip = renderWorkerChip;
+      const workerCountChip = renderWorkerCountChip;
       const displayWorker = worker => workerChip(displayWorkerName(worker));
       const formatWarning = warning => {
         let text = warning;
@@ -2941,22 +2825,17 @@
         return;
       }
       const link = scheduleExport.createEmployeeExportLink(payload, "employee-calendar.html");
-      calendarExportLinkEl.value = link;
-      calendarExportLinkTextEl.textContent = link;
-      calendarExportLinkButtonEl.classList.add("has-link");
-      calendarExportStatusEl.textContent = link.length > SAFE_CALENDAR_LINK_LENGTH
-        ? "הקישור ארוך ועלול להיחתך בוואטסאפ. מומלץ לבדוק אותו לפני שליחה."
-        : "קישור יומן נוצר לסידור הסופי.";
+      window.calendarLinkUi.setGeneratedLink({
+        link,
+        inputEl: calendarExportLinkEl,
+        textEl: calendarExportLinkTextEl,
+        buttonEl: calendarExportLinkButtonEl,
+        statusEl: calendarExportStatusEl
+      });
     }
 
     function showCalendarExportCopiedStatus() {
-      calendarExportStatusEl.textContent = "✓ הקישור הועתק";
-      window.clearTimeout(showCalendarExportCopiedStatus.timer);
-      showCalendarExportCopiedStatus.timer = window.setTimeout(() => {
-        if (calendarExportStatusEl.textContent === "✓ הקישור הועתק") {
-          calendarExportStatusEl.textContent = "";
-        }
-      }, 2600);
+      window.calendarLinkUi.showCopiedStatus(calendarExportStatusEl);
     }
 
     async function copyCalendarExportLink() {
@@ -3027,7 +2906,7 @@
           ...liveWorkerState.get(card.dataset.worker)
         }))
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      window.stateStorage.writeSavedData(data);
       if (autosaveStatusEl) {
         autosaveStatusEl.textContent = "נשמר אוטומטית";
       }
@@ -3069,7 +2948,7 @@
           saveState();
         }
       } catch (error) {
-        localStorage.removeItem(STORAGE_KEY);
+        window.stateStorage.removeSavedData();
       }
     }
 

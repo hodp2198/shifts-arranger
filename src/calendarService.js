@@ -67,6 +67,7 @@
     return parts.join("\r\n");
   }
 
+  // Legacy fallback kept for manual calendar-file export if direct Google OAuth is unavailable.
   function buildIcs(events, calendarEmail) {
     const now = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
     const lines = [
