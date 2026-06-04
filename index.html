@@ -571,6 +571,17 @@
       return null;
     }
 
+    function looksLikeDateRangeHeader(text) {
+      const line = normalizeWeekHeaderText(text);
+      if (!line) return false;
+      return Boolean(
+        parseWeekLabelToRange(line)
+        || simpleWeekRangeLabel(line)
+        || /^\d{1,2}\s*[-–]\s*\d{1,2}[./]\d{1,2}$/.test(line)
+        || /^\d{1,2}[./]\d{1,2}\s*[-–]\s*\d{1,2}(?:[./]\d{1,2})?$/.test(line)
+      );
+    }
+
     function chooseRowWeekRange(ranges) {
       const counts = new Map();
       ranges.forEach(range => {
@@ -941,6 +952,10 @@
       headers.forEach(header => {
         const name = String(header || "").trim();
         if (!name) return;
+        if (looksLikeDateRangeHeader(name)) {
+          issues.push(`דולג ערך שנראה כמו טווח תאריכים ולא שם עובד: ${name}.`);
+          return;
+        }
         const worker = getWorkerDefinitionForImport(name, [...existingWorkers, ...importedDefinitions]);
         if (importedNames.has(worker.name)) return;
         importedNames.add(worker.name);
@@ -975,6 +990,7 @@
       headers.forEach((header, columnIndex) => {
         const name = String(header || "").trim();
         if (!name) return;
+        if (looksLikeDateRangeHeader(name)) return;
         const worker = getWorkerDefinitionForImport(name, importedDefinitions);
         if (!worker) return;
 
