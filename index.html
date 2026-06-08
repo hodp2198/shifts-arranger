@@ -1258,6 +1258,35 @@
       return sawDate ? baseOffset + 1 : 0;
     }
 
+    function applyInlineOnlyAvailabilityConstraint(line, blocked, submitted) {
+      const clean = String(line || "").trim();
+      if (!/(?:יכול|יכולה|זמין|זמינה|פנוי|פנויה)\s+רק/.test(clean)) return false;
+
+      const days = getScheduleDays();
+      const target = findOneTimeTargetDay(clean, days);
+      if (!target.day) {
+        console.warn("[inline one-time parse failed]", clean, target.error);
+        return true;
+      }
+
+      for (const day of days.filter(item => item.week === target.day.week)) {
+        if (day.iso === target.day.iso) {
+          submitted.add(day.iso);
+          blocked.delete(day.iso);
+        } else {
+          blocked.add(day.iso);
+          submitted.delete(day.iso);
+        }
+      }
+      console.log("[inline one-time constraints applied]", {
+        raw: clean,
+        target: target.day.iso,
+        blocked: [...blocked],
+        submitted: [...submitted]
+      });
+      return true;
+    }
+
     function parseConstraints(text) {
       const blocked = new Set();
       const preferred = new Set();
@@ -1270,6 +1299,10 @@
       for (const rawLine of lines) {
         const line = rawLine.trim();
         if (!line) continue;
+
+        if (applyInlineOnlyAvailabilityConstraint(line, blocked, submitted)) {
+          continue;
+        }
 
         if (isConstraintWeekHeader(line)) {
           weekOffset = resolveConstraintWeekOffset(line, weekOffset, sawDate, weekConfigs);
