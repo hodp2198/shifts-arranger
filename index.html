@@ -1258,9 +1258,13 @@
       return sawDate ? baseOffset + 1 : 0;
     }
 
+    function isInlineOnlyAvailabilityText(text) {
+      return /(?:יכול|יכולה|זמין|זמינה|פנוי|פנויה)\s+רק/.test(String(text || "").trim());
+    }
+
     function applyInlineOnlyAvailabilityConstraint(line, blocked, submitted) {
       const clean = String(line || "").trim();
-      if (!/(?:יכול|יכולה|זמין|זמינה|פנוי|פנויה)\s+רק/.test(clean)) return false;
+      if (!isInlineOnlyAvailabilityText(clean)) return false;
 
       const days = getScheduleDays();
       const target = findOneTimeTargetDay(clean, days);
@@ -1388,7 +1392,12 @@
 
     function hasMeaningfulWorkerInput(text) {
       const lines = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-      return lines.some(line => isConstraintDayLine(line) || isUnavailableText(line) || isPreferredText(line));
+      return lines.some(line => (
+        isConstraintDayLine(line)
+        || isUnavailableText(line)
+        || isPreferredText(line)
+        || isInlineOnlyAvailabilityText(line)
+      ));
     }
 
     function countImportedConstraints() {
