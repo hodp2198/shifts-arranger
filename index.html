@@ -953,12 +953,22 @@
           employee.oneTimeNotes
         );
       });
+      syncOneTimeConstraintsNow("indicators");
+    }
+
+    function syncOneTimeConstraintsNow(source = "unknown") {
       const days = getScheduleDays();
-      if (rawOneTimeLines().length && days.length) {
-        console.log("[calling one-time conversion after worker load]");
-        const warnings = applyOneTimeNotesToWorkerConstraints(days);
-        if (warnings.length) console.warn("[one-time conversion warnings]", warnings);
+      const rawLines = rawOneTimeLines();
+      console.log("[one-time sync]", { source, rawLines, days: days.map(day => day.iso) });
+      if (!rawLines.length) return [];
+      if (!days.length) {
+        console.warn("[one-time conversion skipped]", "no imported schedule dates");
+        return [];
       }
+      console.log("[calling one-time conversion after worker load]");
+      const warnings = applyOneTimeNotesToWorkerConstraints(days);
+      if (warnings.length) console.warn("[one-time conversion warnings]", warnings);
+      return warnings;
     }
 
     function addWorker() {
@@ -1056,6 +1066,7 @@
       }
       renderImportSummary({ imported, importedWeeks, issues });
       updateOneTimeIndicators();
+      syncOneTimeConstraintsNow("after import");
       saveState();
     }
 
@@ -3455,6 +3466,7 @@
 
     document.getElementById("buildSchedule").addEventListener("click", async () => {
       state.shuffleSeed = 34;
+      syncOneTimeConstraintsNow("before buildSchedule");
       await renderSchedule();
     });
     document.getElementById("resetManualOverrides").addEventListener("click", async () => {
@@ -3609,7 +3621,7 @@
         if (event.target === oneTimeRulesEl) {
           const days = getScheduleDays();
           if (days.length) {
-            const warnings = applyOneTimeNotesToWorkerConstraints(days);
+            const warnings = syncOneTimeConstraintsNow("oneTime input");
             if (warnings.length) statusBadgeEl.textContent = "יש סתירה באילוץ חד פעמי";
           }
         }
