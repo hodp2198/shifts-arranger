@@ -2038,6 +2038,7 @@
     }
 
     function parseOneTimeOnlyAvailabilityLine(text, workers, days) {
+      console.log("[one-time parser entered]");
       const clean = String(text || "").trim();
       if (!clean) return null;
       console.log("[one-time raw]", clean);
@@ -2127,7 +2128,12 @@
         textarea.value = baseText;
       }
 
-      for (const line of activeOneTimeLines()) {
+      const rawLines = String(oneTimeRulesEl.value || "")
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+      for (const line of rawLines) {
+        console.log("[calling one-time parser]", line);
         const parsed = parseOneTimeOnlyAvailabilityLine(line, WORKERS, days);
         if (!parsed) continue;
         if (!parsed.parsed) {
