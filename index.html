@@ -1907,12 +1907,15 @@
       return null;
     }
 
+    function datePartsFromText(text) {
+      const match = String(text || "").match(/(\d{1,2})[./-](\d{1,2})/);
+      return match ? { day: Number(match[1]), month: Number(match[2]) } : null;
+    }
+
     function isoFromRuleText(text, days) {
-      const dateMatch = text.match(/(\d{1,2})[./-](\d{1,2})/);
-      if (dateMatch) {
-        const day = Number(dateMatch[1]);
-        const month = Number(dateMatch[2]);
-        const match = days.find(item => item.date.getDate() === day && item.date.getMonth() + 1 === month);
+      const dateParts = datePartsFromText(text);
+      if (dateParts) {
+        const match = days.find(item => item.date.getDate() === dateParts.day && item.date.getMonth() + 1 === dateParts.month);
         if (match) return match.iso;
       }
 
@@ -1923,7 +1926,73 @@
       return matches[0]?.iso || null;
     }
 
-    function collectOneTimeRules(workers, days) {
+    function oneTimeParseWarning(text, reason) {
+      const suffix = reason ? ` (${reason})` : "";
+      return `לא זוהה אילוץ חד פעמי: ${text}${suffix}`;
+    }
+
+    function findOneTimeTargetDay(text, days) {
+      const dayIndex = dayIndexFromText(text);
+      const dateParts = datePartsFromText(text);
+
+      if (!dateParts && dayIndex === null) {
+        return { day: null, error: "חסר יום או תאריך" };
+      }
+
+      if (dateParts) {
+        const dateMatch = days.find(day => {
+          return day.date.getDate() === dateParts.day
+            && day.date.getMonth() + 1 === dateParts.month;
+        });
+        if (!dateMatch) return { day: null, error: "התאריך לא נמצא בטווח הסידור" };
+        if (dayIndex !== null && dateMatch.dayIndex !== dayIndex) {
+          return { day: null, error: "היום והתאריך לא תואמים" };
+        }
+        return { day: dateMatch, error: null };
+      }
+
+      const matches = days.filter(day => day.dayIndex === dayIndex);
+      if (!matches.length) return { day: null, error: "היום לא נמצא בטווח הסידור" };
+      if (/הבא|הבאה/.test(text)) return { day: matches[1] || matches[0], error: null };
+      return { day: matches[0], error: null };
+    }
+
+    function parseFreeTextOneTimeConstraint(text, workers, days) {
+      const clean = String(text || "").trim();
+      if (!clean) return null;
+
+      const workersInRule = workers.filter(item => clean.includes(item.name));
+      const onlyAvailable = /(?:יכול|יכולה|זמין|זמינה|פנוי|פנויה)\s+רק/.test(clean) || /(^|\s)רק(?=\s|$)/.test(clean);
+      const cannot = /לא\s*(?:יכול|יכולה|יוכלה|פנוי|פנויה|זמין|זמינה|יכולים|יכולות)/.test(clean);
+
+      if (!onlyAvailable && !cannot) return null;
+      if (!workersInRule.length) return { parsed: false, reason: "חסר שם עובד" };
+
+      const target = findOneTimeTargetDay(clean, days);
+      if (!target.day) return { parsed: false, reason: target.error };
+
+      if (cannot) {
+        workersInRule.forEach(worker => {
+          worker.blocked.add(target.day.iso);
+          worker.submitted.delete(target.day.iso);
+        });
+        return { parsed: true };
+      }
+
+      if (onlyAvailable) {
+        workersInRule.forEach(worker => {
+          worker.submitted.add(target.day.iso);
+          days
+            .filter(day => day.week === target.day.week && day.iso !== target.day.iso)
+            .forEach(day => worker.blocked.add(day.iso));
+        });
+        return { parsed: true };
+      }
+
+      return null;
+    }
+
+    function collectOneTimeRules(workers, days, warnings = []) {
       const rules = [];
       const workerNamesInText = text => {
         return workers.filter(item => text.includes(item.name));
@@ -1932,13 +2001,29 @@
       const addRule = text => {
         const clean = String(text || "").trim();
         if (!clean) return;
-        if (isUnavailableText(clean)) return;
+
+        const freeTextConstraint = parseFreeTextOneTimeConstraint(clean, workers, days);
+        if (freeTextConstraint?.parsed) return;
+        if (freeTextConstraint && !freeTextConstraint.parsed) {
+          warnings.push(oneTimeParseWarning(clean, freeTextConstraint.reason));
+          return;
+        }
+        if (isUnavailableText(clean)) {
+          warnings.push(oneTimeParseWarning(clean, "חסר יום או שם עובד"));
+          return;
+        }
 
         const workersInRule = workerNamesInText(clean);
-        if (!workersInRule.length) return;
+        if (!workersInRule.length) {
+          warnings.push(oneTimeParseWarning(clean, "חסר שם עובד"));
+          return;
+        }
 
         const iso = isoFromRuleText(clean, days);
-        if (!iso) return;
+        if (!iso) {
+          warnings.push(oneTimeParseWarning(clean, "לא נמצא יום מתאים"));
+          return;
+        }
 
         const slot = /נייט\s*1/.test(clean) ? 1 : (/נייט\s*2/.test(clean) ? 2 : null);
         const only = /רק/.test(clean);
@@ -2312,7 +2397,7 @@
         day.remainingByWorker = {};
       }
 
-      const oneTimeRules = collectOneTimeRules(workers, days);
+      const oneTimeRules = collectOneTimeRules(workers, days, warnings);
       applyOnlyRules(workers, days, oneTimeRules);
       restrictOneTimeOnlyWorkers(workers, days, oneTimeRules);
 
