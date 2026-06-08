@@ -511,14 +511,22 @@
       white-space: nowrap;
     }
 
-    .alternatives-panel {
-      position: relative;
+    .shift-controls {
       grid-column: 5;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
       justify-self: end;
+    }
+
+    .alternatives-panel,
+    .manual-edit-panel {
+      position: relative;
       line-height: 1;
     }
 
-    .alternatives-panel summary {
+    .alternatives-panel summary,
+    .manual-edit-panel summary {
       width: 26px;
       height: 26px;
       border: 1px solid rgba(29, 29, 31, 0.075);
@@ -537,17 +545,21 @@
     }
 
     .alternatives-panel summary:hover,
-    .alternatives-panel[open] summary {
+    .alternatives-panel[open] summary,
+    .manual-edit-panel summary:hover,
+    .manual-edit-panel[open] summary {
       background: #eef3f8;
       border-color: rgba(0, 113, 227, 0.14);
       color: var(--accent);
     }
 
-    .alternatives-panel summary::-webkit-details-marker {
+    .alternatives-panel summary::-webkit-details-marker,
+    .manual-edit-panel summary::-webkit-details-marker {
       display: none;
     }
 
-    .alternatives-body {
+    .alternatives-body,
+    .manual-edit-body {
       position: absolute;
       z-index: 4;
       top: 32px;
@@ -562,10 +574,39 @@
       gap: 8px;
     }
 
+    .manual-edit-body {
+      width: min(260px, calc(100vw - 40px));
+    }
+
     .alternative-title,
-    .alternative-subtitle {
+    .alternative-subtitle,
+    .manual-edit-title {
       font-size: 13px;
       font-weight: 780;
+    }
+
+    .manual-edit-body label {
+      margin: 2px 0 -4px;
+      font-size: 12px;
+    }
+
+    .manual-edit-body select {
+      min-height: 36px;
+      padding-block: 7px;
+    }
+
+    .manual-override-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 18px;
+      padding: 0 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(122, 90, 0, 0.2);
+      background: #fff8df;
+      color: #7a5a00;
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
     }
 
     .alternative-selected,

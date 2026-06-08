@@ -102,6 +102,7 @@
           </details>
           <div class="actions result-actions">
             <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+            <button class="btn secondary" id="resetManualOverrides" type="button">איפוס עריכות ידניות</button>
           </div>
           <div class="preview-title">תצוגת סידור</div>
           <div id="scheduleOutput" class="schedule-output"></div>
@@ -174,6 +175,7 @@
       currentSchedule: null,
       currentWorkers: [],
       currentWarnings: [],
+      manualOverrides: {},
       shuffleSeed: 0,
       weekDetectionWarnings: [],
       workerColorsRepaired: false,
@@ -1065,6 +1067,7 @@
       state.currentSchedule = null;
       state.currentWorkers = [];
       state.currentWarnings = [];
+      clearManualOverrides();
       state.shuffleSeed = 0;
       state.weekDetectionWarnings = [];
       state.calendar.warning = "";
@@ -1319,8 +1322,7 @@
       `;
     }
 
-    function getWorkersData() {
-      return [...document.querySelectorAll(".worker")].map(card => {
+    function buildWorkerDataFromCard(card) {
         syncWorkerShiftBounds(card);
         const name = card.dataset.worker;
         const constraintsText = card.querySelector(".constraints").value.trim();
@@ -1353,7 +1355,14 @@
           availableDaysByWeek: {},
           slotCounts: { 1: 0, 2: 0 }
         };
-      }).filter(worker => worker.active);
+    }
+
+    function getAllWorkersData() {
+      return [...document.querySelectorAll(".worker")].map(card => buildWorkerDataFromCard(card));
+    }
+
+    function getWorkersData() {
+      return getAllWorkersData().filter(worker => worker.active);
     }
 
     function workerScore(worker, day, slot) {
@@ -2360,6 +2369,118 @@
       return [...new Set(warnings)];
     }
 
+    function manualOverrideForDay(day) {
+      return state.manualOverrides?.[day.week]?.[day.iso] || null;
+    }
+
+    function setManualOverride(day, employees) {
+      if (!state.manualOverrides[day.week]) state.manualOverrides[day.week] = {};
+      state.manualOverrides[day.week][day.iso] = {
+        employees: employees.slice(0, 2),
+        updatedAt: new Date().toISOString(),
+        reason: "manual edit"
+      };
+    }
+
+    function clearManualOverrides() {
+      state.manualOverrides = {};
+    }
+
+    function ensureOverrideWorker(name, workers, allWorkersByName) {
+      if (!name || name === "-") return null;
+      let worker = workers.find(item => item.name === name);
+      if (worker) return worker;
+      const source = allWorkersByName.get(name);
+      if (!source) return null;
+      worker = {
+        ...source,
+        blocked: new Set(source.blocked || []),
+        preferred: new Set(source.preferred || []),
+        submitted: new Set(source.submitted || []),
+        weekCounts: {},
+        total: 0,
+        recentDays: [],
+        saturdayWeeks: [],
+        dayCounts: {},
+        availableDaysByWeek: source.availableDaysByWeek || {},
+        slotCounts: { 1: 0, 2: 0 }
+      };
+      workers.push(worker);
+      return worker;
+    }
+
+    function applyManualOverrides(schedule, workers) {
+      const allWorkersByName = new Map(getAllWorkersData().map(worker => [worker.name, worker]));
+      let applied = 0;
+
+      for (const entry of Object.values(schedule).flat()) {
+        if (entry.closed) continue;
+        const override = manualOverrideForDay(entry.day);
+        if (!override) {
+          entry.manualOverride = false;
+          continue;
+        }
+
+        const [firstName, secondName] = override.employees || [];
+        entry.first = ensureOverrideWorker(firstName, workers, allWorkersByName);
+        entry.second = ensureOverrideWorker(secondName, workers, allWorkersByName);
+        entry.manualOverride = true;
+        applied += 1;
+      }
+
+      if (applied) rebuildWorkerStats(schedule, workers);
+      return applied;
+    }
+
+    function collectManualOverrideWarnings(schedule, workers) {
+      const warnings = [];
+      const pairCounts = new Map();
+
+      for (const entry of Object.values(schedule).flat()) {
+        if (entry.closed || !entry.first || !entry.second) continue;
+        const pairKey = [entry.first.name, entry.second.name].sort((a, b) => a.localeCompare(b, "he")).join("|");
+        pairCounts.set(pairKey, (pairCounts.get(pairKey) || 0) + 1);
+      }
+
+      for (const entry of Object.values(schedule).flat()) {
+        if (entry.closed || !entry.manualOverride) continue;
+        const prefix = `${entry.day.dayName} ${displayDate(entry.day.date)}: שיבוץ ידני חורג מהחוקים`;
+
+        if (entry.first?.name && entry.second?.name && entry.first.name === entry.second.name) {
+          warnings.push(`${prefix}: אותו עובד שובץ פעמיים באותה משמרת.`);
+        }
+
+        [
+          { worker: entry.first, slot: 1 },
+          { worker: entry.second, slot: 2 }
+        ].forEach(({ worker, slot }) => {
+          if (!worker) return;
+          if (slot === 1 && worker.onlyNight2) {
+            warnings.push(`${prefix}: ${worker.name} מוגדר/ת רק נייט 2.`);
+          }
+          if (!worker.submitted?.has(entry.day.iso)) {
+            warnings.push(`${prefix}: ${worker.name} לא הגיש/ה זמינות ליום הזה.`);
+          }
+          if (worker.blocked.has(entry.day.iso)) {
+            warnings.push(`${prefix}: ${worker.name} לא זמין/ה ביום הזה.`);
+          }
+          const count = worker.weekCounts[entry.day.week] || 0;
+          if (count > worker.max) {
+            warnings.push(`${prefix}: ${worker.name} עבר/ה את המקסימום השבועי ${worker.max}.`);
+          }
+        });
+
+        if (entry.first?.name && entry.second?.name) {
+          const pairKey = [entry.first.name, entry.second.name].sort((a, b) => a.localeCompare(b, "he")).join("|");
+          if ((pairCounts.get(pairKey) || 0) > 1) {
+            warnings.push(`${prefix}: ${entry.first.name} ו${entry.second.name} שובצו יחד יותר מפעם אחת.`);
+          }
+        }
+      }
+
+      return [...new Set(warnings)];
+    }
+
     /*
       Schedule generation phases:
       1. Build worker/day availability from imported constraints and one-time notes.
@@ -2584,7 +2705,16 @@
 
     async function renderSchedule(existing = null) {
       const result = existing || generateSchedule();
-      const { schedule, warnings, workers } = result;
+      const { schedule, workers } = result;
+      let warnings = result.warnings || [];
+      const appliedManualOverrides = applyManualOverrides(schedule, workers);
+      if (appliedManualOverrides) {
+        warnings = [
+          ...collectFinalWarnings(schedule, workers),
+          ...collectManualOverrideWarnings(schedule, workers)
+        ];
+      }
+      warnings = [...new Set(warnings)];
       state.currentSchedule = schedule;
       state.currentWarnings = warnings;
       state.currentWorkers = workers;
@@ -2655,6 +2785,7 @@
           return "bad";
         }
         if (warning.includes("שובץ/ה מעל המקסימום")
+          || warning.includes("שיבוץ ידני חורג")
           || warning.includes("רק ")
           || warning.includes("לא ניתן היה לטעון חגים")
           || warning.includes("ספריית החגים המקומית")
@@ -2831,6 +2962,33 @@
           </details>
         `;
       };
+      const manualWorkerOptions = selectedName => {
+        const selected = selectedName === "-" ? "" : selectedName;
+        return [
+          `<option value="" ${!selected ? "selected" : ""}>-</option>`,
+          ...WORKERS
+            .slice()
+            .sort((a, b) => a.name.localeCompare(b.name, "he"))
+            .map(worker => `<option value="${worker.name}" ${worker.name === selected ? "selected" : ""}>${worker.name}</option>`)
+        ].join("");
+      };
+      const renderManualEditPanel = (entry, firstName, secondName) => {
+        if (entry.closed) return "";
+        return `
+          <details class="manual-edit-panel">
+            <summary title="עריכה ידנית" aria-label="עריכה ידנית">✎</summary>
+            <div class="manual-edit-body">
+              <div class="manual-edit-title">עריכה ידנית ל${scheduleDayLabel(entry.day.dayName)} ${displayDate(entry.day.date)}</div>
+              <label>נייט 1</label>
+              <select class="manual-worker-select" data-slot="first">${manualWorkerOptions(firstName)}</select>
+              <label>נייט 2</label>
+              <select class="manual-worker-select" data-slot="second">${manualWorkerOptions(secondName)}</select>
+              <div class="alternative-impact">השינוי יישמר גם בהרצה מחדש. חריגות יוצגו כאזהרות בלבד.</div>
+              <button class="btn secondary apply-manual-override" type="button" data-iso="${entry.day.iso}">שמור עריכה</button>
+            </div>
+          </details>
+        `;
+      };
       const statusIcon = level => {
         if (level === "bad") return "🔴";
         if (level === "warn" || level === "info") return "🟡";
@@ -2895,14 +3053,16 @@
                 ? `<span class="missing-slot">-</span>${second}`
                 : `<span class="missing-slot">-</span>`;
           const alternatives = renderAlternativePanel(entry, firstName, secondName);
+          const manualEdit = renderManualEditPanel(entry, firstName, secondName);
           const rowLabel = holidayRowLabel(entry.day);
+          const manualBadge = entry.manualOverride ? `<span class="manual-override-badge">נערך ידנית</span>` : "";
           html += `
             <div class="shift-line ${status.level}">
               <span class="status-mark" title="${status.label}">${statusIcon(status.level)}</span>
               <span class="shift-day">${dayName}${dayTag(entry.day)}</span>
-              <span class="shift-assignment">${assignment}</span>
+              <span class="shift-assignment">${assignment}${manualBadge}</span>
               ${rowLabel}
-              ${alternatives}
+              <span class="shift-controls">${manualEdit}${alternatives}</span>
             </div>
           `;
           plain.push(`${dayName} - ${firstName} ו${secondName}`);
@@ -3031,6 +3191,7 @@
         bulkExcelNotes: bulkExcelNotesEl.value,
         oneTimeRules: oneTimeRulesEl.value,
         plainResult: plainResultEl.value,
+        manualOverrides: state.manualOverrides,
         special: state.special,
         detectedWeeks: getDetectedWeekConfigs().map(week => ({
           start: isoDate(week.start),
@@ -3064,6 +3225,7 @@
         bulkExcelNotesEl.value = data.bulkExcelNotes || "";
         oneTimeRulesEl.value = data.oneTimeRules || "";
         plainResultEl.value = data.plainResult || "";
+        state.manualOverrides = data.manualOverrides && typeof data.manualOverrides === "object" ? data.manualOverrides : {};
         Object.entries(data.special || {}).forEach(([iso, item]) => {
           state.special[iso] = item;
         });
@@ -3096,6 +3258,12 @@
     document.getElementById("buildSchedule").addEventListener("click", async () => {
       state.shuffleSeed = 34;
       await renderSchedule();
+    });
+    document.getElementById("resetManualOverrides").addEventListener("click", async () => {
+      clearManualOverrides();
+      if (state.currentSchedule) await renderSchedule();
+      saveState();
+      statusBadgeEl.textContent = "עריכות ידניות אופסו";
     });
     document.getElementById("copyResult").addEventListener("click", async () => {
       if (!plainResultEl.value.trim()) await renderSchedule();
@@ -3145,6 +3313,38 @@
         outputEl.querySelectorAll(".alternatives-panel[open]").forEach(openPanel => {
           if (openPanel !== panel) openPanel.removeAttribute("open");
         });
+        outputEl.querySelectorAll(".manual-edit-panel[open]").forEach(openPanel => openPanel.removeAttribute("open"));
+        return;
+      }
+
+      const manualPanel = event.target.closest(".manual-edit-panel");
+      if (manualPanel && event.target.closest("summary")) {
+        outputEl.querySelectorAll(".manual-edit-panel[open]").forEach(openPanel => {
+          if (openPanel !== manualPanel) openPanel.removeAttribute("open");
+        });
+        outputEl.querySelectorAll(".alternatives-panel[open]").forEach(openPanel => openPanel.removeAttribute("open"));
+        return;
+      }
+
+      const manualButton = event.target.closest(".apply-manual-override");
+      if (manualButton && state.currentSchedule) {
+        const entry = Object.values(state.currentSchedule)
+          .flat()
+          .find(item => item.day?.iso === manualButton.dataset.iso);
+        const editPanel = manualButton.closest(".manual-edit-panel");
+        if (!entry || !editPanel) {
+          statusBadgeEl.textContent = "עריכה ידנית לא נמצאה";
+          return;
+        }
+        const firstName = editPanel.querySelector('[data-slot="first"]').value || "-";
+        const secondName = editPanel.querySelector('[data-slot="second"]').value || "-";
+        setManualOverride(entry.day, [firstName, secondName]);
+        await renderSchedule({
+          schedule: state.currentSchedule,
+          warnings: state.currentWarnings,
+          workers: state.currentWorkers
+        });
+        statusBadgeEl.textContent = "נערך ידנית";
         return;
       }
 
@@ -3188,8 +3388,9 @@
     });
 
     document.addEventListener("click", event => {
-      if (event.target.closest(".alternatives-panel")) return;
+      if (event.target.closest(".alternatives-panel") || event.target.closest(".manual-edit-panel")) return;
       outputEl.querySelectorAll(".alternatives-panel[open]").forEach(panel => panel.removeAttribute("open"));
+      outputEl.querySelectorAll(".manual-edit-panel[open]").forEach(panel => panel.removeAttribute("open"));
     });
 
     document.addEventListener("input", async event => {
