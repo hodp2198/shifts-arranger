@@ -886,6 +886,10 @@
       return activeOneTimeLines().some(line => oneTimeRuleMentionsWorker(line, worker));
     }
 
+    function oneTimeNotesForWorker(worker) {
+      return activeOneTimeLines().filter(line => oneTimeRuleMentionsWorker(line, worker));
+    }
+
     function getOneTimeIndicatorLabels() {
       const lines = activeOneTimeLines();
       const labels = new Map();
@@ -903,21 +907,22 @@
 
     function updateOneTimeIndicators() {
       const oneTimeLabels = getOneTimeIndicatorLabels();
-      const debugRows = [];
       document.querySelectorAll(".worker").forEach(card => {
         const indicator = card.querySelector(".one-time-indicator");
         if (!indicator) return;
         const label = oneTimeLabels.get(card.dataset.worker);
         indicator.hidden = !label;
         indicator.textContent = label || "";
-        debugRows.push({
-          worker: card.dataset.worker,
-          hasRegularConstraints: hasMeaningfulWorkerInput(card.querySelector(".constraints")?.value || ""),
-          hasActiveOneTimeNote: Boolean(label),
-          shownTag: label || ""
-        });
+        const employee = {
+          name: card.dataset.worker,
+          oneTimeNotes: oneTimeNotesForWorker({ name: card.dataset.worker })
+        };
+        console.log(
+          "[one-time-constraints]",
+          employee.name,
+          employee.oneTimeNotes
+        );
       });
-      console.info("[one-time indicators]", debugRows);
     }
 
     function addWorker() {
