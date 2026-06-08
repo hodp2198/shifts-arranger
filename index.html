@@ -1338,6 +1338,15 @@
         });
         const workerDefinition = WORKERS.find(worker => worker.name === name);
         const parsedConstraints = parseConstraints(constraintsText);
+        console.log(
+          "[parsed-one-time-constraints]",
+          name,
+          {
+            submitted: [...parsedConstraints.submitted],
+            blocked: [...parsedConstraints.blocked],
+            preferred: [...parsedConstraints.preferred]
+          }
+        );
         const manuallyActive = card.querySelector(".active-worker").checked;
         const oneTimeActive = hasActiveOneTimeNoteForWorker({ name });
         const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText);
