@@ -1267,6 +1267,28 @@
       return /רוצה|מעדיף|מעדיפה|עדיפות/i.test(text);
     }
 
+    const AUTO_ONE_TIME_START = "### אילוצים חד פעמיים - אוטומטי ###";
+    const AUTO_ONE_TIME_END = "### סוף אילוצים חד פעמיים ###";
+
+    function stripAutoOneTimeConstraintBlock(text) {
+      const lines = String(text || "").split(/\r?\n/);
+      const cleanLines = [];
+      let skipping = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === AUTO_ONE_TIME_START) {
+          skipping = true;
+          continue;
+        }
+        if (trimmed === AUTO_ONE_TIME_END) {
+          skipping = false;
+          continue;
+        }
+        if (!skipping) cleanLines.push(line);
+      }
+      return cleanLines.join("\n").trim();
+    }
+
     function isConstraintDayLine(line) {
       const match = String(line || "").trim().match(/^([א-ת'׳״"]+)\s*[-:]/);
       if (!match) return false;
@@ -2006,13 +2028,103 @@
         workersInRule.forEach(worker => {
           worker.submitted.add(target.day.iso);
           days
-            .filter(day => day.week === target.day.week && day.iso !== target.day.iso)
+            .filter(day => day.iso !== target.day.iso)
             .forEach(day => worker.blocked.add(day.iso));
         });
         return { parsed: true };
       }
 
       return null;
+    }
+
+    function parseOneTimeOnlyAvailabilityLine(text, workers, days) {
+      const clean = String(text || "").trim();
+      if (!clean) return null;
+      const onlyAvailable = /(?:יכול|יכולה|זמין|זמינה|פנוי|פנויה)\s+רק/.test(clean);
+      if (!onlyAvailable) return null;
+
+      const workersInRule = workers.filter(item => clean.includes(item.name));
+      if (!workersInRule.length) return { parsed: false, reason: "חסר שם עובד" };
+
+      const target = findOneTimeTargetDay(clean, days);
+      if (!target.day) return { parsed: false, reason: target.error };
+
+      return {
+        parsed: true,
+        workers: workersInRule,
+        targetDay: target.day,
+        source: clean
+      };
+    }
+
+    function buildOneTimeOnlyConstraintBlock(targetDay, days) {
+      const lines = [AUTO_ONE_TIME_START];
+      const weeks = getWeekConfigs();
+      for (let week = 0; week < weeks.length; week++) {
+        const weekDays = days.filter(day => day.week === week);
+        if (!weekDays.length) continue;
+        const weekConfig = weeks[week];
+        lines.push(`שבוע ${displayDate(weekConfig.start)}-${displayDate(weekConfig.end)}`);
+        for (const day of weekDays) {
+          const label = scheduleDayLabel(day.dayName);
+          lines.push(day.iso === targetDay.iso ? `${label} -` : `${label} - לא יכולה`);
+        }
+      }
+      lines.push(AUTO_ONE_TIME_END);
+      return lines.join("\n");
+    }
+
+    function collectOneTimeConstraintConflicts(workerName, baseText, targetDay, days) {
+      const conflicts = [];
+      const parsed = parseConstraints(baseText);
+
+      if (parsed.blocked.has(targetDay.iso)) {
+        conflicts.push(`${targetDay.dayName} ${displayDate(targetDay.date)}: ${workerName} כבר מסומן/ת כלא זמין/ה, ההערה החד פעמית לא דורסת את הסתירה בלי בדיקה.`);
+      }
+
+      for (const day of days) {
+        if (day.iso === targetDay.iso) continue;
+        if (parsed.submitted.has(day.iso) || parsed.preferred.has(day.iso)) {
+          conflicts.push(`${day.dayName} ${displayDate(day.date)}: ${workerName} כבר מסומן/ת כזמין/ה, אבל ההערה החד פעמית מגבילה אותו/ה רק ל-${displayDate(targetDay.date)}.`);
+        }
+      }
+
+      return conflicts;
+    }
+
+    function applyOneTimeNotesToWorkerConstraints(days = getScheduleDays()) {
+      const warnings = [];
+      const workerCards = new Map([...document.querySelectorAll(".worker")].map(card => [card.dataset.worker, card]));
+      const baseTexts = new Map();
+
+      for (const card of workerCards.values()) {
+        const textarea = card.querySelector(".constraints");
+        const baseText = stripAutoOneTimeConstraintBlock(textarea.value);
+        baseTexts.set(card.dataset.worker, baseText);
+        textarea.value = baseText;
+      }
+
+      for (const line of activeOneTimeLines()) {
+        const parsed = parseOneTimeOnlyAvailabilityLine(line, WORKERS, days);
+        if (!parsed) continue;
+        if (!parsed.parsed) {
+          warnings.push(oneTimeParseWarning(line, parsed.reason));
+          continue;
+        }
+
+        for (const worker of parsed.workers) {
+          const card = workerCards.get(worker.name);
+          if (!card) continue;
+          const textarea = card.querySelector(".constraints");
+          const baseText = baseTexts.get(worker.name) || "";
+          warnings.push(...collectOneTimeConstraintConflicts(worker.name, baseText, parsed.targetDay, days));
+          const block = buildOneTimeOnlyConstraintBlock(parsed.targetDay, days);
+          textarea.value = [baseText, block].filter(Boolean).join("\n\n");
+          card.querySelector(".active-worker").checked = true;
+        }
+      }
+
+      return [...new Set(warnings)];
     }
 
     function collectOneTimeRules(workers, days, warnings = []) {
@@ -2504,7 +2616,6 @@
     */
     function generateSchedule() {
       const warnings = [];
-      const workers = getWorkersData();
       const weekConfigs = getWeekConfigs();
       const days = getScheduleDays();
       const schedule = {};
@@ -2514,8 +2625,10 @@
       if (!days.length) {
         warnings.push(...state.weekDetectionWarnings);
         warnings.push("בחר תאריך התחלה ראשוני ובנה שבועות לפני יצירת סידור.");
-        return { schedule, warnings, workers };
+        return { schedule, warnings, workers: getWorkersData() };
       }
+      warnings.push(...applyOneTimeNotesToWorkerConstraints(days));
+      const workers = getWorkersData();
       warnings.push(...state.weekDetectionWarnings);
       if (state.calendar.warning) {
         warnings.push(state.calendar.warning);
@@ -3421,6 +3534,13 @@
         }
         if (event.target.classList.contains("constraints") && event.target.value.trim()) {
           event.target.closest(".worker").querySelector(".active-worker").checked = true;
+        }
+        if (event.target === oneTimeRulesEl) {
+          const days = getScheduleDays();
+          if (days.length) {
+            const warnings = applyOneTimeNotesToWorkerConstraints(days);
+            if (warnings.length) statusBadgeEl.textContent = "יש סתירה באילוץ חד פעמי";
+          }
         }
         if (event.target.closest(".worker") || event.target === oneTimeRulesEl) {
           updateOneTimeIndicators();
