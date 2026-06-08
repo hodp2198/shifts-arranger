@@ -882,6 +882,13 @@
         .filter(isActiveOneTimeNote);
     }
 
+    function rawOneTimeLines() {
+      return String(oneTimeRulesEl.value || "")
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+    }
+
     function hasActiveOneTimeNoteForWorker(worker) {
       return activeOneTimeLines().some(line => oneTimeRuleMentionsWorker(line, worker));
     }
@@ -923,6 +930,12 @@
           employee.oneTimeNotes
         );
       });
+      const days = getScheduleDays();
+      if (rawOneTimeLines().length && days.length) {
+        console.log("[calling one-time conversion after worker load]");
+        const warnings = applyOneTimeNotesToWorkerConstraints(days);
+        if (warnings.length) console.warn("[one-time conversion warnings]", warnings);
+      }
     }
 
     function addWorker() {
@@ -2128,10 +2141,7 @@
         textarea.value = baseText;
       }
 
-      const rawLines = String(oneTimeRulesEl.value || "")
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean);
+      const rawLines = rawOneTimeLines();
       for (const line of rawLines) {
         console.log("[calling one-time parser]", line);
         const parsed = parseOneTimeOnlyAvailabilityLine(line, WORKERS, days);
