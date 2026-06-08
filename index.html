@@ -889,12 +889,35 @@
         .filter(Boolean);
     }
 
+    function rawOneTimeEntries() {
+      const lines = rawOneTimeLines();
+      const entries = [];
+      for (let index = 0; index < lines.length; index++) {
+        const worker = findWorkerByName(lines[index]);
+        if (worker && lines[index + 1]) {
+          entries.push({
+            worker,
+            text: lines[index + 1],
+            rawText: `${worker.name} ${lines[index + 1]}`
+          });
+          index += 1;
+        } else {
+          entries.push({ worker: null, text: lines[index], rawText: lines[index] });
+        }
+      }
+      return entries;
+    }
+
     function hasActiveOneTimeNoteForWorker(worker) {
       return activeOneTimeLines().some(line => oneTimeRuleMentionsWorker(line, worker));
     }
 
     function oneTimeNotesForWorker(worker) {
-      return activeOneTimeLines().filter(line => oneTimeRuleMentionsWorker(line, worker));
+      const activeLines = activeOneTimeLines().filter(line => oneTimeRuleMentionsWorker(line, worker));
+      const blockLines = rawOneTimeEntries()
+        .filter(entry => entry.worker?.name === worker.name)
+        .map(entry => `${entry.worker.name} ${entry.text}`);
+      return [...new Set([...activeLines, ...blockLines])];
     }
 
     function getOneTimeIndicatorLabels() {
@@ -2050,7 +2073,7 @@
       return null;
     }
 
-    function parseOneTimeOnlyAvailabilityLine(text, workers, days) {
+    function parseOneTimeOnlyAvailabilityLine(text, workers, days, explicitWorker = null) {
       console.log("[one-time parser entered]");
       const clean = String(text || "").trim();
       if (!clean) return null;
@@ -2063,7 +2086,7 @@
         return null;
       }
 
-      const workersInRule = workers.filter(item => clean.includes(item.name));
+      const workersInRule = explicitWorker ? [explicitWorker] : workers.filter(item => clean.includes(item.name));
       console.log("[matched employee]", workersInRule.map(worker => worker.name));
       if (!workersInRule.length) {
         console.warn("[one-time parse failed]", clean);
@@ -2097,15 +2120,14 @@
     function buildOneTimeOnlyConstraintBlock(targetDay, days) {
       const lines = [AUTO_ONE_TIME_START];
       const weeks = getWeekConfigs();
-      for (let week = 0; week < weeks.length; week++) {
-        const weekDays = days.filter(day => day.week === week);
-        if (!weekDays.length) continue;
-        const weekConfig = weeks[week];
-        lines.push(`שבוע ${displayDate(weekConfig.start)}-${displayDate(weekConfig.end)}`);
-        for (const day of weekDays) {
-          const label = scheduleDayLabel(day.dayName);
-          lines.push(day.iso === targetDay.iso ? `${label} -` : `${label} - לא יכולה`);
-        }
+      const weekConfig = weeks[targetDay.week];
+      const weekDays = days.filter(day => day.week === targetDay.week);
+      if (weekConfig) {
+        lines.push(`תאריך: ${displayDate(weekConfig.start)}-${displayDate(weekConfig.end)}`);
+      }
+      for (const day of weekDays) {
+        const label = scheduleDayLabel(day.dayName);
+        lines.push(day.iso === targetDay.iso ? `${label} -` : `${label} - לא יכולה`);
       }
       lines.push(AUTO_ONE_TIME_END);
       return lines.join("\n");
@@ -2119,7 +2141,7 @@
         conflicts.push(`${targetDay.dayName} ${displayDate(targetDay.date)}: ${workerName} כבר מסומן/ת כלא זמין/ה, ההערה החד פעמית לא דורסת את הסתירה בלי בדיקה.`);
       }
 
-      for (const day of days) {
+      for (const day of days.filter(item => item.week === targetDay.week)) {
         if (day.iso === targetDay.iso) continue;
         if (parsed.submitted.has(day.iso) || parsed.preferred.has(day.iso)) {
           conflicts.push(`${day.dayName} ${displayDate(day.date)}: ${workerName} כבר מסומן/ת כזמין/ה, אבל ההערה החד פעמית מגבילה אותו/ה רק ל-${displayDate(targetDay.date)}.`);
@@ -2141,13 +2163,13 @@
         textarea.value = baseText;
       }
 
-      const rawLines = rawOneTimeLines();
-      for (const line of rawLines) {
-        console.log("[calling one-time parser]", line);
-        const parsed = parseOneTimeOnlyAvailabilityLine(line, WORKERS, days);
+      const entries = rawOneTimeEntries();
+      for (const entry of entries) {
+        console.log("[calling one-time parser]", entry.rawText);
+        const parsed = parseOneTimeOnlyAvailabilityLine(entry.rawText, WORKERS, days, entry.worker);
         if (!parsed) continue;
         if (!parsed.parsed) {
-          warnings.push(oneTimeParseWarning(line, parsed.reason));
+          warnings.push(oneTimeParseWarning(entry.rawText, parsed.reason));
           continue;
         }
 
@@ -2161,7 +2183,7 @@
           const generatedConstraints = days.map(day => ({
             iso: day.iso,
             dayName: day.dayName,
-            status: day.iso === parsed.targetDay.iso ? "available" : "cannot"
+            status: day.week !== parsed.targetDay.week ? "ignored" : (day.iso === parsed.targetDay.iso ? "available" : "cannot")
           }));
           console.log("[generated constraints]", generatedConstraints);
           textarea.value = [baseText, block].filter(Boolean).join("\n\n");
