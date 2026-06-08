@@ -2040,14 +2040,37 @@
     function parseOneTimeOnlyAvailabilityLine(text, workers, days) {
       const clean = String(text || "").trim();
       if (!clean) return null;
-      const onlyAvailable = /(?:יכול|יכולה|זמין|זמינה|פנוי|פנויה)\s+רק/.test(clean);
-      if (!onlyAvailable) return null;
+      console.log("[one-time raw]", clean);
+      const match = clean.match(/(?:יכול|יכולה|זמין|זמינה|פנוי|פנויה)\s+רק/);
+      const onlyAvailable = Boolean(match);
+      console.log("[matched exclusive availability]", match);
+      if (!onlyAvailable) {
+        console.warn("[one-time parse failed]", clean);
+        return null;
+      }
 
       const workersInRule = workers.filter(item => clean.includes(item.name));
-      if (!workersInRule.length) return { parsed: false, reason: "חסר שם עובד" };
+      console.log("[matched employee]", workersInRule.map(worker => worker.name));
+      if (!workersInRule.length) {
+        console.warn("[one-time parse failed]", clean);
+        return { parsed: false, reason: "חסר שם עובד" };
+      }
 
       const target = findOneTimeTargetDay(clean, days);
-      if (!target.day) return { parsed: false, reason: target.error };
+      console.log("[resolved date]", target.day ? {
+        iso: target.day.iso,
+        dayName: target.day.dayName,
+        display: displayDate(target.day.date)
+      } : null);
+      console.log("[imported dates]", days.map(day => ({
+        iso: day.iso,
+        dayName: day.dayName,
+        display: displayDate(day.date)
+      })));
+      if (!target.day) {
+        console.warn("[one-time parse failed]", clean);
+        return { parsed: false, reason: target.error };
+      }
 
       return {
         parsed: true,
@@ -2119,8 +2142,18 @@
           const baseText = baseTexts.get(worker.name) || "";
           warnings.push(...collectOneTimeConstraintConflicts(worker.name, baseText, parsed.targetDay, days));
           const block = buildOneTimeOnlyConstraintBlock(parsed.targetDay, days);
+          const generatedConstraints = days.map(day => ({
+            iso: day.iso,
+            dayName: day.dayName,
+            status: day.iso === parsed.targetDay.iso ? "available" : "cannot"
+          }));
+          console.log("[generated constraints]", generatedConstraints);
           textarea.value = [baseText, block].filter(Boolean).join("\n\n");
           card.querySelector(".active-worker").checked = true;
+          console.log("[employee final constraints]", {
+            employee: worker.name,
+            constraints: textarea.value
+          });
         }
       }
 
