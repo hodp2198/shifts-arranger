@@ -187,8 +187,9 @@
       }
     }
 
+    async function initEmployeeCalendarPage() {
     try {
-      finalizedSchedule = scheduleExport.readPayloadFromHash();
+      finalizedSchedule = await scheduleExport.readPayloadFromHash();
       if (!finalizedSchedule?.scheduleId || !Array.isArray(finalizedSchedule.employees) || !Array.isArray(finalizedSchedule.entries)) {
         throw new Error("Invalid finalized schedule link");
       }
@@ -211,6 +212,9 @@
     } catch (error) {
       renderError(error.message || "Invalid finalized schedule link");
     }
+    }
+
+    initEmployeeCalendarPage();
   </script>
 </body>
 </html>

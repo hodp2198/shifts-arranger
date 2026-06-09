@@ -3376,7 +3376,7 @@
         calendarExportStatusEl.textContent = "אין סידור סופי ליצוא.";
         return;
       }
-      const link = scheduleExport.createEmployeeExportLink(payload, "employee-calendar.html");
+      const link = await scheduleExport.createEmployeeExportLink(payload, "employee-calendar.html");
       window.calendarLinkUi.setGeneratedLink({
         link,
         inputEl: calendarExportLinkEl,
