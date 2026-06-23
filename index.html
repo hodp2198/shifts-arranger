@@ -392,6 +392,13 @@
       return next;
     }
 
+    function orderedDateRange(start, end) {
+      if (!start || !end) return { start, end };
+      return start <= end
+        ? { start, end }
+        : { start: end, end: start };
+    }
+
     function getBaseStartDate() {
       return parseUiDate(startDateEl.value);
     }
@@ -402,7 +409,7 @@
           const start = week.start instanceof Date ? week.start : parseUiDate(week.start);
           if (!start) return null;
           const end = week.end instanceof Date ? week.end : parseUiDate(week.end, start.getFullYear());
-          return { start, end: end || addDays(start, 6) };
+          return orderedDateRange(start, end || addDays(start, 6));
         })
         .filter(Boolean)
         .sort((a, b) => a.start - b.start);
@@ -3336,6 +3343,7 @@
       const entries = Object.values(state.currentSchedule)
         .flat()
         .filter(entry => !entry.closed)
+        .sort((a, b) => a.day.iso.localeCompare(b.day.iso))
         .map(entry => {
           const first = entry.first?.name || "";
           const second = entry.second?.name || "";
