@@ -714,7 +714,8 @@
     function weekResultTitle(weekIndex) {
       const week = getWeekConfigs()[weekIndex];
       if (!week) return `שבוע ${weekIndex + 1}`;
-      return `שבוע ${displayDate(week.start)}–${displayDate(week.end)}`;
+      const range = orderedDateRange(week.start, week.end);
+      return `שבוע ${displayDate(range.start)}-${displayDate(range.end)}`;
     }
 
     function weekCopyLabel(weekIndex) {
