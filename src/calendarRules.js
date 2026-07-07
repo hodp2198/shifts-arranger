@@ -109,7 +109,15 @@
 
     const workdayHoliday = events.find(isWorkdayHolidayEvent);
     if (workdayHoliday) {
-      return calendarDebug(date, events, { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(workdayHoliday) }, helpers);
+      const title = getDesc(workdayHoliday);
+      return calendarDebug(date, events, {
+        status: "workday",
+        isWorkday: true,
+        reason: "יום רגיל",
+        title,
+        infoLabel: title,
+        isCalendarInfoOnly: true
+      }, helpers);
     }
 
     return calendarDebug(date, events, { status: "workday", isWorkday: true, reason: "יום רגיל" }, helpers);

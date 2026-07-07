@@ -2968,6 +2968,40 @@
       return `<span class="worker-chip count-chip" style="--worker-bg:${bg};--worker-fg:${fg};--worker-border:${border}">${name} ${count}</span>`;
     }
 
+    function remapEntryWorkers(entry, workersByName) {
+      if (!entry || entry.closed) return entry;
+      return {
+        ...entry,
+        first: entry.first?.name ? workersByName.get(entry.first.name) || entry.first : null,
+        second: entry.second?.name ? workersByName.get(entry.second.name) || entry.second : null
+      };
+    }
+
+    function regenerateScheduleWeek(weekIndex) {
+      if (!state.currentSchedule) return generateSchedule();
+      const next = generateSchedule();
+      const workersByName = new Map(next.workers.map(worker => [worker.name, worker]));
+      const schedule = {};
+      const weekCount = getWeekConfigs().length;
+
+      for (let week = 0; week < weekCount; week++) {
+        const source = week === weekIndex
+          ? next.schedule[week] || []
+          : state.currentSchedule[week] || next.schedule[week] || [];
+        schedule[week] = source.map(entry => remapEntryWorkers(entry, workersByName));
+      }
+
+      rebuildWorkerStats(schedule, next.workers);
+      return {
+        schedule,
+        workers: next.workers,
+        warnings: [
+          ...collectFinalWarnings(schedule, next.workers),
+          ...collectManualOverrideWarnings(schedule, next.workers)
+        ]
+      };
+    }
+
     async function renderSchedule(existing = null) {
       const result = existing || generateSchedule();
       const { schedule, workers } = result;
@@ -3260,13 +3294,13 @@
         return "🟢";
       };
       const dayTag = day => {
-        const label = day.label || calendarStatusLabel(day.dayType.status);
+        const label = day.label || day.dayType.infoLabel || calendarStatusLabel(day.dayType.status);
         if (!label || label === "יום רגיל") return "";
         const status = day.dayType.status === "workday" && day.closed ? "off" : day.dayType.status;
-        if (status === "holiday") return "";
+        if (status === "holiday" && !day.dayType.isCalendarInfoOnly) return "";
         return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;
       };
-      const holidayRowLabel = day => day.dayType.status === "holiday" ? `<span class="holiday-row-label">משמרת חג</span>` : "";
+      const holidayRowLabel = day => day.dayType.status === "holiday" && !day.dayType.isCalendarInfoOnly ? `<span class="holiday-row-label">משמרת חג</span>` : "";
       const workerCounts = new Map();
       Object.values(schedule).flat().forEach(entry => {
         [entry.first, entry.second].forEach(worker => {
@@ -3289,7 +3323,13 @@
       for (let week = 0; week < weekCount; week++) {
         const label = weekResultTitle(week);
         plain.push(weekCopyLabel(week));
-        html += `<section class="week-result"><div class="week-title">${label}</div>`;
+        html += `
+          <section class="week-result">
+            <div class="week-title">
+              <span>${label}</span>
+              <button class="btn secondary refresh-week-schedule" type="button" data-week="${week}">צור מחדש שבוע זה</button>
+            </div>
+        `;
 
         for (const entry of schedule[week] || []) {
           const dayName = scheduleDayLabel(entry.day.dayName);
@@ -3585,6 +3625,17 @@
     });
 
     outputEl.addEventListener("click", async event => {
+      const refreshWeekButton = event.target.closest(".refresh-week-schedule");
+      if (refreshWeekButton) {
+        const weekIndex = Number(refreshWeekButton.dataset.week);
+        if (!Number.isInteger(weekIndex)) return;
+        state.shuffleSeed = (state.shuffleSeed || 34) + 1;
+        syncOneTimeConstraintsNow("before refresh week");
+        await renderSchedule(regenerateScheduleWeek(weekIndex));
+        statusBadgeEl.textContent = "שבוע נוצר מחדש";
+        return;
+      }
+
       const panel = event.target.closest(".alternatives-panel");
       if (panel && event.target.closest("summary")) {
         outputEl.querySelectorAll(".alternatives-panel[open]").forEach(openPanel => {

@@ -401,6 +401,18 @@
       font-weight: 800;
       font-size: 16px;
       border-bottom: 1px solid rgba(29, 29, 31, 0.075);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .week-title .refresh-week-schedule {
+      min-height: 26px;
+      padding: 3px 8px;
+      font-size: 12px;
+      line-height: 1.1;
+      white-space: nowrap;
     }
 
     .shift-line {
