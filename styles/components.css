@@ -417,7 +417,7 @@
 
     .shift-line {
       display: grid;
-      grid-template-columns: 22px 48px minmax(0, 1fr) minmax(88px, auto) auto;
+      grid-template-columns: 22px 48px minmax(0, 1fr) minmax(88px, 140px) auto;
       column-gap: 8px;
       row-gap: 4px;
       padding: 8px 2px;
@@ -463,6 +463,15 @@
       text-align: center;
     }
 
+    .shift-note {
+      grid-column: 4;
+      min-width: 0;
+      justify-self: start;
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+    }
+
     .status-mark {
       font-size: 12px;
       line-height: 1;
@@ -480,7 +489,10 @@
       color: var(--muted);
       font-size: 11px;
       font-weight: 700;
-      white-space: nowrap;
+      line-height: 1.25;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-align: center;
     }
 
     .day-tag.holiday {
@@ -514,13 +526,16 @@
     }
 
     .holiday-row-label {
-      justify-self: center;
-      align-self: center;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      max-width: 100%;
       color: #8a6500;
       font-size: 12px;
       font-weight: 760;
-      line-height: 1;
-      white-space: nowrap;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+      text-align: center;
     }
 
     .shift-controls {
@@ -1042,6 +1057,24 @@
 
       .worker-head, .worker-options, .day-row, .shift-line, .week-row, .whatsapp-row {
         grid-template-columns: 1fr;
+      }
+
+      .shift-line {
+        grid-template-columns: 22px 42px minmax(0, 1fr) auto;
+      }
+
+      .shift-line.closed-day {
+        grid-template-columns: 22px 42px minmax(0, 1fr);
+      }
+
+      .shift-note {
+        grid-column: 3;
+        grid-row: 2;
+        justify-self: start;
+      }
+
+      .shift-controls {
+        grid-column: 4;
       }
 
       .alternatives-panel {

@@ -3301,6 +3301,7 @@
         return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;
       };
       const holidayRowLabel = day => day.dayType.status === "holiday" && !day.dayType.isCalendarInfoOnly ? `<span class="holiday-row-label">משמרת חג</span>` : "";
+      const rowNote = day => dayTag(day) || holidayRowLabel(day);
       const workerCounts = new Map();
       Object.values(schedule).flat().forEach(entry => {
         [entry.first, entry.second].forEach(worker => {
@@ -3359,14 +3360,14 @@
                 : `<span class="missing-slot">-</span>`;
           const alternatives = renderAlternativePanel(entry, firstName, secondName);
           const manualEdit = renderManualEditPanel(entry, firstName, secondName);
-          const rowLabel = holidayRowLabel(entry.day);
+          const note = rowNote(entry.day);
           const manualBadge = entry.manualOverride ? `<span class="manual-override-badge">נערך ידנית</span>` : "";
           html += `
             <div class="shift-line ${status.level}">
               <span class="status-mark" title="${status.label}">${statusIcon(status.level)}</span>
-              <span class="shift-day">${dayName}${dayTag(entry.day)}</span>
+              <span class="shift-day">${dayName}</span>
               <span class="shift-assignment">${assignment}${manualBadge}</span>
-              ${rowLabel}
+              ${note ? `<span class="shift-note">${note}</span>` : ""}
               <span class="shift-controls">${manualEdit}${alternatives}</span>
             </div>
           `;
