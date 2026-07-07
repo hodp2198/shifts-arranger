@@ -59,20 +59,22 @@
     const events = getHebcalEvents(date, helpers.state);
     const hasFlag = (event, flag) => Boolean(flag && event.getFlags && (event.getFlags() & flag));
     const getDesc = event => event.render?.("he-x-NoNikud") || event.getDesc?.() || "חג";
+    const getEventText = event => `${event.getDesc?.() || ""} ${getDesc(event)}`;
     const isEve = event => hasFlag(event, flags.EREV) || /^Erev\b/i.test(event.getDesc?.() || "") || /ערב/.test(getDesc(event));
+    const isTishaBAv = event => /Tish'?a B'?Av|תשעה באב/i.test(getEventText(event));
+    const isWorkdayHolidayEvent = event => isTishaBAv(event);
     const isIsraeliHoliday = event => {
-      const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
-      return hasFlag(event, flags.MODERN_HOLIDAY)
-        || /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
+      const desc = getEventText(event);
+      return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
     };
     const isIsraeliClosedEveTarget = event => {
-      const desc = `${event.getDesc?.() || ""} ${getDesc(event)}`;
+      const desc = getEventText(event);
       return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
     };
     const isJewishHoliday = event => hasFlag(event, flags.CHAG);
     const isHoliday = event => hasFlag(event, flags.CHAG) || isIsraeliHoliday(event);
 
-    const holidayEve = events.find(isEve);
+    const holidayEve = events.find(event => isEve(event) && !isWorkdayHolidayEvent(event));
     if (holidayEve) {
       return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) }, helpers);
     }
@@ -97,6 +99,11 @@
     const holiday = events.find(isHoliday);
     if (holiday) {
       return calendarDebug(date, events, { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) }, helpers);
+    }
+
+    const workdayHoliday = events.find(isWorkdayHolidayEvent);
+    if (workdayHoliday) {
+      return calendarDebug(date, events, { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(workdayHoliday) }, helpers);
     }
 
     return calendarDebug(date, events, { status: "workday", isWorkday: true, reason: "יום רגיל" }, helpers);

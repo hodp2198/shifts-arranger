@@ -1173,10 +1173,16 @@
         specialDaysEl.innerHTML = "";
         return;
       }
-      const calendarClosedDays = days.filter(day => day.dayType.status === "holidayEve");
+      const calendarClosedDays = days.filter(day => day.dayType.status === "holidayEve" && !state.special[day.iso]);
       const manualDays = days.filter(day => state.special[day.iso]);
       const holidayText = calendarClosedDays.length
-        ? calendarClosedDays.map(day => `<span class="summary-pill">${displayDate(day.date)} — ${closedDayReason(day)}</span>`).join("")
+        ? calendarClosedDays.map(day => `
+            <div class="day-row" data-date="${day.iso}">
+              <div class="day-label">${displayDate(day.date)} — ${closedDayReason(day)}</div>
+              <span class="closed">חסום אוטומטית</span>
+              <button class="btn secondary open-special-day" type="button">פתח לעבודה</button>
+            </div>
+          `).join("")
         : `<span class="helper">אין ערבי חג בטווח שנבחר</span>`;
       const calendarWarning = state.calendar.warning
         ? `<span class="helper">${state.calendar.warning}</span>`
@@ -3557,9 +3563,19 @@
     document.getElementById("addManualOffDay").addEventListener("click", addManualOffDay);
 
     specialDaysEl.addEventListener("click", event => {
-      if (!event.target.classList.contains("remove-special-day")) return;
       const row = event.target.closest(".day-row");
-      removeManualSpecialDay(row.dataset.date);
+      if (!row?.dataset.date) return;
+
+      if (event.target.classList.contains("open-special-day")) {
+        state.special[row.dataset.date] = { closed: false, label: "יום עבודה" };
+        renderSpecialDays();
+        saveState();
+        return;
+      }
+
+      if (event.target.classList.contains("remove-special-day")) {
+        removeManualSpecialDay(row.dataset.date);
+      }
     });
 
     workersEl.addEventListener("click", event => {
