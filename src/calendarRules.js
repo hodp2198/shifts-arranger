@@ -59,7 +59,13 @@
     const events = getHebcalEvents(date, helpers.state);
     const hasFlag = (event, flag) => Boolean(flag && event.getFlags && (event.getFlags() & flag));
     const getDesc = event => event.render?.("he-x-NoNikud") || event.getDesc?.() || "חג";
-    const getEventText = event => `${event.getDesc?.() || ""} ${getDesc(event)}`;
+    const normalizeEventText = text => String(text || "")
+      .normalize("NFKD")
+      .replace(/[\u0591-\u05C7]/g, "")
+      .replace(/[’‘`´״׳]/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    const getEventText = event => normalizeEventText(`${event.getDesc?.() || ""} ${getDesc(event)}`);
     const isEve = event => hasFlag(event, flags.EREV) || /^Erev\b/i.test(event.getDesc?.() || "") || /ערב/.test(getDesc(event));
     const isTishaBAv = event => /Tish'?a B'?Av|תשעה באב/i.test(getEventText(event));
     const isWorkdayHolidayEvent = event => isTishaBAv(event);
@@ -80,7 +86,7 @@
     }
 
     const nextDayEvents = getHebcalEvents(helpers.addDays(date, 1), helpers.state);
-    const nextDayHolidayEve = dayIndex === 4 ? nextDayEvents.find(isEve) : null;
+    const nextDayHolidayEve = dayIndex === 4 ? nextDayEvents.find(event => isEve(event) && !isWorkdayHolidayEvent(event)) : null;
     if (nextDayHolidayEve) {
       return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHolidayEve) }, helpers);
     }
@@ -91,7 +97,7 @@
     }
 
     const todayIsJewishHoliday = events.some(isJewishHoliday);
-    const nextDayJewishHoliday = nextDayEvents.find(isJewishHoliday);
+    const nextDayJewishHoliday = nextDayEvents.find(event => isJewishHoliday(event) && !isWorkdayHolidayEvent(event));
     if (!todayIsJewishHoliday && dayIndex !== 6 && nextDayJewishHoliday) {
       return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayJewishHoliday) }, helpers);
     }
