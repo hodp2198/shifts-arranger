@@ -64,6 +64,15 @@
     let finalizedSchedule = null;
     let oauthConfigured = false;
 
+    function renderLoading() {
+      exportStatusEl.textContent = "טוען...";
+      calendarMessageEl.textContent = "טוען את נתוני הסידור...";
+      employeeSelectEl.disabled = true;
+      authorizeGoogleEl.disabled = true;
+      addToCalendarEl.disabled = true;
+      eventPreviewEl.innerHTML = "";
+    }
+
     function displayDate(value) {
       const date = new Date(`${value}T12:00:00`);
       return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
@@ -72,6 +81,8 @@
     function renderError(message) {
       exportStatusEl.textContent = "שגיאה";
       calendarMessageEl.textContent = message;
+      employeeSelectEl.disabled = true;
+      authorizeGoogleEl.disabled = true;
       eventPreviewEl.innerHTML = "";
       addToCalendarEl.disabled = true;
     }
@@ -188,30 +199,33 @@
     }
 
     async function initEmployeeCalendarPage() {
-    try {
-      finalizedSchedule = await scheduleExport.readPayloadFromHash();
-      if (!finalizedSchedule?.scheduleId || !Array.isArray(finalizedSchedule.employees) || !Array.isArray(finalizedSchedule.entries)) {
-        throw new Error("Invalid finalized schedule link");
+      renderLoading();
+      try {
+        finalizedSchedule = await scheduleExport.readEmployeePayload();
+        if (!finalizedSchedule?.scheduleId || !Array.isArray(finalizedSchedule.employees) || !Array.isArray(finalizedSchedule.entries)) {
+          throw new Error("קישור הסידור אינו תקין או שחסרים בו נתונים.");
+        }
+        employeeSelectEl.disabled = false;
+        renderEmployeeOptions();
+        renderPreview();
+        employeeSelectEl.addEventListener("change", renderPreview);
+        authorizeGoogleEl.addEventListener("click", handleAuthorizeGoogle);
+        addToCalendarEl.addEventListener("click", handleAddToGoogleCalendar);
+        oauthConfigured = googleOAuthService.hasConfiguredClient();
+        authorizeGoogleEl.disabled = !oauthConfigured;
+        if (!oauthConfigured) {
+          authStatusEl.textContent = "Google OAuth לא מוגדר";
+          authorizeGoogleEl.disabled = true;
+          addToCalendarEl.disabled = true;
+          calendarMessageEl.textContent = "הגדרת מנהל נדרשת: יש להגדיר Google OAuth Client ID בקובץ src/googleConfig.js לפני הוספה ישירה ליומן.";
+        } else {
+          authStatusEl.textContent = "לא מחובר";
+          addToCalendarEl.disabled = true;
+          calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
+        }
+      } catch (error) {
+        renderError(error.message || "לא ניתן לטעון את הסידור מהקישור.");
       }
-      renderEmployeeOptions();
-      renderPreview();
-      employeeSelectEl.addEventListener("change", renderPreview);
-      authorizeGoogleEl.addEventListener("click", handleAuthorizeGoogle);
-      addToCalendarEl.addEventListener("click", handleAddToGoogleCalendar);
-      oauthConfigured = googleOAuthService.hasConfiguredClient();
-      if (!oauthConfigured) {
-        authStatusEl.textContent = "Google OAuth לא מוגדר";
-        authorizeGoogleEl.disabled = true;
-        addToCalendarEl.disabled = true;
-        calendarMessageEl.textContent = "הגדרת מנהל נדרשת: יש להגדיר Google OAuth Client ID בקובץ src/googleConfig.js לפני הוספה ישירה ליומן.";
-      } else {
-        authStatusEl.textContent = "לא מחובר";
-        addToCalendarEl.disabled = true;
-        calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
-      }
-    } catch (error) {
-      renderError(error.message || "Invalid finalized schedule link");
-    }
     }
 
     initEmployeeCalendarPage();

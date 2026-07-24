@@ -3440,6 +3440,12 @@
         buttonEl: calendarExportLinkButtonEl,
         statusEl: calendarExportStatusEl
       });
+      try {
+        await navigator.clipboard.writeText(link);
+        showCalendarExportCopiedStatus();
+      } catch (error) {
+        calendarExportStatusEl.textContent = "הקישור נוצר. הדפדפן חסם העתקה אוטומטית, אפשר להעתיק מהשדה.";
+      }
     }
 
     function showCalendarExportCopiedStatus() {
