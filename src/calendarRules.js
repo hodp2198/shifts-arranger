@@ -134,6 +134,24 @@
     return cleanTitle;
   }
 
+  function holidayShiftDisplayTitle(title) {
+    const cleanTitle = String(title || "")
+      .normalize("NFKD")
+      .replace(/[\u0591-\u05C7]/g, "")
+      .replace(/[’‘`´״׳]/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (/^Rosh Hashana\b/i.test(cleanTitle) || /^ראש השנה/.test(cleanTitle)) return "ראש השנה";
+    if (/^Yom Kippur\b/i.test(cleanTitle) || /^יום כיפור|^יום הכיפורים/.test(cleanTitle)) return "יום כיפור";
+    if (/^Sukkot\b/i.test(cleanTitle) || /^סוכות/.test(cleanTitle)) return "סוכות";
+    if (/^Pesach VII\b/i.test(cleanTitle) || /^פסח\s+ז/.test(cleanTitle)) return "שביעי של פסח";
+    if (/^Pesach\b/i.test(cleanTitle) || /^פסח/.test(cleanTitle)) return "פסח";
+    if (/^Shavuot\b/i.test(cleanTitle) || /^שבועות/.test(cleanTitle)) return "שבועות";
+    if (/^Shmini Atzeret\b/i.test(cleanTitle) || /^שמיני עצרת/.test(cleanTitle)) return "שמיני עצרת";
+    if (/^Simchat Torah\b/i.test(cleanTitle) || /^שמחת תורה/.test(cleanTitle)) return "שמחת תורה";
+    return cleanTitle;
+  }
+
   function holidayClosedReason(dayType) {
     const title = String(dayType?.title || "").trim();
     if (dayType?.status === "holidayEve") {
@@ -155,6 +173,7 @@
     calendarStatusLabel,
     getDayType,
     holidayEveDisplayTitle,
+    holidayShiftDisplayTitle,
     holidayClosedReason,
     closedDayReason
   };

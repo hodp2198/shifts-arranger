@@ -330,6 +330,23 @@
         holidayEveDisplayTitle(title) {
           return String(title || "").replace(/^Erev\s+/i, "").replace(/^ערב\s+(חג\s+)?/, "").trim();
         },
+        holidayShiftDisplayTitle(title) {
+          const cleanTitle = String(title || "")
+            .normalize("NFKD")
+            .replace(/[\u0591-\u05C7]/g, "")
+            .replace(/[’‘`´״׳]/g, "'")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (/^Rosh Hashana\b/i.test(cleanTitle) || /^ראש השנה/.test(cleanTitle)) return "ראש השנה";
+          if (/^Yom Kippur\b/i.test(cleanTitle) || /^יום כיפור|^יום הכיפורים/.test(cleanTitle)) return "יום כיפור";
+          if (/^Sukkot\b/i.test(cleanTitle) || /^סוכות/.test(cleanTitle)) return "סוכות";
+          if (/^Pesach VII\b/i.test(cleanTitle) || /^פסח\s+ז/.test(cleanTitle)) return "שביעי של פסח";
+          if (/^Pesach\b/i.test(cleanTitle) || /^פסח/.test(cleanTitle)) return "פסח";
+          if (/^Shavuot\b/i.test(cleanTitle) || /^שבועות/.test(cleanTitle)) return "שבועות";
+          if (/^Shmini Atzeret\b/i.test(cleanTitle) || /^שמיני עצרת/.test(cleanTitle)) return "שמיני עצרת";
+          if (/^Simchat Torah\b/i.test(cleanTitle) || /^שמחת תורה/.test(cleanTitle)) return "שמחת תורה";
+          return cleanTitle;
+        },
         holidayClosedReason(dayType) {
           if (dayType?.status !== "holidayEve") return dayType?.status === "off" ? "אין משמרת" : "";
           const cleanTitle = this.holidayEveDisplayTitle(dayType.title);
@@ -351,6 +368,11 @@
 
     function holidayEveDisplayTitle(title) {
       return calendarRulesHelper().holidayEveDisplayTitle(title);
+    }
+
+    function holidayShiftDisplayTitle(title) {
+      const helper = calendarRulesHelper();
+      return helper.holidayShiftDisplayTitle ? helper.holidayShiftDisplayTitle(title) : String(title || "").trim();
     }
 
     function holidayClosedReason(dayType) {
@@ -3300,7 +3322,11 @@
         if (status === "holiday" && !day.dayType.isCalendarInfoOnly) return "";
         return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;
       };
-      const holidayRowLabel = day => day.dayType.status === "holiday" && !day.dayType.isCalendarInfoOnly ? `<span class="holiday-row-label">משמרת חג</span>` : "";
+      const holidayRowLabel = day => {
+        if (day.dayType.status !== "holiday" || day.dayType.isCalendarInfoOnly) return "";
+        const holidayTitle = holidayShiftDisplayTitle(day.dayType.title);
+        return `<span class="holiday-row-label">משמרת חג${holidayTitle ? ` ${holidayTitle}` : ""}</span>`;
+      };
       const rowNote = day => dayTag(day) || holidayRowLabel(day);
       const workerCounts = new Map();
       Object.values(schedule).flat().forEach(entry => {
