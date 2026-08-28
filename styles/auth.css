@@ -1,6 +1,15 @@
 /* Styles for Admin Auth and Gatekeeper */
 
-/* Hide main app shell by default until authenticated */
+/* Hide main app shell and lock body scroll completely until authenticated */
+html:not(.authenticated),
+body:not(.authenticated) {
+  overflow: hidden !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overscroll-behavior: none !important;
+}
+
 body:not(.authenticated) .shell {
   display: none !important;
 }
