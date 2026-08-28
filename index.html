@@ -38,7 +38,7 @@
     </div>
   </div>
 
-  <main class="shell">
+  <main class="shell" id="mainShell" style="display: none;">
     <section class="topbar">
       <div>
         <h1>סידור משמרות</h1>
@@ -3849,6 +3849,7 @@
     } from "./src/auth/adminAuthService.js";
 
     const authGatekeeper = document.getElementById("authGatekeeper");
+    const mainShell = document.getElementById("mainShell") || document.querySelector(".shell");
     const googleLoginBtn = document.getElementById("googleLoginBtn");
     const googleBtnText = document.getElementById("googleBtnText");
     const googleBtnSpinner = document.getElementById("googleBtnSpinner");
@@ -3875,10 +3876,18 @@
     // Monitor auth state
     onAdminAuthStateChanged(user => {
       if (user) {
+        document.body.classList.add("authenticated");
+        if (mainShell) {
+          mainShell.style.display = "";
+        }
         authGatekeeper.classList.add("hidden");
         adminUserEmailEl.textContent = user.email || "מנהל מחובר";
         clearError();
       } else {
+        document.body.classList.remove("authenticated");
+        if (mainShell) {
+          mainShell.style.display = "none";
+        }
         authGatekeeper.classList.remove("hidden");
       }
     });
