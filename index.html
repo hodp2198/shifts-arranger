@@ -3569,7 +3569,22 @@
 
     async function loadUserWorkspace(uid) {
       if (!window.userDataService) return;
-      const data = await window.userDataService.loadUserAppData(uid);
+      let data = null;
+      try {
+        data = await window.userDataService.loadUserAppData(uid);
+      } catch (err) {
+        console.warn("Could not load from Firestore, checking local storage fallback:", err);
+      }
+
+      // If user has no data in Firestore yet, migrate existing local data if present
+      if (!data && window.stateStorage) {
+        const localData = window.stateStorage.readSavedData();
+        if (localData && Array.isArray(localData.workers) && localData.workers.length > 0) {
+          data = localData;
+          // Save migrated data to Firestore under this user's UID in the background
+          window.userDataService.saveUserAppData(uid, data, { immediate: true }).catch(() => {});
+        }
+      }
 
       if (!data) {
         // New user or empty workspace
@@ -3968,6 +3983,9 @@
           currentAuthUser = user;
           currentAuthUid = user.uid;
 
+          document.body.classList.add("authenticated");
+          document.documentElement.classList.add("authenticated");
+
           // Unmount lock/login screen from DOM completely
           if (document.body.contains(authGatekeeper)) {
             authGatekeeper.remove();
@@ -4013,10 +4031,16 @@
             if (autosaveStatusEl) {
               autosaveStatusEl.textContent = "שגיאה בטעינת נתונים";
             }
+            renderWorkers();
+            renderWeekSettings();
+            await refreshCalendarDays();
           }
         } else {
           currentAuthUser = null;
           currentAuthUid = null;
+
+          document.body.classList.remove("authenticated");
+          document.documentElement.classList.remove("authenticated");
 
           if (window.userDataService?.cancelPendingSave) {
             window.userDataService.cancelPendingSave();
