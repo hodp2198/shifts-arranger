@@ -114,12 +114,15 @@
     };
   }
 
-  async function createEmployeeExportLink(payload, pagePath) {
+  async function createEmployeeExportLink(payload, pagePath, uid = null) {
     const url = new URL(pagePath, window.location.href);
     const compact = JSON.stringify(compactPayload(payload));
     const { saveSchedulePayload } = await import("./firebaseScheduleStore.js");
-    const result = await saveSchedulePayload(compact);
+    const result = await saveSchedulePayload(compact, uid);
     url.search = "";
+    if (result.uid) {
+      url.searchParams.set("u", result.uid);
+    }
     url.searchParams.set("id", result.id);
     url.hash = "";
     return url.href;
@@ -151,14 +154,16 @@
   }
 
   async function readPayloadFromFirestoreId() {
-    const id = new URLSearchParams(window.location.search).get("id");
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    const uid = params.get("u");
     if (!id) return null;
     const { readSchedulePayload } = await import("./firebaseScheduleStore.js");
-    return expandCompactPayload(JSON.parse(await readSchedulePayload(id)));
+    return expandCompactPayload(JSON.parse(await readSchedulePayload(id, uid)));
   }
 
   async function readEmployeePayload() {
-    const firestorePayload = await readPayloadFromFirestoreId();
+    const firestorePayload = await readPayloadFromFirestoreId().catch(() => null);
     return firestorePayload || readPayloadFromHash();
   }
 

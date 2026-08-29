@@ -38,7 +38,7 @@
     </div>
   </div>
 
-  <main class="shell" id="mainShell" style="display: none;">
+  <main class="shell" id="mainShell">
     <section class="topbar">
       <div>
         <h1>סידור משמרות</h1>
@@ -194,18 +194,17 @@
       ["#f5f8e8", "#5a641f", "#dce7a8"],
       ["#fdf0ff", "#743878", "#e5c2e9"]
     ];
-    const storageHelper = window.stateStorage || {
-      STORAGE_SCHEMA_VERSION: 4,
-      STORAGE_KEY: "shifts-arranger-v4",
-      clearLegacyStorage() {},
-      readSavedData() { return null; },
-      writeSavedData(data) { localStorage.setItem("shifts-arranger-v4", JSON.stringify(data)); },
-      removeSavedData() { localStorage.removeItem("shifts-arranger-v4"); }
-    };
-    const STORAGE_SCHEMA_VERSION = storageHelper.STORAGE_SCHEMA_VERSION;
-    const STORAGE_KEY = storageHelper.STORAGE_KEY;
-    const readSavedData = storageHelper.readSavedData;
-    storageHelper.clearLegacyStorage();
+    const authGatekeeper = document.getElementById("authGatekeeper");
+    const mainShell = document.getElementById("mainShell");
+
+    // Immediately detach the main application from DOM so only login screen is rendered prior to authentication
+    if (mainShell) {
+      mainShell.remove();
+    }
+
+    let currentAuthUid = null;
+    let currentAuthUser = null;
+
     const state = {
       special: {},
       detectedWeeks: [],
@@ -220,7 +219,7 @@
         warning: ""
       }
     };
-    let WORKERS = loadWorkerDefinitions();
+    let WORKERS = [];
 
     const workersEl = document.getElementById("workers");
     const specialDaysEl = document.getElementById("specialDays");
@@ -314,8 +313,7 @@
       )).join("");
     }
 
-    function loadWorkerDefinitions() {
-      const saved = readSavedData();
+    function loadWorkerDefinitions(savedWorkers = []) {
       const workers = [];
       const normalizeWorker = worker => {
         const name = worker.name;
@@ -331,8 +329,8 @@
         };
       };
 
-      if (!Array.isArray(saved?.workers)) return [];
-      saved.workers.filter(worker => worker?.name).forEach(worker => {
+      if (!Array.isArray(savedWorkers)) return [];
+      savedWorkers.filter(worker => worker?.name).forEach(worker => {
         workers.push(normalizeWorker(worker));
       });
       const result = ensureUniqueWorkerColors(workers);
@@ -3495,7 +3493,7 @@
         calendarExportStatusEl.textContent = "אין סידור סופי ליצוא.";
         return;
       }
-      const link = await scheduleExport.createEmployeeExportLink(payload, "employee-calendar.html");
+      const link = await scheduleExport.createEmployeeExportLink(payload, "employee-calendar.html", currentAuthUid);
       window.calendarLinkUi.setGeneratedLink({
         link,
         inputEl: calendarExportLinkEl,
@@ -3533,7 +3531,102 @@
       window.open(link, "_blank", "noopener,noreferrer");
     }
 
-    function saveState() {
+    function resetWorkspaceToEmpty() {
+      WORKERS = [];
+      state.special = {};
+      state.detectedWeeks = [];
+      state.currentSchedule = null;
+      state.currentWorkers = [];
+      state.currentWarnings = [];
+      state.manualOverrides = {};
+      state.shuffleSeed = 0;
+      state.weekDetectionWarnings = [];
+      state.workerColorsRepaired = false;
+      state.calendar = { warning: "" };
+
+      if (startDateEl) startDateEl.value = "";
+      if (weekCountEl) weekCountEl.value = 2;
+      if (bulkExcelNotesEl) bulkExcelNotesEl.value = "";
+      if (bulkExcelStatusEl) bulkExcelStatusEl.textContent = "";
+      if (oneTimeRulesEl) oneTimeRulesEl.value = "";
+      if (plainResultEl) plainResultEl.value = "";
+      if (outputEl) outputEl.innerHTML = "";
+      if (warningsEl) warningsEl.innerHTML = "";
+      if (statusBadgeEl) statusBadgeEl.textContent = "ממתין";
+      if (manualOffDateEl) manualOffDateEl.value = "";
+      if (calendarExportLinkEl) calendarExportLinkEl.value = "";
+      if (calendarExportLinkTextEl) calendarExportLinkTextEl.textContent = "כאן יופיע קישור לעובדים";
+      if (calendarExportStatusEl) calendarExportStatusEl.textContent = "";
+      const wsEl = document.getElementById("weekSettings");
+      if (wsEl) wsEl.innerHTML = "";
+      const sdEl = document.getElementById("specialDays");
+      if (sdEl) sdEl.innerHTML = "";
+      const wEl = document.getElementById("workers");
+      if (wEl) wEl.innerHTML = "";
+    }
+
+    async function loadUserWorkspace(uid) {
+      if (!window.userDataService) return;
+      const data = await window.userDataService.loadUserAppData(uid);
+
+      if (!data) {
+        // New user or empty workspace
+        resetWorkspaceToEmpty();
+        renderWorkers();
+        renderWeekSettings();
+        await refreshCalendarDays();
+        return;
+      }
+
+      const savedStartDate = data.startDate || "";
+      const startDate = parseUiDate(savedStartDate);
+      if (startDateEl) startDateEl.value = startDate ? editDateValue(startDate) : "";
+      if (weekCountEl) weekCountEl.value = data.weekCount || 2;
+      if (bulkExcelNotesEl) bulkExcelNotesEl.value = data.bulkExcelNotes || "";
+      if (oneTimeRulesEl) oneTimeRulesEl.value = data.oneTimeRules || "";
+      if (plainResultEl) plainResultEl.value = data.plainResult || "";
+      state.manualOverrides = data.manualOverrides && typeof data.manualOverrides === "object" ? data.manualOverrides : {};
+      state.special = {};
+      Object.entries(data.special || {}).forEach(([iso, item]) => {
+        state.special[iso] = item;
+      });
+
+      const savedWeeks = Array.isArray(data.detectedWeeks) && data.detectedWeeks.length
+        ? data.detectedWeeks
+        : data.weeks;
+      if (Array.isArray(savedWeeks) && savedWeeks.length) {
+        setDetectedWeeks(savedWeeks);
+        renderWeekSettings();
+      } else {
+        setDetectedWeeks([]);
+        renderWeekSettings();
+      }
+
+      const savedWorkers = Array.isArray(data.workers) ? data.workers : [];
+      WORKERS = loadWorkerDefinitions(savedWorkers);
+
+      renderWorkers();
+      renderWeekSettings();
+
+      const workersState = {};
+      for (const saved of savedWorkers) workersState[saved.name] = saved;
+      applyWorkerState(workersState);
+      updateOneTimeIndicators();
+
+      if (data.bulkExcelNotes) {
+        renderImportSummary({
+          imported: savedWorkers.filter(worker => worker.constraints).length,
+          importedWeeks: getDetectedWeekConfigs().length
+        });
+      }
+
+      await refreshCalendarDays();
+    }
+
+    function saveState(immediate = false) {
+      if (!currentAuthUid || !window.userDataService) {
+        return;
+      }
       const startDate = getBaseStartDate();
       const saveDateValue = value => {
         const date = parseUiDate(value, startDate?.getFullYear());
@@ -3546,27 +3639,27 @@
         const name = card.dataset.worker;
         const base = workerByName.get(name) || {};
         const settings = normalizeWorkerSettings({
-          onlyNight2: card.querySelector(".night2-only").checked,
-          min: card.querySelector(".min-shifts").value,
-          max: card.querySelector(".max-shifts").value,
+          onlyNight2: card.querySelector(".night2-only")?.checked,
+          min: card.querySelector(".min-shifts")?.value,
+          max: card.querySelector(".max-shifts")?.value,
           color: base.color
         }, base);
         return [name, {
-          active: card.querySelector(".active-worker").checked,
+          active: card.querySelector(".active-worker")?.checked ?? true,
           onlyNight2: settings.onlyNight2,
           min: settings.min,
           max: settings.max,
           color: settings.color || getWorkerColor(name, base.color),
-          constraints: card.querySelector(".constraints").value
+          constraints: card.querySelector(".constraints")?.value || ""
         }];
       }));
+
       const data = {
-        schemaVersion: STORAGE_SCHEMA_VERSION,
         startDate: startDate ? isoDate(startDate) : "",
-        weekCount: weekCountEl.value,
-        bulkExcelNotes: bulkExcelNotesEl.value,
-        oneTimeRules: oneTimeRulesEl.value,
-        plainResult: plainResultEl.value,
+        weekCount: weekCountEl ? weekCountEl.value : 2,
+        bulkExcelNotes: bulkExcelNotesEl ? bulkExcelNotesEl.value : "",
+        oneTimeRules: oneTimeRulesEl ? oneTimeRulesEl.value : "",
+        plainResult: plainResultEl ? plainResultEl.value : "",
         manualOverrides: state.manualOverrides,
         special: state.special,
         detectedWeeks: getDetectedWeekConfigs().map(week => ({
@@ -3584,62 +3677,35 @@
           ...liveWorkerState.get(card.dataset.worker)
         }))
       };
-      storageHelper.writeSavedData(data);
-      if (autosaveStatusEl) {
-        autosaveStatusEl.textContent = "נשמר אוטומטית";
-      }
-    }
 
-    function loadState() {
-      try {
-        const data = readSavedData();
-        if (!data) return;
-        const savedStartDate = data.startDate || "";
-        const startDate = parseUiDate(savedStartDate);
-        startDateEl.value = startDate ? editDateValue(startDate) : "";
-        weekCountEl.value = data.weekCount || weekCountEl.value;
-        bulkExcelNotesEl.value = data.bulkExcelNotes || "";
-        oneTimeRulesEl.value = data.oneTimeRules || "";
-        plainResultEl.value = data.plainResult || "";
-        state.manualOverrides = data.manualOverrides && typeof data.manualOverrides === "object" ? data.manualOverrides : {};
-        Object.entries(data.special || {}).forEach(([iso, item]) => {
-          state.special[iso] = item;
-        });
-        const savedWeeks = Array.isArray(data.detectedWeeks) && data.detectedWeeks.length
-          ? data.detectedWeeks
-          : data.weeks;
-        if (Array.isArray(savedWeeks) && savedWeeks.length) {
-          setDetectedWeeks(savedWeeks);
-          renderWeekSettings();
-        } else {
-          setDetectedWeeks([]);
-          renderWeekSettings();
-        }
-        const workersState = {};
-        for (const saved of data.workers || []) workersState[saved.name] = saved;
-        applyWorkerState(workersState);
-        updateOneTimeIndicators();
-        if (data.bulkExcelNotes) {
-          renderImportSummary({ imported: (data.workers || []).filter(worker => worker.constraints).length, importedWeeks: getDetectedWeekConfigs().length });
-        }
-        if (state.workerColorsRepaired) {
-          state.workerColorsRepaired = false;
-          saveState();
-        }
-      } catch (error) {
-        storageHelper.removeSavedData();
+      if (autosaveStatusEl) {
+        autosaveStatusEl.textContent = "שומר בענן...";
       }
+
+      window.userDataService.saveUserAppData(currentAuthUid, data, { immediate })
+        .then(() => {
+          if (autosaveStatusEl) {
+            autosaveStatusEl.textContent = "נשמר בענן";
+          }
+        })
+        .catch(err => {
+          console.error("Auto-save failed:", err);
+          if (autosaveStatusEl) {
+            autosaveStatusEl.textContent = "שגיאה בשמירה בענן";
+          }
+        });
     }
 
     document.getElementById("buildSchedule").addEventListener("click", async () => {
       state.shuffleSeed = 34;
       syncOneTimeConstraintsNow("before buildSchedule");
       await renderSchedule();
+      saveState(true);
     });
     document.getElementById("resetManualOverrides").addEventListener("click", async () => {
       clearManualOverrides();
       if (state.currentSchedule) await renderSchedule();
-      saveState();
+      saveState(true);
       statusBadgeEl.textContent = "עריכות ידניות אופסו";
     });
     document.getElementById("copyResult").addEventListener("click", async () => {
@@ -3654,23 +3720,38 @@
     createCalendarExportLinkEl.addEventListener("click", createCalendarExportLink);
     calendarExportLinkButtonEl.addEventListener("click", copyCalendarExportLink);
     openCalendarExportLinkEl.addEventListener("click", openCalendarExportLink);
-    document.getElementById("addWorker").addEventListener("click", addWorker);
-    document.getElementById("newWorkerName").addEventListener("keydown", event => {
-      if (event.key === "Enter") addWorker();
+    document.getElementById("addWorker").addEventListener("click", () => {
+      addWorker();
+      saveState(true);
     });
-    document.getElementById("applyBulkExcelNotes").addEventListener("click", handleBulkExcelNotes);
-    document.getElementById("quickReset").addEventListener("click", quickResetState);
+    document.getElementById("newWorkerName").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        addWorker();
+        saveState(true);
+      }
+    });
+    document.getElementById("applyBulkExcelNotes").addEventListener("click", () => {
+      handleBulkExcelNotes();
+      saveState(true);
+    });
+    document.getElementById("quickReset").addEventListener("click", () => {
+      quickResetState();
+      saveState(true);
+    });
     document.getElementById("buildWeeks").addEventListener("click", async () => {
       setDetectedWeeks([]);
       renderWeekSettings();
       await refreshCalendarDays();
-      saveState();
+      saveState(true);
     });
     document.getElementById("refreshDays").addEventListener("click", async () => {
       await refreshCalendarDays();
-      saveState();
+      saveState(true);
     });
-    document.getElementById("addManualOffDay").addEventListener("click", addManualOffDay);
+    document.getElementById("addManualOffDay").addEventListener("click", () => {
+      addManualOffDay();
+      saveState(true);
+    });
 
     specialDaysEl.addEventListener("click", event => {
       const row = event.target.closest(".day-row");
@@ -3679,12 +3760,13 @@
       if (event.target.classList.contains("open-special-day")) {
         state.special[row.dataset.date] = { closed: false, label: "יום עבודה" };
         renderSpecialDays();
-        saveState();
+        saveState(true);
         return;
       }
 
       if (event.target.classList.contains("remove-special-day")) {
         removeManualSpecialDay(row.dataset.date);
+        saveState(true);
       }
     });
 
@@ -3692,6 +3774,7 @@
       if (!event.target.classList.contains("remove-worker")) return;
       const card = event.target.closest(".worker");
       removeWorker(card.dataset.worker);
+      saveState(true);
     });
 
     outputEl.addEventListener("click", async event => {
@@ -3703,6 +3786,7 @@
         syncOneTimeConstraintsNow("before refresh week");
         await renderSchedule(regenerateScheduleWeek(weekIndex));
         statusBadgeEl.textContent = "שבוע נוצר מחדש";
+        saveState(true);
         return;
       }
 
@@ -3743,6 +3827,7 @@
           workers: state.currentWorkers
         });
         statusBadgeEl.textContent = "נערך ידנית";
+        saveState(true);
         return;
       }
 
@@ -3783,6 +3868,7 @@
         workers: state.currentWorkers
       });
       statusBadgeEl.textContent = "חלופה אושרה";
+      saveState(true);
     });
 
     document.addEventListener("click", event => {
@@ -3834,89 +3920,150 @@
       saveState();
     });
 
-    renderWorkers();
-    renderWeekSettings();
-    loadState();
-    refreshCalendarDays();
+    window.initAuthLifecycle = function () {
+      const googleLoginBtn = document.getElementById("googleLoginBtn");
+      const googleBtnText = document.getElementById("googleBtnText");
+      const googleBtnSpinner = document.getElementById("googleBtnSpinner");
+      const authErrorEl = document.getElementById("authError");
+
+      function showError(msg) {
+        if (authErrorEl) {
+          authErrorEl.textContent = msg;
+          authErrorEl.classList.add("show");
+        }
+      }
+
+      function clearError() {
+        if (authErrorEl) {
+          authErrorEl.textContent = "";
+          authErrorEl.classList.remove("show");
+        }
+      }
+
+      function setGoogleSubmitting(isSubmitting) {
+        if (googleLoginBtn) googleLoginBtn.disabled = isSubmitting;
+        if (googleBtnText) googleBtnText.style.display = isSubmitting ? "none" : "inline";
+        if (googleBtnSpinner) googleBtnSpinner.style.display = isSubmitting ? "inline-block" : "none";
+      }
+
+      if (googleLoginBtn) {
+        googleLoginBtn.addEventListener("click", async () => {
+          clearError();
+          setGoogleSubmitting(true);
+          try {
+            await window.authService.loginWithGoogle();
+          } catch (err) {
+            showError(err.message || "שגיאה בהתחברות עם Google.");
+          } finally {
+            setGoogleSubmitting(false);
+          }
+        });
+      }
+
+      window.authService.onAdminAuthStateChanged(async user => {
+        if (user) {
+          currentAuthUser = user;
+          currentAuthUid = user.uid;
+
+          // Unmount lock/login screen from DOM completely
+          if (document.body.contains(authGatekeeper)) {
+            authGatekeeper.remove();
+          }
+
+          // Mount main Shift Arranger application into DOM
+          if (!document.body.contains(mainShell)) {
+            document.body.appendChild(mainShell);
+          }
+
+          const adminUserEmailEl = document.getElementById("adminUserEmail");
+          if (adminUserEmailEl) {
+            adminUserEmailEl.textContent = user.email || "משתמש מחובר";
+          }
+
+          const adminLogoutBtn = document.getElementById("adminLogoutBtn");
+          if (adminLogoutBtn && !adminLogoutBtn._hasLogoutListener) {
+            adminLogoutBtn._hasLogoutListener = true;
+            adminLogoutBtn.addEventListener("click", async () => {
+              if (confirm("האם אתה בטוח שברצונך להתנתק מהמערכת?")) {
+                try {
+                  await window.authService.logoutAdmin();
+                } catch (err) {
+                  console.error("Logout error:", err);
+                }
+              }
+            });
+          }
+
+          clearError();
+
+          if (autosaveStatusEl) {
+            autosaveStatusEl.textContent = "טוען נתונים מהענן...";
+          }
+
+          try {
+            await loadUserWorkspace(user.uid);
+            if (autosaveStatusEl) {
+              autosaveStatusEl.textContent = "מסונכרן עם הענן";
+            }
+          } catch (err) {
+            console.error("Failed to load user workspace:", err);
+            if (autosaveStatusEl) {
+              autosaveStatusEl.textContent = "שגיאה בטעינת נתונים";
+            }
+          }
+        } else {
+          currentAuthUser = null;
+          currentAuthUid = null;
+
+          if (window.userDataService?.cancelPendingSave) {
+            window.userDataService.cancelPendingSave();
+          }
+
+          // Unmount main Shift Arranger application from DOM completely
+          if (document.body.contains(mainShell)) {
+            mainShell.remove();
+          }
+
+          // Re-mount login screen to DOM
+          if (!document.body.contains(authGatekeeper)) {
+            document.body.appendChild(authGatekeeper);
+          }
+
+          // Clear local in-memory state and reset fields
+          resetWorkspaceToEmpty();
+        }
+      });
+    };
   </script>
 
-  <!-- Admin Authentication Controller Script -->
+  <!-- Admin Authentication & Firestore User Persistence Module -->
   <script type="module">
     import {
       loginWithGoogle,
       logoutAdmin,
       onAdminAuthStateChanged
     } from "./src/auth/adminAuthService.js";
+    import {
+      loadUserAppData,
+      saveUserAppData,
+      cancelPendingSave
+    } from "./src/userDataService.js";
 
-    const authGatekeeper = document.getElementById("authGatekeeper");
-    const mainShell = document.getElementById("mainShell") || document.querySelector(".shell");
-    const googleLoginBtn = document.getElementById("googleLoginBtn");
-    const googleBtnText = document.getElementById("googleBtnText");
-    const googleBtnSpinner = document.getElementById("googleBtnSpinner");
-    const authErrorEl = document.getElementById("authError");
-    const adminLogoutBtn = document.getElementById("adminLogoutBtn");
-    const adminUserEmailEl = document.getElementById("adminUserEmail");
+    window.userDataService = {
+      loadUserAppData,
+      saveUserAppData,
+      cancelPendingSave
+    };
 
-    function showError(msg) {
-      authErrorEl.textContent = msg;
-      authErrorEl.classList.add("show");
+    window.authService = {
+      loginWithGoogle,
+      logoutAdmin,
+      onAdminAuthStateChanged
+    };
+
+    if (window.initAuthLifecycle) {
+      window.initAuthLifecycle();
     }
-
-    function clearError() {
-      authErrorEl.textContent = "";
-      authErrorEl.classList.remove("show");
-    }
-
-    function setGoogleSubmitting(isSubmitting) {
-      googleLoginBtn.disabled = isSubmitting;
-      googleBtnText.style.display = isSubmitting ? "none" : "inline";
-      googleBtnSpinner.style.display = isSubmitting ? "inline-block" : "none";
-    }
-
-    // Monitor auth state
-    onAdminAuthStateChanged(user => {
-      if (user) {
-        document.body.classList.add("authenticated");
-        document.documentElement.classList.add("authenticated");
-        if (mainShell) {
-          mainShell.style.display = "";
-        }
-        authGatekeeper.classList.add("hidden");
-        adminUserEmailEl.textContent = user.email || "מנהל מחובר";
-        clearError();
-      } else {
-        document.body.classList.remove("authenticated");
-        document.documentElement.classList.remove("authenticated");
-        if (mainShell) {
-          mainShell.style.display = "none";
-        }
-        authGatekeeper.classList.remove("hidden");
-      }
-    });
-
-    // Google Login
-    googleLoginBtn.addEventListener("click", async () => {
-      clearError();
-      setGoogleSubmitting(true);
-      try {
-        await loginWithGoogle();
-      } catch (err) {
-        showError(err.message || "שגיאה בהתחברות עם Google.");
-      } finally {
-        setGoogleSubmitting(false);
-      }
-    });
-
-    // Logout
-    adminLogoutBtn.addEventListener("click", async () => {
-      if (confirm("האם אתה בטוח שברצונך להתנתק ולנעול את המערכת?")) {
-        try {
-          await logoutAdmin();
-        } catch (err) {
-          console.error("Logout error:", err);
-        }
-      }
-    });
   </script>
 </body>
 </html>

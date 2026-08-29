@@ -33,11 +33,8 @@ function getFirebaseAuth() {
 }
 
 export function isAuthorizedAdmin(email) {
-  if (!ALLOWED_ADMIN_EMAILS || ALLOWED_ADMIN_EMAILS.length === 0) {
-    // אם הרשימה ריקה זמנית, נאפשר כניסה ראשונית של המשתמש שיצר את הפרויקט
-    return true;
-  }
-  return ALLOWED_ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes((email || "").toLowerCase().trim());
+  // Allow all authenticated users; each user receives their own isolated workspace by UID
+  return Boolean(email && email.trim());
 }
 
 export function translateAuthError(error) {
@@ -76,20 +73,8 @@ export async function loginWithGoogle() {
 
   try {
     const result = await signInWithPopup(auth, provider);
-    const user = result.user;
-
-    if (!isAuthorizedAdmin(user.email)) {
-      await signOut(auth);
-      const deniedErr = new Error(`גישה נדחתה: החשבון (${user.email}) אינו מורשה כמנהל מערכת.`);
-      deniedErr.code = "auth/unauthorized-admin";
-      throw deniedErr;
-    }
-
-    return user;
+    return result.user;
   } catch (error) {
-    if (error.code === "auth/unauthorized-admin") {
-      throw error;
-    }
     const hebrewMsg = translateAuthError(error);
     const customErr = new Error(hebrewMsg);
     customErr.originalError = error;
@@ -109,20 +94,8 @@ export async function loginAdmin(email, password) {
   const auth = getFirebaseAuth();
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-    const user = userCredential.user;
-
-    if (!isAuthorizedAdmin(user.email)) {
-      await signOut(auth);
-      const deniedErr = new Error(`גישה נדחתה: החשבון (${user.email}) אינו מורשה כמנהל מערכת.`);
-      deniedErr.code = "auth/unauthorized-admin";
-      throw deniedErr;
-    }
-
-    return user;
+    return userCredential.user;
   } catch (error) {
-    if (error.code === "auth/unauthorized-admin") {
-      throw error;
-    }
     const hebrewMsg = translateAuthError(error);
     const customErr = new Error(hebrewMsg);
     customErr.originalError = error;
@@ -140,11 +113,7 @@ export function onAdminAuthStateChanged(callback) {
   try {
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, user => {
-      if (user && !isAuthorizedAdmin(user.email)) {
-        signOut(auth).then(() => callback(null));
-        return;
-      }
-      callback(user);
+      callback(user || null);
     });
   } catch (error) {
     console.error("Auth initialization error:", error);
@@ -155,6 +124,5 @@ export function onAdminAuthStateChanged(callback) {
 
 export function getCurrentAdminUser() {
   if (!authInstance) return null;
-  const user = authInstance.currentUser;
-  return (user && isAuthorizedAdmin(user.email)) ? user : null;
+  return authInstance.currentUser || null;
 }

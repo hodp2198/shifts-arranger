@@ -57,13 +57,15 @@ function assertValidDocumentId(id) {
   }
 }
 
-export async function saveSchedulePayload(payload) {
+export async function saveSchedulePayload(payload, uid = null) {
   assertValidPayload(payload);
   const db = getDb();
 
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt += 1) {
     const id = createDocumentId();
-    const scheduleRef = doc(db, firestoreCollectionName, id);
+    const scheduleRef = uid
+      ? doc(db, "users", uid, "employeeSchedules", id)
+      : doc(db, firestoreCollectionName, id);
     try {
       await runTransaction(db, async transaction => {
         const existing = await transaction.get(scheduleRef);
@@ -73,10 +75,11 @@ export async function saveSchedulePayload(payload) {
         transaction.set(scheduleRef, {
           version: 1,
           createdAt: serverTimestamp(),
+          ownerUid: uid || null,
           payload
         });
       });
-      return { id };
+      return { id, uid };
     } catch (error) {
       if (error instanceof IdCollisionError) continue;
       throw error;
@@ -86,9 +89,11 @@ export async function saveSchedulePayload(payload) {
   throw new Error("לא ניתן היה ליצור מזהה ייחודי לסידור. נסו שוב.");
 }
 
-export async function readSchedulePayload(id) {
+export async function readSchedulePayload(id, uid = null) {
   assertValidDocumentId(id);
-  const scheduleRef = doc(getDb(), firestoreCollectionName, id);
+  const scheduleRef = uid
+    ? doc(getDb(), "users", uid, "employeeSchedules", id)
+    : doc(getDb(), firestoreCollectionName, id);
   const snapshot = await getDoc(scheduleRef);
   if (!snapshot.exists()) {
     throw new Error("לא נמצא סידור עבור הקישור הזה.");
