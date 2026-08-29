@@ -3877,6 +3877,7 @@
     onAdminAuthStateChanged(user => {
       if (user) {
         document.body.classList.add("authenticated");
+        document.documentElement.classList.add("authenticated");
         if (mainShell) {
           mainShell.style.display = "";
         }
@@ -3885,6 +3886,7 @@
         clearError();
       } else {
         document.body.classList.remove("authenticated");
+        document.documentElement.classList.remove("authenticated");
         if (mainShell) {
           mainShell.style.display = "none";
         }

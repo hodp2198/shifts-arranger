@@ -1,19 +1,16 @@
 /* Styles for Admin Auth and Gatekeeper */
 
-/* Hide main app shell and lock body scroll completely until authenticated */
-html:not(.authenticated),
+/* When unauthenticated: hide main app shell and prevent body-level scrolling behind the lock screen */
 body:not(.authenticated) {
-  overflow: hidden !important;
-  height: 100% !important;
-  height: 100dvh !important;
-  max-height: 100dvh !important;
-  overscroll-behavior: none !important;
+  overflow: hidden;
+  height: 100%;
 }
 
 body:not(.authenticated) .shell {
   display: none !important;
 }
 
+/* Auth Gatekeeper - Independent full-screen scrollable page */
 .auth-gatekeeper-overlay {
   position: fixed;
   inset: 0;
@@ -22,30 +19,33 @@ body:not(.authenticated) .shell {
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 100vh;
+  height: 100%;
   height: 100dvh;
-  min-height: 100dvh;
-  overscroll-behavior: none;
   background: var(--bg, #eef0f3);
   z-index: 99999;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  font-family: inherit;
-  direction: rtl;
-  opacity: 1;
+  flex-direction: column;
+  padding: 24px 16px;
+  box-sizing: border-box;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  direction: rtl;
+  font-family: inherit;
+  opacity: 1;
   transition: opacity 0.25s ease-out, visibility 0.25s ease-out;
 }
 
 .auth-gatekeeper-overlay.hidden {
-  opacity: 0;
+  display: none !important;
   visibility: hidden;
+  opacity: 0;
   pointer-events: none;
 }
 
+/* Centering with margin:auto allows safe scrolling without cutting top off on small screens */
 .auth-card {
+  margin: auto;
   background: var(--panel, #ffffff);
   border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -54,6 +54,8 @@ body:not(.authenticated) .shell {
   max-width: 420px;
   padding: 36px 32px;
   text-align: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .auth-header {
