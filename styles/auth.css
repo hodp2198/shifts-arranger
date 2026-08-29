@@ -1,10 +1,5 @@
 /* Styles for Admin Auth and Gatekeeper */
 
-/* When unauthenticated: hide main app shell */
-body:not(.authenticated) .shell {
-  display: none !important;
-}
-
 /* Auth Gatekeeper - Independent full-page view */
 .auth-gatekeeper-overlay {
   min-height: 100vh;
@@ -19,6 +14,9 @@ body:not(.authenticated) .shell {
   box-sizing: border-box;
   direction: rtl;
   font-family: inherit;
+  overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 body.authenticated .auth-gatekeeper-overlay,
