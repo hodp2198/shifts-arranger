@@ -202,6 +202,8 @@
       mainShell.remove();
     }
 
+    const getEl = id => document.getElementById(id) || mainShell?.querySelector("#" + id) || authGatekeeper?.querySelector("#" + id);
+
     let currentAuthUid = null;
     let currentAuthUser = null;
 
@@ -221,27 +223,27 @@
     };
     let WORKERS = [];
 
-    const workersEl = document.getElementById("workers");
-    const specialDaysEl = document.getElementById("specialDays");
-    const weekSettingsEl = document.getElementById("weekSettings");
-    const startDateEl = document.getElementById("startDate");
-    const weekCountEl = document.getElementById("weekCount");
-    const outputEl = document.getElementById("scheduleOutput");
-    const warningsEl = document.getElementById("scheduleWarnings");
-    const plainResultEl = document.getElementById("plainResult");
-    const statusBadgeEl = document.getElementById("statusBadge");
-    const bulkExcelNotesEl = document.getElementById("bulkExcelNotes");
-    const bulkExcelStatusEl = document.getElementById("bulkExcelStatus");
-    const oneTimeRulesEl = document.getElementById("oneTimeRules");
-    const manualOffDateEl = document.getElementById("manualOffDate");
-    const manualOffLabelEl = document.getElementById("manualOffLabel");
-    const autosaveStatusEl = document.getElementById("autosaveStatus");
-    const createCalendarExportLinkEl = document.getElementById("createCalendarExportLink");
-    const calendarExportLinkEl = document.getElementById("calendarExportLink");
-    const calendarExportLinkButtonEl = document.getElementById("calendarExportLinkButton");
-    const calendarExportLinkTextEl = document.getElementById("calendarExportLinkText");
-    const openCalendarExportLinkEl = document.getElementById("openCalendarExportLink");
-    const calendarExportStatusEl = document.getElementById("calendarExportStatus");
+    const workersEl = getEl("workers");
+    const specialDaysEl = getEl("specialDays");
+    const weekSettingsEl = getEl("weekSettings");
+    const startDateEl = getEl("startDate");
+    const weekCountEl = getEl("weekCount");
+    const outputEl = getEl("scheduleOutput");
+    const warningsEl = getEl("scheduleWarnings");
+    const plainResultEl = getEl("plainResult");
+    const statusBadgeEl = getEl("statusBadge");
+    const bulkExcelNotesEl = getEl("bulkExcelNotes");
+    const bulkExcelStatusEl = getEl("bulkExcelStatus");
+    const oneTimeRulesEl = getEl("oneTimeRules");
+    const manualOffDateEl = getEl("manualOffDate");
+    const manualOffLabelEl = getEl("manualOffLabel");
+    const autosaveStatusEl = getEl("autosaveStatus");
+    const createCalendarExportLinkEl = getEl("createCalendarExportLink");
+    const calendarExportLinkEl = getEl("calendarExportLink");
+    const calendarExportLinkButtonEl = getEl("calendarExportLinkButton");
+    const calendarExportLinkTextEl = getEl("calendarExportLinkText");
+    const openCalendarExportLinkEl = getEl("openCalendarExportLink");
+    const calendarExportStatusEl = getEl("calendarExportStatus");
 
     function clampShiftValue(value, fallback = 0) {
       const number = Number(value);
@@ -1037,8 +1039,8 @@
     }
 
     function addWorker() {
-      const input = document.getElementById("newWorkerName");
-      const name = input.value.trim();
+      const input = getEl("newWorkerName");
+      const name = input?.value.trim();
       if (!name) return;
       if (findWorkerByName(name)) {
         statusBadgeEl.textContent = "העובד כבר קיים";
@@ -3557,11 +3559,11 @@
       if (calendarExportLinkEl) calendarExportLinkEl.value = "";
       if (calendarExportLinkTextEl) calendarExportLinkTextEl.textContent = "כאן יופיע קישור לעובדים";
       if (calendarExportStatusEl) calendarExportStatusEl.textContent = "";
-      const wsEl = document.getElementById("weekSettings");
+      const wsEl = getEl("weekSettings");
       if (wsEl) wsEl.innerHTML = "";
-      const sdEl = document.getElementById("specialDays");
+      const sdEl = getEl("specialDays");
       if (sdEl) sdEl.innerHTML = "";
-      const wEl = document.getElementById("workers");
+      const wEl = getEl("workers");
       if (wEl) wEl.innerHTML = "";
     }
 
@@ -3696,64 +3698,64 @@
         });
     }
 
-    document.getElementById("buildSchedule").addEventListener("click", async () => {
+    getEl("buildSchedule")?.addEventListener("click", async () => {
       state.shuffleSeed = 34;
       syncOneTimeConstraintsNow("before buildSchedule");
       await renderSchedule();
       saveState(true);
     });
-    document.getElementById("resetManualOverrides").addEventListener("click", async () => {
+    getEl("resetManualOverrides")?.addEventListener("click", async () => {
       clearManualOverrides();
       if (state.currentSchedule) await renderSchedule();
       saveState(true);
       statusBadgeEl.textContent = "עריכות ידניות אופסו";
     });
-    document.getElementById("copyResult").addEventListener("click", async () => {
-      if (!plainResultEl.value.trim()) await renderSchedule();
+    getEl("copyResult")?.addEventListener("click", async () => {
+      if (!plainResultEl?.value.trim()) await renderSchedule();
       try {
-        await navigator.clipboard.writeText(plainResultEl.value);
+        await navigator.clipboard.writeText(plainResultEl?.value || "");
         statusBadgeEl.textContent = "הועתק";
       } catch (error) {
         statusBadgeEl.textContent = "הדפדפן חסם העתקה";
       }
     });
-    createCalendarExportLinkEl.addEventListener("click", createCalendarExportLink);
-    calendarExportLinkButtonEl.addEventListener("click", copyCalendarExportLink);
-    openCalendarExportLinkEl.addEventListener("click", openCalendarExportLink);
-    document.getElementById("addWorker").addEventListener("click", () => {
+    createCalendarExportLinkEl?.addEventListener("click", createCalendarExportLink);
+    calendarExportLinkButtonEl?.addEventListener("click", copyCalendarExportLink);
+    openCalendarExportLinkEl?.addEventListener("click", openCalendarExportLink);
+    getEl("addWorker")?.addEventListener("click", () => {
       addWorker();
       saveState(true);
     });
-    document.getElementById("newWorkerName").addEventListener("keydown", event => {
+    getEl("newWorkerName")?.addEventListener("keydown", event => {
       if (event.key === "Enter") {
         addWorker();
         saveState(true);
       }
     });
-    document.getElementById("applyBulkExcelNotes").addEventListener("click", () => {
+    getEl("applyBulkExcelNotes")?.addEventListener("click", () => {
       handleBulkExcelNotes();
       saveState(true);
     });
-    document.getElementById("quickReset").addEventListener("click", () => {
+    getEl("quickReset")?.addEventListener("click", () => {
       quickResetState();
       saveState(true);
     });
-    document.getElementById("buildWeeks").addEventListener("click", async () => {
+    getEl("buildWeeks")?.addEventListener("click", async () => {
       setDetectedWeeks([]);
       renderWeekSettings();
       await refreshCalendarDays();
       saveState(true);
     });
-    document.getElementById("refreshDays").addEventListener("click", async () => {
+    getEl("refreshDays")?.addEventListener("click", async () => {
       await refreshCalendarDays();
       saveState(true);
     });
-    document.getElementById("addManualOffDay").addEventListener("click", () => {
+    getEl("addManualOffDay")?.addEventListener("click", () => {
       addManualOffDay();
       saveState(true);
     });
 
-    specialDaysEl.addEventListener("click", event => {
+    specialDaysEl?.addEventListener("click", event => {
       const row = event.target.closest(".day-row");
       if (!row?.dataset.date) return;
 
@@ -3770,14 +3772,14 @@
       }
     });
 
-    workersEl.addEventListener("click", event => {
+    workersEl?.addEventListener("click", event => {
       if (!event.target.classList.contains("remove-worker")) return;
       const card = event.target.closest(".worker");
       removeWorker(card.dataset.worker);
       saveState(true);
     });
 
-    outputEl.addEventListener("click", async event => {
+    outputEl?.addEventListener("click", async event => {
       const refreshWeekButton = event.target.closest(".refresh-week-schedule");
       if (refreshWeekButton) {
         const weekIndex = Number(refreshWeekButton.dataset.week);
@@ -3873,8 +3875,8 @@
 
     document.addEventListener("click", event => {
       if (event.target.closest(".alternatives-panel") || event.target.closest(".manual-edit-panel")) return;
-      outputEl.querySelectorAll(".alternatives-panel[open]").forEach(panel => panel.removeAttribute("open"));
-      outputEl.querySelectorAll(".manual-edit-panel[open]").forEach(panel => panel.removeAttribute("open"));
+      outputEl?.querySelectorAll(".alternatives-panel[open]").forEach(panel => panel.removeAttribute("open"));
+      outputEl?.querySelectorAll(".manual-edit-panel[open]").forEach(panel => panel.removeAttribute("open"));
     });
 
     document.addEventListener("input", async event => {
@@ -3921,10 +3923,10 @@
     });
 
     window.initAuthLifecycle = function () {
-      const googleLoginBtn = document.getElementById("googleLoginBtn");
-      const googleBtnText = document.getElementById("googleBtnText");
-      const googleBtnSpinner = document.getElementById("googleBtnSpinner");
-      const authErrorEl = document.getElementById("authError");
+      const googleLoginBtn = getEl("googleLoginBtn");
+      const googleBtnText = getEl("googleBtnText");
+      const googleBtnSpinner = getEl("googleBtnSpinner");
+      const authErrorEl = getEl("authError");
 
       function showError(msg) {
         if (authErrorEl) {
@@ -3946,7 +3948,8 @@
         if (googleBtnSpinner) googleBtnSpinner.style.display = isSubmitting ? "inline-block" : "none";
       }
 
-      if (googleLoginBtn) {
+      if (googleLoginBtn && !googleLoginBtn._hasLoginListener) {
+        googleLoginBtn._hasLoginListener = true;
         googleLoginBtn.addEventListener("click", async () => {
           clearError();
           setGoogleSubmitting(true);
@@ -3975,12 +3978,12 @@
             document.body.appendChild(mainShell);
           }
 
-          const adminUserEmailEl = document.getElementById("adminUserEmail");
+          const adminUserEmailEl = getEl("adminUserEmail");
           if (adminUserEmailEl) {
             adminUserEmailEl.textContent = user.email || "משתמש מחובר";
           }
 
-          const adminLogoutBtn = document.getElementById("adminLogoutBtn");
+          const adminLogoutBtn = getEl("adminLogoutBtn");
           if (adminLogoutBtn && !adminLogoutBtn._hasLogoutListener) {
             adminLogoutBtn._hasLogoutListener = true;
             adminLogoutBtn.addEventListener("click", async () => {
