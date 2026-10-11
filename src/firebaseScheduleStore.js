@@ -1,47 +1,36 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 import {
   doc,
   getDoc,
   getFirestore,
-  runTransaction,
-  serverTimestamp
+  setDoc,
+  serverTimestamp,
+  Timestamp
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
-import { firebaseConfig, firestoreCollectionName, hasFirebaseConfig } from "../firebase-config.js";
+import { firebaseConfig, hasFirebaseConfig } from "../firebase-config.js";
 
 const ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const ID_LENGTH = 10;
-const MAX_PAYLOAD_LENGTH = 200000;
-const MAX_CREATE_ATTEMPTS = 8;
+const EXPIRATION_DAYS = 14;
 
 let firestoreDb = null;
-
-class IdCollisionError extends Error {
-  constructor() {
-    super("Generated Firestore id already exists.");
-    this.name = "IdCollisionError";
-  }
-}
 
 function getDb() {
   if (!hasFirebaseConfig()) {
     throw new Error("Firebase לא מוגדר. יש להדביק את firebaseConfig בקובץ firebase-config.js.");
   }
   if (!firestoreDb) {
-    firestoreDb = getFirestore(initializeApp(firebaseConfig));
+    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+    firestoreDb = getFirestore(app);
   }
   return firestoreDb;
 }
 
-function assertValidPayload(payload) {
-  if (typeof payload !== "string" || !payload.trim()) {
-    throw new Error("אין נתוני סידור לשמירה.");
-  }
-  if (payload.length > MAX_PAYLOAD_LENGTH) {
-    throw new Error("נתוני הסידור גדולים מדי לשיתוף.");
-  }
-}
-
-function createDocumentId() {
+/**
+ * Generates a cryptographically secure 10-character URL-safe random ID
+ * Example: UaLzs4Gei4
+ */
+export function createShortDocumentId() {
   const bytes = new Uint8Array(ID_LENGTH);
   crypto.getRandomValues(bytes);
   let id = "";
@@ -51,57 +40,79 @@ function createDocumentId() {
   return id;
 }
 
-function assertValidDocumentId(id) {
-  if (!/^[A-Za-z0-9]{10}$/.test(id || "")) {
+export function assertValidDocumentId(id) {
+  if (!id || typeof id !== "string" || !/^[A-Za-z0-9]{8,24}$/.test(id)) {
     throw new Error("מזהה הסידור בקישור אינו תקין.");
   }
 }
 
-export async function saveSchedulePayload(payload, uid = null) {
-  assertValidPayload(payload);
-  const db = getDb();
-
-  for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt += 1) {
-    const id = createDocumentId();
-    const scheduleRef = uid
-      ? doc(db, "users", uid, "employeeSchedules", id)
-      : doc(db, firestoreCollectionName, id);
-    try {
-      await runTransaction(db, async transaction => {
-        const existing = await transaction.get(scheduleRef);
-        if (existing.exists()) {
-          throw new IdCollisionError();
-        }
-        transaction.set(scheduleRef, {
-          version: 1,
-          createdAt: serverTimestamp(),
-          ownerUid: uid || null,
-          payload
-        });
-      });
-      return { id, uid };
-    } catch (error) {
-      if (error instanceof IdCollisionError) continue;
-      throw error;
-    }
+/**
+ * Saves a minimal public schedule snapshot into /publicSchedules/{randomId}
+ * with an explicit 14-day expiration timestamp.
+ */
+export async function saveSchedulePayload(schedule, uid) {
+  if (!schedule || typeof schedule !== "object") {
+    throw new Error("אין נתוני סידור תקינים לשמירה.");
+  }
+  if (!uid || typeof uid !== "string") {
+    throw new Error("נדרש מזהה מנהל (UID) ליצירת קישור יומן ציבורי.");
   }
 
-  throw new Error("לא ניתן היה ליצור מזהה ייחודי לסידור. נסו שוב.");
+  const db = getDb();
+  const id = createShortDocumentId();
+  const scheduleRef = doc(db, "publicSchedules", id);
+
+  // 14 days expiration timestamp
+  const expirationDate = new Date(Date.now() + EXPIRATION_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = Timestamp.fromDate(expirationDate);
+
+  const documentData = {
+    version: 2,
+    ownerUid: uid,
+    createdAt: serverTimestamp(),
+    expiresAt: expiresAt,
+    schedule: {
+      scheduleId: schedule.scheduleId || `schedule-${id}`,
+      createdAt: schedule.createdAt || new Date().toISOString(),
+      timezone: schedule.timezone || "Asia/Jerusalem",
+      weeks: Array.isArray(schedule.weeks) ? schedule.weeks : [],
+      employees: Array.isArray(schedule.employees) ? schedule.employees : [],
+      entries: Array.isArray(schedule.entries) ? schedule.entries : []
+    }
+  };
+
+  await setDoc(scheduleRef, documentData);
+  return { id };
 }
 
-export async function readSchedulePayload(id, uid = null) {
+/**
+ * Reads a public schedule from /publicSchedules/{id}
+ * Unauthenticated employees can read if the link is not expired.
+ */
+export async function readSchedulePayload(id) {
   assertValidDocumentId(id);
-  const scheduleRef = uid
-    ? doc(getDb(), "users", uid, "employeeSchedules", id)
-    : doc(getDb(), firestoreCollectionName, id);
-  const snapshot = await getDoc(scheduleRef);
+  const db = getDb();
+  const scheduleRef = doc(db, "publicSchedules", id);
+
+  let snapshot;
+  try {
+    snapshot = await getDoc(scheduleRef);
+  } catch (err) {
+    const errMsg = err.message || "";
+    if (errMsg.includes("permission-denied") || errMsg.includes("Missing or insufficient permissions")) {
+      throw new Error("הקישור לסידור זה פג תוקף או אינו זמין עוד.");
+    }
+    throw err;
+  }
+
   if (!snapshot.exists()) {
     throw new Error("לא נמצא סידור עבור הקישור הזה.");
   }
 
   const data = snapshot.data();
-  if (data?.version !== 1 || typeof data.payload !== "string" || !data.payload.trim()) {
+  if (!data || !data.schedule) {
     throw new Error("נתוני הסידור בקישור אינם תקינים.");
   }
-  return data.payload;
+
+  return data.schedule;
 }

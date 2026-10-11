@@ -1,8 +1,87 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper: Verify caller is the verified super admin galp3er@gmail.com
+    function isSuperAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == "galp3er@gmail.com";
+    }
+
+    // Per-user isolated application workspace
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Access requests collection
+    match /accessRequests/{requestId} {
+      // 1. Unauthenticated / any user can CREATE only with strict schema validation
+      allow create: if
+        // Mandatory and exclusive field set
+        request.resource.data.keys().hasAll(['name', 'email', 'status', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'email', 'status', 'createdAt'])
+        // Must start as pending
+        && request.resource.data.status == 'pending'
+        // Name validation (2 - 80 characters)
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80
+        // Email validation (RFC-compliant regex, 5 - 100 characters)
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 5
+        && request.resource.data.email.size() <= 100
+        && request.resource.data.email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$')
+        // Strict server timestamp
+        && request.resource.data.createdAt == request.time;
+
+      // 2. ONLY the super admin can READ, UPDATE, or DELETE requests
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // Helper: Validate public schedule payload structure
+    function isValidPublicSchedule(s) {
+      return s is map
+        && s.keys().hasAll(['scheduleId', 'createdAt', 'timezone', 'weeks', 'employees', 'entries'])
+        && s.keys().hasOnly(['scheduleId', 'createdAt', 'timezone', 'weeks', 'employees', 'entries'])
+        && s.scheduleId is string && s.scheduleId.size() >= 5 && s.scheduleId.size() <= 100
+        && s.timezone is string && s.timezone.size() <= 50
+        && s.createdAt is string && s.createdAt.size() <= 50
+        && s.weeks is list && s.weeks.size() <= 20
+        && s.employees is list && s.employees.size() <= 100
+        && s.entries is list && s.entries.size() <= 200;
+    }
+
+    // Public shared schedules (Short links for employee calendar)
+    match /publicSchedules/{scheduleId} {
+      // 1. Unauthenticated or any user can READ (single get only) if the link has not expired
+      allow get: if resource.data.expiresAt is timestamp
+                 && resource.data.expiresAt > request.time;
+
+      // 2. Listing / querying the collection is strictly forbidden
+      allow list: if false;
+
+      // 3. Authenticated owner can CREATE with strict schema and max 15 days expiration
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['ownerUid', 'createdAt', 'expiresAt', 'schedule', 'version'])
+        && request.resource.data.keys().hasOnly(['ownerUid', 'createdAt', 'expiresAt', 'schedule', 'version'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.version is int
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(15, 'd')
+        && isValidPublicSchedule(request.resource.data.schedule);
+
+      // 4. Authenticated owner can DELETE their own shared schedule
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+
+      // 5. Updates are not allowed (immutable snapshots)
+      allow update: if false;
+    }
   }
 }
+
+
+

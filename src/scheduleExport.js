@@ -114,20 +114,37 @@
     };
   }
 
+  /**
+   * Creates a secure public short-link for employee calendar sharing
+   * Stored in /publicSchedules/{randomId} with 14 days expiration.
+   * Example: https://shift-arranger.web.app/employee-calendar.html?id=UaLzs4Gei4
+   */
   async function createEmployeeExportLink(payload, pagePath, uid = null) {
-    const url = new URL(pagePath, window.location.href);
-    const compact = JSON.stringify(compactPayload(payload));
-    const { saveSchedulePayload } = await import("./firebaseScheduleStore.js");
-    const result = await saveSchedulePayload(compact, uid);
-    url.search = "";
-    if (result.uid) {
-      url.searchParams.set("u", result.uid);
+    if (!uid) {
+      throw new Error("נדרש משתמש מחובר ליצירת קישור יומן ציבורי.");
     }
-    url.searchParams.set("id", result.id);
+    const url = new URL(pagePath, window.location.href);
+    const { saveSchedulePayload } = await import("./firebaseScheduleStore.js");
+    
+    // Extract only minimal public schedule data
+    const minimalSchedule = {
+      scheduleId: payload.scheduleId || createScheduleId(),
+      createdAt: payload.createdAt || new Date().toISOString(),
+      timezone: payload.timezone || "Asia/Jerusalem",
+      weeks: payload.weeks || [],
+      employees: payload.employees || [],
+      entries: payload.entries || []
+    };
+
+    const result = await saveSchedulePayload(minimalSchedule, uid);
+    url.search = `?id=${encodeURIComponent(result.id)}`;
     url.hash = "";
     return url.href;
   }
 
+  /**
+   * Legacy URL hash fallback (#z=...)
+   */
   async function createLegacyEmployeeExportLink(payload, pagePath) {
     const url = new URL(pagePath, window.location.href);
     const compact = JSON.stringify(compactPayload(payload));
@@ -156,15 +173,19 @@
   async function readPayloadFromFirestoreId() {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
-    const uid = params.get("u");
     if (!id) return null;
     const { readSchedulePayload } = await import("./firebaseScheduleStore.js");
-    return expandCompactPayload(JSON.parse(await readSchedulePayload(id, uid)));
+    const rawSchedule = await readSchedulePayload(id);
+    return expandCompactPayload(rawSchedule);
   }
 
   async function readEmployeePayload() {
-    const firestorePayload = await readPayloadFromFirestoreId().catch(() => null);
-    return firestorePayload || readPayloadFromHash();
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    if (id) {
+      return await readPayloadFromFirestoreId();
+    }
+    return readPayloadFromHash();
   }
 
   window.scheduleExport = {

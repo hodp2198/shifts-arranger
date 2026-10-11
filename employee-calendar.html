@@ -53,10 +53,10 @@
   </main>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="src/googleConfig.js"></script>
-  <script src="src/auth/googleOAuthService.js"></script>
-  <script src="src/scheduleExport.js"></script>
-  <script src="src/calendarService.js"></script>
+  <script src="src/googleConfig.js?v=2.5"></script>
+  <script src="src/auth/googleOAuthService.js?v=2.5"></script>
+  <script src="src/scheduleExport.js?v=2.5"></script>
+  <script src="src/calendarService.js?v=2.5"></script>
   <script>
     const employeeSelectEl = document.getElementById("employeeSelect");
     const eventPreviewEl = document.getElementById("eventPreview");
@@ -206,6 +206,20 @@
     async function initEmployeeCalendarPage() {
       renderLoading();
       try {
+        const params = new URLSearchParams(window.location.search);
+        const id = params.get("id");
+        const hash = window.location.hash;
+
+        if (!id && !hash) {
+          renderError("לא סופק מזהה סידור בקישור.");
+          return;
+        }
+
+        if (id && !/^[A-Za-z0-9]{8,24}$/.test(id)) {
+          renderError("מזהה הסידור בקישור אינו תקין.");
+          return;
+        }
+
         finalizedSchedule = await scheduleExport.readEmployeePayload();
         if (!finalizedSchedule?.scheduleId || !Array.isArray(finalizedSchedule.employees) || !Array.isArray(finalizedSchedule.entries)) {
           throw new Error("קישור הסידור אינו תקין או שחסרים בו נתונים.");
@@ -229,7 +243,12 @@
           calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
         }
       } catch (error) {
-        renderError(error.message || "לא ניתן לטעון את הסידור מהקישור.");
+        const msg = error.message || "";
+        if (msg.includes("permission-denied") || msg.includes("Missing or insufficient permissions") || msg.includes("פג תוקף")) {
+          renderError("הקישור לסידור זה פג תוקף או אינו זמין עוד.");
+        } else {
+          renderError(msg || "לא ניתן לטעון את הסידור מהקישור.");
+        }
       }
     }
 

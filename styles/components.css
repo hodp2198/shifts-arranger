@@ -386,6 +386,13 @@
     .schedule-output {
       display: grid;
       gap: 16px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .week-result {
@@ -393,6 +400,10 @@
       border-radius: 0;
       overflow: visible;
       background: transparent;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .week-title {
@@ -405,6 +416,10 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .week-title .refresh-week-schedule {
@@ -423,6 +438,10 @@
       padding: 8px 2px;
       border-bottom: 1px solid rgba(29, 29, 31, 0.045);
       align-items: center;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .shift-line:last-child {
@@ -513,6 +532,9 @@
       align-items: center;
       gap: 5px;
       flex-wrap: wrap;
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
 
     .missing-slot {
@@ -588,10 +610,12 @@
     .alternatives-body,
     .manual-edit-body {
       position: absolute;
-      z-index: 4;
+      z-index: 10;
       top: 32px;
       left: 0;
-      width: min(320px, calc(100vw - 40px));
+      right: auto;
+      max-width: calc(100vw - 32px);
+      width: min(300px, calc(100vw - 32px));
       padding: 12px;
       border: 1px solid rgba(29, 29, 31, 0.08);
       border-radius: 12px;
@@ -599,10 +623,11 @@
       box-shadow: var(--shadow);
       display: grid;
       gap: 8px;
+      box-sizing: border-box;
     }
 
     .manual-edit-body {
-      width: min(260px, calc(100vw - 40px));
+      width: min(260px, calc(100vw - 32px));
     }
 
     .alternative-title,
@@ -620,6 +645,19 @@
     .manual-edit-body select {
       min-height: 36px;
       padding-block: 7px;
+    }
+
+    .manual-edit-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .manual-edit-actions .btn {
+      flex: 1;
+      min-height: 34px;
+      padding: 0 10px;
+      font-size: 13px;
     }
 
     .manual-override-badge {
@@ -1047,12 +1085,17 @@
 
     @media (max-width: 640px) {
       .shell {
-        width: min(100% - 18px, 1180px);
+        width: 100%;
+        max-width: 100%;
+        padding-inline: 10px;
         padding-top: 18px;
+        box-sizing: border-box;
       }
 
       .panel-body, .panel-header {
-        padding-inline: 12px;
+        padding-inline: 10px;
+        max-width: 100%;
+        box-sizing: border-box;
       }
 
       .worker-head, .worker-options, .day-row, .shift-line, .week-row, .whatsapp-row {
@@ -1060,21 +1103,38 @@
       }
 
       .shift-line {
-        grid-template-columns: 22px 42px minmax(0, 1fr) auto;
+        grid-template-columns: 22px 40px minmax(0, 1fr) auto;
+        column-gap: 6px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
       }
 
       .shift-line.closed-day {
-        grid-template-columns: 22px 42px minmax(0, 1fr);
+        grid-template-columns: 22px 40px minmax(0, 1fr);
+        column-gap: 6px;
       }
 
       .shift-note {
         grid-column: 3;
         grid-row: 2;
         justify-self: start;
+        max-width: 100%;
+        min-width: 0;
       }
 
       .shift-controls {
         grid-column: 4;
+        grid-row: 1 / span 2;
+        align-self: center;
+      }
+
+      .alternatives-body,
+      .manual-edit-body {
+        left: 0;
+        right: auto;
+        max-width: calc(100vw - 24px);
+        width: min(270px, calc(100vw - 24px));
       }
 
       .alternatives-panel {
@@ -1100,5 +1160,223 @@
 
       .toggle-line {
         white-space: normal;
+      }
+    }
+
+    /* Official Schedule & Fairness Tracking Styles */
+    .official-schedule-banner {
+      padding: 10px 14px;
+      margin: 12px 0;
+      border-radius: 10px;
+      font-size: 13.5px;
+      line-height: 1.5;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+
+    .official-schedule-banner.draft {
+      background: rgba(180, 83, 9, 0.08);
+      border: 1px solid rgba(180, 83, 9, 0.25);
+      color: #92400e;
+    }
+
+    .official-schedule-banner.official {
+      background: rgba(46, 125, 50, 0.08);
+      border: 1px solid rgba(46, 125, 50, 0.25);
+      color: #1e6b24;
+    }
+
+    .btn-save-official {
+      background: var(--ok);
+      color: #ffffff;
+      border: 1px solid transparent;
+      font-weight: 600;
+    }
+
+    .btn-save-official:hover:not(:disabled) {
+      background: #256629;
+    }
+
+    .btn-save-official:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .fairness-section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .fairness-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .fairness-filter-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .fairness-filter-wrap label {
+      margin-bottom: 0;
+      font-weight: 600;
+    }
+
+    .fairness-select {
+      min-height: 36px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(29, 29, 31, 0.12);
+      background: var(--surface);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .fairness-table-container {
+      margin-top: 12px;
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(29, 29, 31, 0.08);
+      background: var(--panel);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    .fairness-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: right;
+      font-size: 13.5px;
+    }
+
+    .fairness-table th {
+      padding: 10px 14px;
+      background: var(--surface-strong);
+      color: var(--muted);
+      font-weight: 650;
+      font-size: 13px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    .fairness-table th.num-col,
+    .fairness-table td.num-cell {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .fairness-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+      color: var(--text);
+    }
+
+    .fairness-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .fairness-table tr:hover td {
+      background: rgba(0, 0, 0, 0.015);
+    }
+
+    .fairness-table .worker-name-cell {
+      font-weight: 600;
+    }
+
+    .fairness-table .rate-cell {
+      text-align: center;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .fairness-table .rate-cell.high {
+      color: var(--ok);
+    }
+
+    .fairness-table .rate-cell.low {
+      color: var(--warn);
+    }
+
+    .fairness-table .fairness-empty-cell {
+      text-align: center;
+      padding: 24px;
+      color: var(--muted-soft);
+      font-size: 13.5px;
+    }
+
+    /* Isolated Local Sandbox Banner & Login Styles */
+    .dev-isolated-banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      padding: 10px 14px;
+      font-size: 13.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+      font-weight: 550;
+      flex-wrap: wrap;
+    }
+
+    .dev-isolated-banner .btn-reset-dev {
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .dev-isolated-banner .btn-reset-dev:hover {
+      background: #1d4ed8;
+    }
+
+    .dev-login-btn {
+      margin-top: 10px;
+      background: #f0fdf4 !important;
+      border: 1px solid #86efac !important;
+      color: #166534 !important;
+      font-weight: 600 !important;
+      justify-content: center !important;
+    }
+
+    .dev-login-btn:hover {
+      background: #dcfce7 !important;
+    }
+
+    @media (max-width: 640px) {
+      .fairness-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .fairness-filter-wrap {
+        justify-content: space-between;
+      }
+
+      .fairness-table th,
+      .fairness-table td {
+        padding: 8px 6px;
+        font-size: 12px;
+      }
+
+      .dev-isolated-banner {
+        font-size: 12px;
+        padding: 8px 10px;
       }
     }

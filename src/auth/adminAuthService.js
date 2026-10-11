@@ -13,10 +13,15 @@ import { firebaseConfig, hasFirebaseConfig } from "../../firebase-config.js";
 
 let authInstance = null;
 
-// רשימת אימיילים מורשים כמנהלי מערכת (ניתן להוסיף כתובות נוספות במידת הצורך)
-export const ALLOWED_ADMIN_EMAILS = [
-  "galp3er@gmail.com"
-];
+export const UNAUTHORIZED_ERROR_MESSAGE = "החשבון הזה אינו מורשה להיכנס למערכת.";
+
+export function isAuthorizedUser(user) {
+  return Boolean(user && user.uid);
+}
+
+export function isAuthorizedAdmin(user) {
+  return Boolean(user && (typeof user === "string" ? user.trim() : user.uid));
+}
 
 function getFirebaseAuth() {
   if (!hasFirebaseConfig()) {
@@ -32,31 +37,34 @@ function getFirebaseAuth() {
   return authInstance;
 }
 
-export function isAuthorizedAdmin(email) {
-  // Allow all authenticated users; each user receives their own isolated workspace by UID
-  return Boolean(email && email.trim());
-}
-
 export function translateAuthError(error) {
   if (!error) return "אירעה שגיאה בלתי צפויה בהתחברות.";
   const code = error.code || "";
+  const msg = error.message || "";
+
+  if (
+    code === "auth/admin-restricted-operation" ||
+    code === "auth/user-not-found" ||
+    code === "auth/unauthorized-account" ||
+    code === "auth/operation-not-allowed" ||
+    msg.includes("admin-restricted-operation") ||
+    msg.includes("Sign up is disabled")
+  ) {
+    return UNAUTHORIZED_ERROR_MESSAGE;
+  }
 
   switch (code) {
     case "auth/invalid-email":
       return "כתובת האימייל שהוזנה אינה תקינה.";
-    case "auth/user-not-found":
-      return "משתמש זה אינו קיים במערכת.";
     case "auth/wrong-password":
     case "auth/invalid-credential":
       return "אימייל או סיסמה שגויים. אנא נסה שוב.";
     case "auth/user-disabled":
-      return "חשבון משתמש זה הושבת.";
+      return "חשבון משתמש זה הושבת על ידי מנהל המערכת.";
     case "auth/too-many-requests":
       return "יותר מדי ניסיונות כושלים. אנא המתן מספר דקות ונסה שוב.";
     case "auth/network-request-failed":
       return "שגיאת תקשורת. אנא בדוק את חיבור האינטרנט שלך.";
-    case "auth/operation-not-allowed":
-      return "שיטת התחברות זו אינה מופעלת עדיין ב-Firebase Console.";
     case "auth/popup-closed-by-user":
       return "חלון ההתחברות של Google נסגר לפני השלמת התהליך.";
     case "auth/popup-blocked":

@@ -1,2 +1,12 @@
 .firebase/
 .DS_Store
+
+# Service Account credentials and secret keys
+*service-account*.json
+*serviceAccount*.json
+serviceAccountKey.json
+.env
+.env.*
+*.pem
+*.key
+

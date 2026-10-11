@@ -9,16 +9,16 @@
   }
 
   function getHebcalEvents(date, state) {
-    state.calendar.warning = "";
+    if (state?.calendar) state.calendar.warning = "";
     const core = window.hebcal;
     if (!core?.getHolidaysOnDate || !core?.flags) {
-      state.calendar.warning = CALENDAR_WARNING;
+      if (state?.calendar) state.calendar.warning = CALENDAR_WARNING;
       return [];
     }
     try {
       return core.getHolidaysOnDate(date, true) || [];
     } catch (error) {
-      state.calendar.warning = CALENDAR_WARNING;
+      if (state?.calendar) state.calendar.warning = CALENDAR_WARNING;
       return [];
     }
   }
@@ -48,12 +48,36 @@
     return result;
   }
 
+  function isDeliveryDay(date, state) {
+    const dayIndex = date.getDay();
+    if (dayIndex === 6) return false;
+
+    const core = window.hebcal;
+    const flags = core?.flags || {};
+    const events = getHebcalEvents(date, state);
+    const hasFlag = (event, flag) => Boolean(flag && event.getFlags && (event.getFlags() & flag));
+    const getDesc = event => event.render?.("he-x-NoNikud") || event.getDesc?.() || "חג";
+    const normalizeEventText = text => String(text || "")
+      .normalize("NFKD")
+      .replace(/[\u0591-\u05C7]/g, "")
+      .replace(/[’‘`´״׳]/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    const getEventText = event => normalizeEventText(`${event.getDesc?.() || ""} ${getDesc(event)}`);
+    const isTishaBAv = event => /Tish'?a B'?Av|תשעה באב/i.test(getEventText(event));
+    const isWorkdayHolidayEvent = event => isTishaBAv(event);
+    const isIsraeliHoliday = event => {
+      const desc = getEventText(event);
+      return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
+    };
+    const isHoliday = event => (hasFlag(event, flags.CHAG) || isIsraeliHoliday(event)) && !isWorkdayHolidayEvent(event);
+
+    const holiday = events.find(isHoliday);
+    return !holiday;
+  }
+
   function getDayType(date, helpers) {
     const dayIndex = date.getDay();
-    if (dayIndex === 5) {
-      return calendarDebug(date, getHebcalEvents(date, helpers.state), { status: "off", isWorkday: false, reason: "יום שישי" }, helpers);
-    }
-
     const core = window.hebcal;
     const flags = core?.flags || {};
     const events = getHebcalEvents(date, helpers.state);
@@ -73,54 +97,56 @@
       const desc = getEventText(event);
       return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
     };
-    const isIsraeliClosedEveTarget = event => {
-      const desc = getEventText(event);
-      return /Yom HaAtzma|יום העצמאות|Yom Yerushalayim|יום ירושלים/i.test(desc);
-    };
-    const isJewishHoliday = event => hasFlag(event, flags.CHAG);
-    const isHoliday = event => hasFlag(event, flags.CHAG) || isIsraeliHoliday(event);
+    const isHoliday = event => (hasFlag(event, flags.CHAG) || isIsraeliHoliday(event)) && !isWorkdayHolidayEvent(event);
 
-    const holidayEve = events.find(event => isEve(event) && !isWorkdayHolidayEvent(event));
-    if (holidayEve) {
-      return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(holidayEve) }, helpers);
+    const todayHoliday = events.find(isHoliday);
+    const todayHolidayEve = events.find(event => isEve(event) && !isWorkdayHolidayEvent(event));
+    const todayWorkdayHoliday = events.find(isWorkdayHolidayEvent);
+
+    const nextDate = helpers.addDays(date, 1);
+    const hasNextDayDelivery = isDeliveryDay(nextDate, helpers.state);
+    const nextDayEvents = getHebcalEvents(nextDate, helpers.state);
+    const nextDayHoliday = nextDayEvents.find(isHoliday);
+
+    if (dayIndex === 5) {
+      if (todayHolidayEve) {
+        return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(todayHolidayEve) }, helpers);
+      }
+      if (todayHoliday) {
+        return calendarDebug(date, events, { status: "holiday", isWorkday: false, reason: "חג", title: getDesc(todayHoliday) }, helpers);
+      }
+      return calendarDebug(date, events, { status: "off", isWorkday: false, reason: "יום שישי" }, helpers);
     }
 
-    const nextDayEvents = getHebcalEvents(helpers.addDays(date, 1), helpers.state);
-    const nextDayHolidayEve = dayIndex === 4 ? nextDayEvents.find(event => isEve(event) && !isWorkdayHolidayEvent(event)) : null;
-    if (nextDayHolidayEve) {
-      return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHolidayEve) }, helpers);
+    if (hasNextDayDelivery) {
+      if (todayHoliday) {
+        return calendarDebug(date, events, { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(todayHoliday) }, helpers);
+      }
+      if (todayWorkdayHoliday) {
+        const title = getDesc(todayWorkdayHoliday);
+        return calendarDebug(date, events, {
+          status: "workday",
+          isWorkday: true,
+          reason: "יום רגיל",
+          title,
+          infoLabel: title,
+          isCalendarInfoOnly: true
+        }, helpers);
+      }
+      return calendarDebug(date, events, { status: "workday", isWorkday: true, reason: "יום רגיל" }, helpers);
     }
 
-    const nextDayHoliday = nextDayEvents.find(isIsraeliClosedEveTarget);
+    if (todayHoliday) {
+      return calendarDebug(date, events, { status: "holiday", isWorkday: false, reason: "חג", title: getDesc(todayHoliday) }, helpers);
+    }
+    if (todayHolidayEve) {
+      return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(todayHolidayEve) }, helpers);
+    }
     if (nextDayHoliday) {
       return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayHoliday) }, helpers);
     }
 
-    const todayIsJewishHoliday = events.some(isJewishHoliday);
-    const nextDayJewishHoliday = nextDayEvents.find(event => isJewishHoliday(event) && !isWorkdayHolidayEvent(event));
-    if (!todayIsJewishHoliday && dayIndex !== 6 && nextDayJewishHoliday) {
-      return calendarDebug(date, events, { status: "holidayEve", isWorkday: false, reason: "ערב חג", title: getDesc(nextDayJewishHoliday) }, helpers);
-    }
-
-    const holiday = events.find(isHoliday);
-    if (holiday) {
-      return calendarDebug(date, events, { status: "holiday", isWorkday: true, reason: "חג", title: getDesc(holiday) }, helpers);
-    }
-
-    const workdayHoliday = events.find(isWorkdayHolidayEvent);
-    if (workdayHoliday) {
-      const title = getDesc(workdayHoliday);
-      return calendarDebug(date, events, {
-        status: "workday",
-        isWorkday: true,
-        reason: "יום רגיל",
-        title,
-        infoLabel: title,
-        isCalendarInfoOnly: true
-      }, helpers);
-    }
-
-    return calendarDebug(date, events, { status: "workday", isWorkday: true, reason: "יום רגיל" }, helpers);
+    return calendarDebug(date, events, { status: "off", isWorkday: false, reason: "אין משמרת" }, helpers);
   }
 
   function holidayEveDisplayTitle(title) {
@@ -158,12 +184,16 @@
       const cleanTitle = holidayEveDisplayTitle(title);
       return `ערב${cleanTitle ? ` ${cleanTitle}` : " חג"} אין משמרת`;
     }
+    if (dayType?.status === "holiday") {
+      const cleanTitle = holidayShiftDisplayTitle(title);
+      return `${cleanTitle || "חג"} אין משמרת`;
+    }
     if (dayType?.status === "off") return "אין משמרת";
     return "";
   }
 
   function closedDayReason(day) {
-    if (day.dayType?.status === "holidayEve") {
+    if (day.dayType?.status === "holidayEve" || day.dayType?.status === "holiday") {
       return holidayClosedReason(day.dayType);
     }
     return day.label || "אין משמרת";
@@ -171,6 +201,7 @@
 
   window.calendarRules = {
     calendarStatusLabel,
+    isDeliveryDay,
     getDayType,
     holidayEveDisplayTitle,
     holidayShiftDisplayTitle,

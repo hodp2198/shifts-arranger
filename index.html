@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>סידור משמרות</title>
   <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="12" width="48" height="44" rx="8" fill="%23ffffff"/><rect x="8" y="12" width="48" height="14" rx="8" fill="%231c7c63"/><rect x="8" y="22" width="48" height="34" rx="6" fill="%23ffffff"/><path d="M20 8v10M44 8v10" stroke="%2317201d" stroke-width="5" stroke-linecap="round"/><path d="M18 34h8M30 34h8M42 34h4M18 44h8M30 44h8M42 44h4" stroke="%231c7c63" stroke-width="4" stroke-linecap="round"/></svg>'>
-  <link rel="stylesheet" href="styles/theme.css?v=2.2">
-  <link rel="stylesheet" href="styles/base.css?v=2.2">
-  <link rel="stylesheet" href="styles/layout.css?v=2.2">
-  <link rel="stylesheet" href="styles/components.css?v=2.2">
-  <link rel="stylesheet" href="styles/auth.css?v=2.2">
+  <link rel="stylesheet" href="styles/theme.css?v=2.5">
+  <link rel="stylesheet" href="styles/base.css?v=2.5">
+  <link rel="stylesheet" href="styles/layout.css?v=2.5">
+  <link rel="stylesheet" href="styles/components.css?v=2.5">
+  <link rel="stylesheet" href="styles/auth.css?v=2.5">
 </head>
 <body>
   <!-- Admin Auth Gatekeeper Overlay -->
@@ -24,6 +24,7 @@
       </div>
 
       <div id="authError" class="auth-error"></div>
+      <div id="authSuccess" class="auth-success"></div>
 
       <button type="button" id="googleLoginBtn" class="btn-google-login">
         <svg class="google-icon" viewBox="0 0 24 24">
@@ -35,16 +36,49 @@
         <span id="googleBtnText">התחבר עם Google</span>
         <span id="googleBtnSpinner" class="auth-spinner dark" style="display: none;"></span>
       </button>
+
+      <button type="button" id="devIsolatedLoginBtn" class="btn-google-login dev-login-btn" style="display: none;">
+        <span>🔬 כניסה בסביבת בדיקות מבודדת (Isolated Sandbox)</span>
+      </button>
+
+      <button type="button" id="toggleRequestAccessBtn" class="btn-request-access">
+        <span>בקש גישה למערכת</span>
+      </button>
+
+      <form id="requestAccessForm" class="request-access-form" onsubmit="return false;">
+        <div class="auth-field">
+          <label class="auth-label" for="reqName">שם מלא</label>
+          <input type="text" id="reqName" class="auth-input" placeholder="ישראל ישראלי" required maxlength="80" autocomplete="name">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label" for="reqEmail">כתובת אימייל (Google / Gmail)</label>
+          <input type="email" id="reqEmail" class="auth-input" placeholder="user@gmail.com" required maxlength="100" autocomplete="email" dir="ltr">
+        </div>
+        <button type="button" id="submitRequestBtn" class="auth-btn">
+          <span id="submitReqText">שלח בקשת גישה</span>
+          <span id="submitReqSpinner" class="auth-spinner" style="display: none;"></span>
+        </button>
+        <button type="button" id="cancelRequestBtn" class="btn-cancel-request">חזרה להתחברות</button>
+      </form>
     </div>
   </div>
 
   <main class="shell" id="mainShell">
+    <div id="devIsolatedBanner" class="dev-isolated-banner" style="display: none;">
+      <span>🔬 <strong>סביבת בדיקות מבודדת (Isolated Sandbox)</strong> – הנתונים נשמרים במאגר מקומי מבודד, ללא שום גישה לייצור.</span>
+      <button type="button" id="btnResetDevData" class="btn-reset-dev">איפוס נתוני בדיקה</button>
+    </div>
     <section class="topbar">
       <div>
         <h1>סידור משמרות</h1>
         <p class="intro">ייבוא אילוצים, יצירת סידור, בדיקת בעיות והעתקת הודעת WhatsApp נקייה לעובדים.</p>
       </div>
       <div class="admin-bar-actions">
+        <button class="btn-admin-requests" id="adminRequestsBtn" type="button" style="display: none;" title="ניהול בקשות גישה">
+          <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          <span>בקשות גישה</span>
+          <span class="admin-requests-badge" id="adminRequestsCount">0</span>
+        </button>
         <span class="admin-badge" id="adminUserBadge">
           <span class="admin-badge-dot"></span>
           <span id="adminUserEmail">מנהל מחובר</span>
@@ -98,7 +132,7 @@
                   <div class="field-row">
                     <div>
                       <label for="startDate">תאריך התחלה ראשוני</label>
-                      <input type="text" id="startDate" inputmode="numeric" placeholder="31/5">
+                      <input type="date" id="startDate">
                     </div>
                     <div>
                       <label for="weekCount">כמה שבועות לסדר</label>
@@ -108,7 +142,7 @@
                   <div class="manual-offday">
                     <div>
                       <label for="manualOffDate">יום ללא עבודה</label>
-                      <input type="text" id="manualOffDate" inputmode="numeric" placeholder="4/6">
+                      <input type="date" id="manualOffDate">
                     </div>
                     <div>
                       <label for="manualOffLabel">סיבה</label>
@@ -139,8 +173,10 @@
           </details>
           <div class="actions result-actions">
             <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+            <button class="btn secondary accent-action btn-save-official" id="saveOfficialSchedule" type="button" disabled title="שמור סידור זה כסידור רשמי שייספר בטבלת הצדק">שמור</button>
             <button class="btn secondary" id="resetManualOverrides" type="button">איפוס עריכות ידניות</button>
           </div>
+          <div id="officialScheduleBanner" class="official-schedule-banner" style="display: none;"></div>
           <div class="preview-title">תצוגת סידור</div>
           <div id="scheduleOutput" class="schedule-output"></div>
           <div id="scheduleWarnings"></div>
@@ -165,17 +201,61 @@
             </div>
             <div class="intake-status" id="calendarExportStatus"></div>
           </div>
-      </div>
+          <section class="fairness-section" id="fairnessSection">
+            <div class="fairness-header">
+              <div class="preview-title" style="margin-bottom:0;">טבלת צדק</div>
+              <div class="fairness-filter-wrap">
+                <label for="fairnessPeriodSelect">תקופת תצוגה:</label>
+                <select id="fairnessPeriodSelect" class="fairness-select">
+                  <option value="cumulative">מצטבר (כל החודשים)</option>
+                </select>
+              </div>
+            </div>
+            <div class="intake-status">מעקב חלוקת משמרות על בסיס סידורים רשמיים שנשמרו בלבד. טיוטות אינן נספרות.</div>
+            <div class="fairness-table-container">
+              <table class="fairness-table">
+                <thead>
+                  <tr>
+                    <th>עובד</th>
+                    <th class="num-col">פתח</th>
+                    <th class="num-col">סגר</th>
+                    <th class="num-col">לא דיווח</th>
+                    <th class="num-col">קיבל</th>
+                    <th class="num-col">אחוז שיבוץ</th>
+                  </tr>
+                </thead>
+                <tbody id="fairnessTableBody">
+                  <tr><td colspan="6" class="fairness-empty-cell">טרם נשמרו סידורים רשמיים במערכת.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </aside>
     </section>
+
+    <!-- Admin Requests Modal (Only accessible to super admin galp3er@gmail.com) -->
+    <div id="adminRequestsModal" class="admin-requests-modal" style="display: none;">
+      <div class="admin-requests-card">
+        <div class="admin-requests-header">
+          <h3>ניהול בקשות גישה למערכת</h3>
+          <button class="admin-requests-close" id="closeAdminRequestsModalBtn" type="button" aria-label="סגור">&times;</button>
+        </div>
+        <div class="admin-requests-body">
+          <div id="adminRequestsList" class="admin-requests-list">
+            <div class="admin-requests-empty">טוען בקשות...</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
-  <script src="vendor/hebcal-core.min.js"></script>
-  <script src="src/stateStorage.js"></script>
-  <script src="src/calendarRules.js"></script>
-  <script src="src/calendarLinkUi.js"></script>
-  <script src="src/scheduleExport.js"></script>
-  <script src="src/calendarService.js"></script>
+  <script src="vendor/hebcal-core.min.js?v=2.5"></script>
+  <script src="src/stateStorage.js?v=2.5"></script>
+  <script src="src/calendarRules.js?v=2.5"></script>
+  <script src="src/calendarLinkUi.js?v=2.5"></script>
+  <script src="src/scheduleExport.js?v=2.5"></script>
+  <script src="src/calendarService.js?v=2.5"></script>
   <script>
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
@@ -219,7 +299,10 @@
       workerColorsRepaired: false,
       calendar: {
         warning: ""
-      }
+      },
+      isCurrentScheduleOfficial: false,
+      currentOfficialSchedule: null,
+      officialSchedules: []
     };
     let WORKERS = [];
 
@@ -244,6 +327,10 @@
     const calendarExportLinkTextEl = getEl("calendarExportLinkText");
     const openCalendarExportLinkEl = getEl("openCalendarExportLink");
     const calendarExportStatusEl = getEl("calendarExportStatus");
+    const saveOfficialScheduleBtn = getEl("saveOfficialSchedule");
+    const officialScheduleBanner = getEl("officialScheduleBanner");
+    const fairnessPeriodSelect = getEl("fairnessPeriodSelect");
+    const fairnessTableBody = getEl("fairnessTableBody");
 
     function clampShiftValue(value, fallback = 0) {
       const number = Number(value);
@@ -359,6 +446,9 @@
           if (status === "off") return "לא משובץ";
           return "";
         },
+        isDeliveryDay(date) {
+          return date.getDay() !== 6;
+        },
         getDayType(date) {
           return date.getDay() === 5
             ? { status: "off", isWorkday: false, reason: "יום שישי" }
@@ -385,12 +475,21 @@
           return cleanTitle;
         },
         holidayClosedReason(dayType) {
-          if (dayType?.status !== "holidayEve") return dayType?.status === "off" ? "אין משמרת" : "";
-          const cleanTitle = this.holidayEveDisplayTitle(dayType.title);
-          return `ערב${cleanTitle ? ` ${cleanTitle}` : " חג"} אין משמרת`;
+          if (dayType?.status === "holidayEve") {
+            const cleanTitle = this.holidayEveDisplayTitle(dayType.title);
+            return `ערב${cleanTitle ? ` ${cleanTitle}` : " חג"} אין משמרת`;
+          }
+          if (dayType?.status === "holiday") {
+            const cleanTitle = this.holidayShiftDisplayTitle(dayType.title);
+            return `${cleanTitle || "חג"} אין משמרת`;
+          }
+          if (dayType?.status === "off") return "אין משמרת";
+          return "";
         },
         closedDayReason(day) {
-          return day.dayType?.status === "holidayEve" ? this.holidayClosedReason(day.dayType) : (day.label || "אין משמרת");
+          return (day.dayType?.status === "holidayEve" || day.dayType?.status === "holiday")
+            ? this.holidayClosedReason(day.dayType)
+            : (day.label || "אין משמרת");
         }
       };
     }
@@ -421,7 +520,7 @@
     }
 
     function editDateValue(date) {
-      return `${date.getDate()}/${date.getMonth() + 1}`;
+      return isoDate(date);
     }
 
     function parseUiDate(value, fallbackYear) {
@@ -741,19 +840,35 @@
       const weekConfigs = getWeekConfigs();
       const days = [];
       for (let week = 0; week < weekConfigs.length; week++) {
-        const start = weekConfigs[week].start;
-        for (const dayIndex of SCHEDULE_DAYS) {
-          const date = addDays(start, dayIndex);
+        const { start, end } = weekConfigs[week];
+        const totalDays = end && start ? Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1 : 7;
+        const count = totalDays > 0 ? totalDays : 7;
+        for (let offset = 0; offset < count; offset++) {
+          const date = addDays(start, offset);
+          const dayOfWeek = date.getDay();
+          if (dayOfWeek === 5) continue;
           const iso = isoDate(date);
-          const manual = state.special[iso];
           const dayType = getDayType(date);
+
+          let manual = state.special[iso];
+          if (
+            manual
+            && manual.closed === true
+            && dayType.isWorkday === true
+            && (dayType.status === "holiday" || dayType.status === "workday")
+            && (!manual.isExplicitUserCustom || /ערב|חג|ראש השנה|אין עבודה/i.test(manual.label || ""))
+          ) {
+            delete state.special[iso];
+            manual = undefined;
+          }
+
           const closed = manual ? Boolean(manual.closed) : !dayType.isWorkday;
           const label = manual?.label || (closed ? dayType.reason : "");
           days.push({
             date,
             iso,
-            dayIndex,
-            dayName: DAY_NAMES[dayIndex],
+            dayIndex: dayOfWeek,
+            dayName: DAY_NAMES[dayOfWeek],
             week,
             closed,
             label,
@@ -1232,7 +1347,7 @@
         specialDaysEl.innerHTML = "";
         return;
       }
-      const calendarClosedDays = days.filter(day => day.dayType.status === "holidayEve" && !state.special[day.iso]);
+      const calendarClosedDays = days.filter(day => (day.dayType.status === "holidayEve" || (day.dayType.status === "holiday" && !day.dayType.isWorkday)) && !state.special[day.iso]);
       const manualDays = days.filter(day => state.special[day.iso]);
       const holidayText = calendarClosedDays.length
         ? calendarClosedDays.map(day => `
@@ -1285,7 +1400,7 @@
         return;
       }
       const label = manualOffLabelEl.value || "אין עבודה";
-      state.special[isoDate(date)] = { closed: true, label };
+      state.special[isoDate(date)] = { closed: true, label, isExplicitUserCustom: true };
       manualOffDateEl.value = "";
       renderSpecialDays();
       saveState();
@@ -3342,7 +3457,10 @@
               <label>נייט 2</label>
               <select class="manual-worker-select" data-slot="second">${manualWorkerOptions(secondName)}</select>
               <div class="alternative-impact">השינוי יישמר גם בהרצה מחדש. חריגות יוצגו כאזהרות בלבד.</div>
-              <button class="btn secondary apply-manual-override" type="button" data-iso="${entry.day.iso}">שמור עריכה</button>
+              <div class="manual-edit-actions">
+                <button class="btn secondary apply-manual-override" type="button" data-iso="${entry.day.iso}">שמור עריכה</button>
+                <button class="btn secondary cancel-manual-override" type="button">ביטול</button>
+              </div>
             </div>
           </details>
         `;
@@ -3446,6 +3564,7 @@
 
       outputEl.innerHTML = html;
       plainResultEl.value = plain.join("\n").trim();
+      checkCurrentScheduleOfficialStatus();
       saveState();
     }
 
@@ -3565,6 +3684,11 @@
       if (sdEl) sdEl.innerHTML = "";
       const wEl = getEl("workers");
       if (wEl) wEl.innerHTML = "";
+      state.officialSchedules = [];
+      state.isCurrentScheduleOfficial = false;
+      state.currentOfficialSchedule = null;
+      updateOfficialScheduleBanner();
+      renderFairnessTable();
     }
 
     async function loadUserWorkspace(uid) {
@@ -3573,25 +3697,16 @@
       try {
         data = await window.userDataService.loadUserAppData(uid);
       } catch (err) {
-        console.warn("Could not load from Firestore, checking local storage fallback:", err);
-      }
-
-      // If user has no data in Firestore yet, migrate existing local data if present
-      if (!data && window.stateStorage) {
-        const localData = window.stateStorage.readSavedData();
-        if (localData && Array.isArray(localData.workers) && localData.workers.length > 0) {
-          data = localData;
-          // Save migrated data to Firestore under this user's UID in the background
-          window.userDataService.saveUserAppData(uid, data, { immediate: true }).catch(() => {});
-        }
+        console.warn("Could not load from Firestore:", err);
       }
 
       if (!data) {
-        // New user or empty workspace
+        // New user or empty workspace -> clean reset with zero cross-user data contamination
         resetWorkspaceToEmpty();
         renderWorkers();
         renderWeekSettings();
         await refreshCalendarDays();
+        await loadUserOfficialSchedules(uid);
         return;
       }
 
@@ -3604,7 +3719,23 @@
       if (plainResultEl) plainResultEl.value = data.plainResult || "";
       state.manualOverrides = data.manualOverrides && typeof data.manualOverrides === "object" ? data.manualOverrides : {};
       state.special = {};
+      let needsCloudResave = false;
       Object.entries(data.special || {}).forEach(([iso, item]) => {
+        const date = parseUiDate(iso);
+        if (date) {
+          const dayType = getDayType(date);
+          const isStaleHolidayClosure = (
+            item?.closed === true
+            && dayType.isWorkday === true
+            && (dayType.status === "holiday" || dayType.status === "workday")
+            && (!item.isExplicitUserCustom || /ערב|חג|ראש השנה|אין עבודה/i.test(item.label || ""))
+          );
+          if (isStaleHolidayClosure) {
+            console.info(`[migration] Purged stale conflicting closure for ${iso}`);
+            needsCloudResave = true;
+            return;
+          }
+        }
         state.special[iso] = item;
       });
 
@@ -3638,6 +3769,236 @@
       }
 
       await refreshCalendarDays();
+
+      if (needsCloudResave) {
+        saveState(true);
+      }
+
+      await loadUserOfficialSchedules(uid);
+    }
+
+    function updateOfficialScheduleBanner() {
+      const banner = getEl("officialScheduleBanner");
+      const saveBtn = getEl("saveOfficialSchedule");
+      if (!banner) return;
+
+      if (!state.currentSchedule || !Object.keys(state.currentSchedule).length) {
+        banner.style.display = "none";
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "שמור";
+        }
+        return;
+      }
+
+      banner.style.display = "flex";
+      if (state.isCurrentScheduleOfficial) {
+        banner.className = "official-schedule-banner official";
+        const savedTime = state.currentOfficialSchedule?.savedAt
+          ? new Date(state.currentOfficialSchedule.savedAt).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })
+          : "";
+        banner.innerHTML = `<span>✓ <strong>סידור רשמי שמור</strong>${savedTime ? ` (נשמר ב-${savedTime})` : ""}</span>`;
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "✓ נשמר";
+        }
+      } else {
+        banner.className = "official-schedule-banner draft";
+        banner.innerHTML = `<span>⚠️ <strong>טיוטה</strong> – סידור זה טרם נשמר כסידור רשמי ואינו נספר בטבלת הצדק.</span>`;
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "שמור";
+        }
+      }
+    }
+
+    function checkCurrentScheduleOfficialStatus() {
+      const startDate = getBaseStartDate();
+      const days = getScheduleDays();
+      if (!startDate || !days.length || !state.currentSchedule) {
+        state.isCurrentScheduleOfficial = false;
+        state.currentOfficialSchedule = null;
+        updateOfficialScheduleBanner();
+        return;
+      }
+
+      const startIso = isoDate(startDate);
+      const endIso = days[days.length - 1].iso;
+      const periodId = `${startIso}_${endIso}`;
+      const official = (state.officialSchedules || []).find(s => s.id === periodId && s.status !== "archived");
+
+      if (official && window.fairnessService) {
+        const currentAssignments = window.fairnessService.snapshotAssignments(state.currentSchedule);
+        const officialAssignments = official.assignments || [];
+        const isMatch = (
+          currentAssignments.length === officialAssignments.length &&
+          currentAssignments.every((curr, i) => {
+            const off = officialAssignments[i];
+            return off && off.iso === curr.iso && off.slot1 === curr.slot1 && off.slot2 === curr.slot2;
+          })
+        );
+        state.isCurrentScheduleOfficial = isMatch;
+        state.currentOfficialSchedule = isMatch ? official : null;
+      } else {
+        state.isCurrentScheduleOfficial = false;
+        state.currentOfficialSchedule = null;
+      }
+
+      updateOfficialScheduleBanner();
+    }
+
+    async function loadUserOfficialSchedules(uid) {
+      if (!window.fairnessService || !uid) return;
+      try {
+        state.officialSchedules = await window.fairnessService.loadOfficialSchedulesDocs(uid);
+      } catch (err) {
+        console.warn("Could not load official schedules from Firestore:", err);
+        state.officialSchedules = [];
+      }
+      refreshFairnessMonthsOptions();
+      renderFairnessTable();
+      checkCurrentScheduleOfficialStatus();
+    }
+
+    function refreshFairnessMonthsOptions() {
+      const select = getEl("fairnessPeriodSelect");
+      if (!select || !window.fairnessService) return;
+
+      const previousValue = select.value || "cumulative";
+      const availableMonths = window.fairnessService.getAvailableMonths(state.officialSchedules || []);
+
+      select.innerHTML = `<option value="cumulative">מצטבר (כל החודשים)</option>`;
+
+      availableMonths.forEach(mKey => {
+        const option = document.createElement("option");
+        option.value = mKey;
+        option.textContent = window.fairnessService.formatMonthLabel(mKey);
+        select.appendChild(option);
+      });
+
+      if (previousValue === "cumulative" || availableMonths.includes(previousValue)) {
+        select.value = previousValue;
+      } else {
+        select.value = "cumulative";
+      }
+    }
+
+    function renderFairnessTable() {
+      const tableBody = getEl("fairnessTableBody");
+      const periodSelect = getEl("fairnessPeriodSelect");
+      if (!tableBody || !window.fairnessService) return;
+
+      const selectedPeriod = periodSelect ? periodSelect.value : "cumulative";
+      const officialList = state.officialSchedules || [];
+
+      if (!officialList.length) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="fairness-empty-cell">טרם נשמרו סידורים רשמיים במערכת.<br><span class="helper">לחץ על כפתור "שמור" כדי לקבוע את הסידור המוצג כסידור רשמי ראשון.</span></td></tr>`;
+        return;
+      }
+
+      const result = window.fairnessService.calculateAggregatedFairness(officialList, selectedPeriod);
+
+      if (!result.records.length) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="fairness-empty-cell">אין נתוני עובדים לתקופה שנבחרה.</td></tr>`;
+        return;
+      }
+
+      tableBody.innerHTML = result.records.map(record => {
+        const rateClass = record.assignmentRate >= 70 ? "high" : (record.assignmentRate <= 40 && record.opened > 0 ? "low" : "");
+        return `
+          <tr>
+            <td class="worker-name-cell">${escapeHtmlText(record.name)}</td>
+            <td class="num-cell">${record.opened}</td>
+            <td class="num-cell">${record.closed}</td>
+            <td class="num-cell" style="color: var(--muted-soft);">${record.unreported}</td>
+            <td class="num-cell">${record.assigned}</td>
+            <td class="rate-cell ${rateClass}">${record.assignmentRateFormatted}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function handleSaveOfficialSchedule() {
+      if (!currentAuthUid || !window.fairnessService) {
+        alert("יש להתחבר למערכת כדי לשמור סידור רשמי.");
+        return;
+      }
+      if (!state.currentSchedule) {
+        alert("אין סידור לשמירה. לחץ על 'צור סידור' תחילה.");
+        return;
+      }
+
+      const startDate = getBaseStartDate();
+      const days = getScheduleDays();
+      if (!startDate || !days.length) {
+        alert("חסרים תאריכים מוגדרים לתקופת הסידור.");
+        return;
+      }
+
+      const startIso = isoDate(startDate);
+      const endIso = days[days.length - 1].iso;
+      const periodId = `${startIso}_${endIso}`;
+
+      // Check for partial overlaps with different period IDs
+      const overlapping = window.fairnessService.findOverlappingOfficialSchedules(
+        state.officialSchedules || [],
+        startIso,
+        endIso,
+        periodId
+      );
+
+      if (overlapping.length > 0) {
+        const overlapRanges = overlapping.map(s => `${displayDate(parseUiDate(s.startDate))} - ${displayDate(parseUiDate(s.endDate))}`).join(", ");
+        const approved = window.confirm(
+          `נמצא סידור רשמי קיים החופף לחלק מהתאריכים בתקופה זו (${overlapRanges}).\nהאם ברצונך לשמור את הסידור הנוכחי ולהחליף את השיבוצים בתאריכים החופפים?`
+        );
+        if (!approved) return;
+      }
+
+      const saveBtn = getEl("saveOfficialSchedule");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "שומר...";
+      }
+
+      try {
+        const daysSnapshot = window.fairnessService.extractPeriodDays(days);
+        const workerConstraintsSnapshot = window.fairnessService.snapshotWorkerConstraints(getWorkersData());
+        const assignments = window.fairnessService.snapshotAssignments(state.currentSchedule);
+
+        const record = {
+          id: periodId,
+          startDate: startIso,
+          endDate: endIso,
+          savedAt: new Date().toISOString(),
+          status: "active",
+          daysSnapshot,
+          workerConstraintsSnapshot,
+          assignments,
+          plainResult: plainResultEl?.value || "",
+          manualOverrides: { ...state.manualOverrides }
+        };
+
+        await window.fairnessService.saveOfficialScheduleDoc(currentAuthUid, record);
+
+        // Reload official schedules from Firestore
+        state.officialSchedules = await window.fairnessService.loadOfficialSchedulesDocs(currentAuthUid);
+        state.isCurrentScheduleOfficial = true;
+        state.currentOfficialSchedule = record;
+
+        refreshFairnessMonthsOptions();
+        renderFairnessTable();
+        updateOfficialScheduleBanner();
+
+        if (statusBadgeEl) statusBadgeEl.textContent = "סידור רשמי נשמר בהצלחה";
+      } catch (err) {
+        console.error("Failed to save official schedule:", err);
+        alert("שגיאה בשמירת הסידור הרשמי: " + (err.message || err));
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "שמור";
+        }
+      }
     }
 
     function saveState(immediate = false) {
@@ -3719,6 +4080,12 @@
       await renderSchedule();
       saveState(true);
     });
+    getEl("saveOfficialSchedule")?.addEventListener("click", async () => {
+      await handleSaveOfficialSchedule();
+    });
+    getEl("fairnessPeriodSelect")?.addEventListener("change", () => {
+      renderFairnessTable();
+    });
     getEl("resetManualOverrides")?.addEventListener("click", async () => {
       clearManualOverrides();
       if (state.currentSchedule) await renderSchedule();
@@ -3775,7 +4142,7 @@
       if (!row?.dataset.date) return;
 
       if (event.target.classList.contains("open-special-day")) {
-        state.special[row.dataset.date] = { closed: false, label: "יום עבודה" };
+        state.special[row.dataset.date] = { closed: false, label: "יום עבודה", isExplicitUserCustom: true };
         renderSpecialDays();
         saveState(true);
         return;
@@ -3825,6 +4192,13 @@
         return;
       }
 
+      const cancelButton = event.target.closest(".cancel-manual-override");
+      if (cancelButton) {
+        const editPanel = cancelButton.closest(".manual-edit-panel");
+        if (editPanel) editPanel.removeAttribute("open");
+        return;
+      }
+
       const manualButton = event.target.closest(".apply-manual-override");
       if (manualButton && state.currentSchedule) {
         const entry = Object.values(state.currentSchedule)
@@ -3837,6 +4211,7 @@
         }
         const firstName = editPanel.querySelector('[data-slot="first"]').value || "-";
         const secondName = editPanel.querySelector('[data-slot="second"]').value || "-";
+        editPanel.removeAttribute("open");
         setManualOverride(entry.day, [firstName, secondName]);
         await renderSchedule({
           schedule: state.currentSchedule,
@@ -3888,11 +4263,15 @@
       saveState(true);
     });
 
-    document.addEventListener("click", event => {
+    const dismissPanelsIfOutside = event => {
       if (event.target.closest(".alternatives-panel") || event.target.closest(".manual-edit-panel")) return;
-      outputEl?.querySelectorAll(".alternatives-panel[open]").forEach(panel => panel.removeAttribute("open"));
-      outputEl?.querySelectorAll(".manual-edit-panel[open]").forEach(panel => panel.removeAttribute("open"));
-    });
+      const hasOpen = outputEl?.querySelector(".alternatives-panel[open], .manual-edit-panel[open]");
+      if (hasOpen) {
+        outputEl?.querySelectorAll(".alternatives-panel[open]").forEach(panel => panel.removeAttribute("open"));
+        outputEl?.querySelectorAll(".manual-edit-panel[open]").forEach(panel => panel.removeAttribute("open"));
+      }
+    };
+    document.addEventListener("click", dismissPanelsIfOutside);
 
     document.addEventListener("input", async event => {
       const shouldAutoSave = event.target.closest(".worker")
@@ -3942,11 +4321,41 @@
       const googleBtnText = getEl("googleBtnText");
       const googleBtnSpinner = getEl("googleBtnSpinner");
       const authErrorEl = getEl("authError");
+      const authSuccessEl = getEl("authSuccess");
+      const toggleRequestAccessBtn = getEl("toggleRequestAccessBtn");
+      const requestAccessForm = getEl("requestAccessForm");
+      const submitRequestBtn = getEl("submitRequestBtn");
+      const submitReqText = getEl("submitReqText");
+      const submitReqSpinner = getEl("submitReqSpinner");
+      const cancelRequestBtn = getEl("cancelRequestBtn");
+      const reqNameEl = getEl("reqName");
+      const reqEmailEl = getEl("reqEmail");
+
+      const adminRequestsBtn = getEl("adminRequestsBtn");
+      const adminRequestsCount = getEl("adminRequestsCount");
+      const adminRequestsModal = getEl("adminRequestsModal");
+      const closeAdminRequestsModalBtn = getEl("closeAdminRequestsModalBtn");
+      const adminRequestsList = getEl("adminRequestsList");
 
       function showError(msg) {
         if (authErrorEl) {
           authErrorEl.textContent = msg;
           authErrorEl.classList.add("show");
+        }
+        if (authSuccessEl) {
+          authSuccessEl.textContent = "";
+          authSuccessEl.classList.remove("show");
+        }
+      }
+
+      function showSuccess(msg) {
+        if (authSuccessEl) {
+          authSuccessEl.textContent = msg;
+          authSuccessEl.classList.add("show");
+        }
+        if (authErrorEl) {
+          authErrorEl.textContent = "";
+          authErrorEl.classList.remove("show");
         }
       }
 
@@ -3955,12 +4364,22 @@
           authErrorEl.textContent = "";
           authErrorEl.classList.remove("show");
         }
+        if (authSuccessEl) {
+          authSuccessEl.textContent = "";
+          authSuccessEl.classList.remove("show");
+        }
       }
 
       function setGoogleSubmitting(isSubmitting) {
         if (googleLoginBtn) googleLoginBtn.disabled = isSubmitting;
         if (googleBtnText) googleBtnText.style.display = isSubmitting ? "none" : "inline";
         if (googleBtnSpinner) googleBtnSpinner.style.display = isSubmitting ? "inline-block" : "none";
+      }
+
+      function setRequestSubmitting(isSubmitting) {
+        if (submitRequestBtn) submitRequestBtn.disabled = isSubmitting;
+        if (submitReqText) submitReqText.style.display = isSubmitting ? "none" : "inline";
+        if (submitReqSpinner) submitReqSpinner.style.display = isSubmitting ? "inline-block" : "none";
       }
 
       if (googleLoginBtn && !googleLoginBtn._hasLoginListener) {
@@ -3978,8 +4397,223 @@
         });
       }
 
-      window.authService.onAdminAuthStateChanged(async user => {
+      // Local Isolated Dev Mode Handlers (Zero Production Access)
+      const isLocalHost = window.location.hostname === "localhost" ||
+                          window.location.hostname === "127.0.0.1" ||
+                          window.location.search.includes("dev=true");
+      const devIsolatedLoginBtn = getEl("devIsolatedLoginBtn");
+      const devIsolatedBanner = getEl("devIsolatedBanner");
+      const btnResetDevData = getEl("btnResetDevData");
+
+      if (isLocalHost && devIsolatedLoginBtn) {
+        devIsolatedLoginBtn.style.display = "inline-flex";
+      }
+
+      const enterDevIsolatedMode = async () => {
+        window.__ISOLATED_DEV_MODE__ = true;
+        localStorage.setItem("isolated_dev_active", "true");
+        if (devIsolatedBanner) devIsolatedBanner.style.display = "flex";
+
+        const mockUser = {
+          uid: "isolated-dev-manager",
+          email: "dev-tester@shift-arranger.local",
+          displayName: "מנהל בדיקה (Isolated)"
+        };
+        if (window._handleAuthStateChange) {
+          await window._handleAuthStateChange(mockUser);
+        }
+      };
+
+      if (devIsolatedLoginBtn && !devIsolatedLoginBtn._hasDevListener) {
+        devIsolatedLoginBtn._hasDevListener = true;
+        devIsolatedLoginBtn.addEventListener("click", enterDevIsolatedMode);
+      }
+
+      if (btnResetDevData && !btnResetDevData._hasResetListener) {
+        btnResetDevData._hasResetListener = true;
+        btnResetDevData.addEventListener("click", async () => {
+          if (!confirm("האם לאפס את כל נתוני הבדיקה המבודדים?")) return;
+          localStorage.removeItem("isolated_dev_appData_isolated-dev-manager");
+          localStorage.removeItem("isolated_dev_official_isolated-dev-manager");
+          resetWorkspaceToEmpty();
+          renderWorkers();
+          renderWeekSettings();
+          await refreshCalendarDays();
+          await loadUserOfficialSchedules("isolated-dev-manager");
+          alert("נתוני הבדיקה אופסו בהצלחה.");
+        });
+      }
+
+      // Toggle Request Access Form
+      if (toggleRequestAccessBtn && !toggleRequestAccessBtn._hasListener) {
+        toggleRequestAccessBtn._hasListener = true;
+        toggleRequestAccessBtn.addEventListener("click", () => {
+          clearError();
+          if (requestAccessForm) {
+            const isShown = requestAccessForm.classList.toggle("show");
+            if (isShown && reqNameEl) reqNameEl.focus();
+          }
+        });
+      }
+
+      if (cancelRequestBtn && !cancelRequestBtn._hasListener) {
+        cancelRequestBtn._hasListener = true;
+        cancelRequestBtn.addEventListener("click", () => {
+          clearError();
+          if (requestAccessForm) requestAccessForm.classList.remove("show");
+        });
+      }
+
+      // Submit Request Access
+      if (submitRequestBtn && !submitRequestBtn._hasListener) {
+        submitRequestBtn._hasListener = true;
+        submitRequestBtn.addEventListener("click", async () => {
+          clearError();
+          const name = reqNameEl ? reqNameEl.value.trim() : "";
+          const email = reqEmailEl ? reqEmailEl.value.trim() : "";
+
+          if (!name || !email) {
+            showError("יש למלא את כל השדות.");
+            return;
+          }
+
+          setRequestSubmitting(true);
+          try {
+            const res = await window.accessRequestService.submitAccessRequest(name, email);
+            if (res.success) {
+              showSuccess(res.message || "בקשת הגישה נשלחה לאישור.");
+              if (reqNameEl) reqNameEl.value = "";
+              if (reqEmailEl) reqEmailEl.value = "";
+              if (requestAccessForm) requestAccessForm.classList.remove("show");
+            } else {
+              showError(res.message || "שגיאה בשליחת הבקשה.");
+            }
+          } catch (err) {
+            showError(err.message || "שגיאה בשליחת בקשת הגישה.");
+          } finally {
+            setRequestSubmitting(false);
+          }
+        });
+      }
+
+      // Admin Requests Panel Logic
+      async function refreshAdminRequestsBadge() {
+        if (!currentAuthUser || currentAuthUser.email !== "galp3er@gmail.com") return;
+        try {
+          const requests = await window.accessRequestService.fetchPendingAccessRequests();
+          if (adminRequestsCount) {
+            adminRequestsCount.textContent = requests.length.toString();
+          }
+        } catch (err) {
+          console.warn("Could not fetch requests count:", err);
+        }
+      }
+
+      async function renderAdminRequestsList() {
+        if (!adminRequestsList) return;
+        adminRequestsList.innerHTML = '<div class="admin-requests-empty">טוען בקשות גישה...</div>';
+
+        try {
+          const requests = await window.accessRequestService.fetchPendingAccessRequests();
+          if (adminRequestsCount) {
+            adminRequestsCount.textContent = requests.length.toString();
+          }
+
+          if (requests.length === 0) {
+            adminRequestsList.innerHTML = '<div class="admin-requests-empty">אין בקשות גישה ממתינות כרגע.</div>';
+            return;
+          }
+
+          adminRequestsList.innerHTML = "";
+          requests.forEach(req => {
+            const row = document.createElement("div");
+            row.className = "admin-request-row";
+            
+            const dateStr = req.createdAt?.toDate ? req.createdAt.toDate().toLocaleString("he-IL") : "זה עתה";
+            
+            row.innerHTML = `
+              <div class="admin-request-info">
+                <span class="admin-request-name">${escapeHtmlText(req.name || "ללא שם")}</span>
+                <span class="admin-request-email" dir="ltr">${escapeHtmlText(req.email || "")}</span>
+                <span class="admin-request-date">${dateStr}</span>
+              </div>
+              <div class="admin-request-actions">
+                <button class="btn-approve-req" type="button">אשר</button>
+                <button class="btn-reject-req" type="button">דחה</button>
+              </div>
+            `;
+
+            const approveBtn = row.querySelector(".btn-approve-req");
+            const rejectBtn = row.querySelector(".btn-reject-req");
+
+            approveBtn.addEventListener("click", async () => {
+              approveBtn.disabled = true;
+              rejectBtn.disabled = true;
+              approveBtn.textContent = "מאשר...";
+              try {
+                const res = await window.accessRequestService.approveAccessRequest(req, currentAuthUser);
+                alert(res.message || "המשתמש אושר בהצלחה.");
+                await renderAdminRequestsList();
+              } catch (err) {
+                alert("שגיאה באישור הבקשה: " + err.message);
+                approveBtn.disabled = false;
+                rejectBtn.disabled = false;
+                approveBtn.textContent = "אשר";
+              }
+            });
+
+            rejectBtn.addEventListener("click", async () => {
+              if (!confirm(`האם אתה בטוח שברצונך לדחות את בקשת הגישה של ${req.name}?`)) return;
+              approveBtn.disabled = true;
+              rejectBtn.disabled = true;
+              rejectBtn.textContent = "דוחה...";
+              try {
+                await window.accessRequestService.rejectAccessRequest(req, currentAuthUser);
+                await renderAdminRequestsList();
+              } catch (err) {
+                alert("שגיאה בדחיית הבקשה: " + err.message);
+                approveBtn.disabled = false;
+                rejectBtn.disabled = false;
+                rejectBtn.textContent = "דחה";
+              }
+            });
+
+            adminRequestsList.appendChild(row);
+          });
+        } catch (err) {
+          adminRequestsList.innerHTML = `<div class="admin-requests-empty" style="color:red;">שגיאה בטעינת בקשות: ${err.message}</div>`;
+        }
+      }
+
+      function escapeHtmlText(str) {
+        return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+
+      if (adminRequestsBtn && !adminRequestsBtn._hasListener) {
+        adminRequestsBtn._hasListener = true;
+        adminRequestsBtn.addEventListener("click", () => {
+          if (adminRequestsModal) {
+            adminRequestsModal.style.display = "flex";
+            renderAdminRequestsList();
+          }
+        });
+      }
+
+      if (closeAdminRequestsModalBtn && !closeAdminRequestsModalBtn._hasListener) {
+        closeAdminRequestsModalBtn._hasListener = true;
+        closeAdminRequestsModalBtn.addEventListener("click", () => {
+          if (adminRequestsModal) adminRequestsModal.style.display = "none";
+        });
+      }
+
+      window._handleAuthStateChange = async (user, authMeta) => {
         if (user) {
+          if (!window.__ISOLATED_DEV_MODE__ && window.authService.isAuthorizedUser && !window.authService.isAuthorizedUser(user)) {
+            await window.authService.logoutAdmin();
+            showError("החשבון הזה אינו מורשה להיכנס למערכת.");
+            return;
+          }
+
           currentAuthUser = user;
           currentAuthUid = user.uid;
 
@@ -3996,9 +4630,21 @@
             document.body.appendChild(mainShell);
           }
 
+          if (window.__ISOLATED_DEV_MODE__ && devIsolatedBanner) {
+            devIsolatedBanner.style.display = "flex";
+          }
+
           const adminUserEmailEl = getEl("adminUserEmail");
           if (adminUserEmailEl) {
             adminUserEmailEl.textContent = user.email || "משתמש מחובר";
+          }
+
+          // Show Admin Requests button only for super admin galp3er@gmail.com
+          if (adminRequestsBtn) {
+            adminRequestsBtn.style.display = (user.email === "galp3er@gmail.com") ? "inline-flex" : "none";
+            if (user.email === "galp3er@gmail.com") {
+              refreshAdminRequestsBadge();
+            }
           }
 
           const adminLogoutBtn = getEl("adminLogoutBtn");
@@ -4006,6 +4652,13 @@
             adminLogoutBtn._hasLogoutListener = true;
             adminLogoutBtn.addEventListener("click", async () => {
               if (confirm("האם אתה בטוח שברצונך להתנתק מהמערכת?")) {
+                if (window.__ISOLATED_DEV_MODE__) {
+                  localStorage.removeItem("isolated_dev_active");
+                  window.__ISOLATED_DEV_MODE__ = false;
+                  if (devIsolatedBanner) devIsolatedBanner.style.display = "none";
+                  if (window._handleAuthStateChange) await window._handleAuthStateChange(null);
+                  return;
+                }
                 try {
                   await window.authService.logoutAdmin();
                 } catch (err) {
@@ -4018,13 +4671,13 @@
           clearError();
 
           if (autosaveStatusEl) {
-            autosaveStatusEl.textContent = "טוען נתונים מהענן...";
+            autosaveStatusEl.textContent = window.__ISOLATED_DEV_MODE__ ? "סביבה מבודדת מקומית" : "טוען נתונים מהענן...";
           }
 
           try {
             await loadUserWorkspace(user.uid);
             if (autosaveStatusEl) {
-              autosaveStatusEl.textContent = "מסונכרן עם הענן";
+              autosaveStatusEl.textContent = window.__ISOLATED_DEV_MODE__ ? "שמור מקומית (מבודד)" : "מסונכרן עם הענן";
             }
           } catch (err) {
             console.error("Failed to load user workspace:", err);
@@ -4056,25 +4709,65 @@
             document.body.appendChild(authGatekeeper);
           }
 
-          // Clear local in-memory state and reset fields
+          if (adminRequestsBtn) {
+            adminRequestsBtn.style.display = "none";
+          }
+
+          if (authMeta?.unauthorized) {
+            showError("החשבון הזה אינו מורשה להיכנס למערכת.");
+          }
+
+          // Clear local in-memory state, local storage cache, and reset fields
+          if (window.stateStorage?.removeSavedData) {
+            window.stateStorage.removeSavedData();
+          }
           resetWorkspaceToEmpty();
         }
-      });
+      };
+
+      window.authService.onAdminAuthStateChanged(window._handleAuthStateChange);
+
+      if (isLocalHost && localStorage.getItem("isolated_dev_active") === "true") {
+        enterDevIsolatedMode();
+      }
     };
   </script>
 
-  <!-- Admin Authentication & Firestore User Persistence Module -->
+  <!-- Admin Authentication, Access Requests & Firestore User Persistence Module -->
   <script type="module">
     import {
       loginWithGoogle,
       logoutAdmin,
-      onAdminAuthStateChanged
+      onAdminAuthStateChanged,
+      isAuthorizedUser,
+      isAuthorizedAdmin
     } from "./src/auth/adminAuthService.js";
     import {
       loadUserAppData,
       saveUserAppData,
       cancelPendingSave
     } from "./src/userDataService.js";
+    import {
+      submitAccessRequest,
+      fetchPendingAccessRequests,
+      approveAccessRequest,
+      rejectAccessRequest,
+      getGasBackendUrl,
+      setGasBackendUrl
+    } from "./src/accessRequestService.js";
+    import {
+      extractPeriodDays,
+      snapshotWorkerConstraints,
+      snapshotAssignments,
+      computePeriodFairness,
+      getAvailableMonths,
+      findOverlappingOfficialSchedules,
+      calculateAggregatedFairness,
+      formatMonthLabel,
+      saveOfficialScheduleDoc,
+      loadOfficialSchedulesDocs,
+      deleteOfficialScheduleDoc
+    } from "./src/fairnessService.js";
 
     window.userDataService = {
       loadUserAppData,
@@ -4082,10 +4775,35 @@
       cancelPendingSave
     };
 
+    window.fairnessService = {
+      extractPeriodDays,
+      snapshotWorkerConstraints,
+      snapshotAssignments,
+      computePeriodFairness,
+      getAvailableMonths,
+      findOverlappingOfficialSchedules,
+      calculateAggregatedFairness,
+      formatMonthLabel,
+      saveOfficialScheduleDoc,
+      loadOfficialSchedulesDocs,
+      deleteOfficialScheduleDoc
+    };
+
     window.authService = {
       loginWithGoogle,
       logoutAdmin,
-      onAdminAuthStateChanged
+      onAdminAuthStateChanged,
+      isAuthorizedUser,
+      isAuthorizedAdmin
+    };
+
+    window.accessRequestService = {
+      submitAccessRequest,
+      fetchPendingAccessRequests,
+      approveAccessRequest,
+      rejectAccessRequest,
+      getGasBackendUrl,
+      setGasBackendUrl
     };
 
     if (window.initAuthLifecycle) {

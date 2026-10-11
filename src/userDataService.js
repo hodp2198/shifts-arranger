@@ -27,6 +27,10 @@ export async function loadUserAppData(uid) {
   if (!uid || typeof uid !== "string") {
     throw new Error("מזהה משתמש (UID) אינו תקין.");
   }
+  if (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__) {
+    const raw = localStorage.getItem(`isolated_dev_appData_${uid}`);
+    return raw ? JSON.parse(raw) : null;
+  }
   const db = getDb();
   const userDocRef = doc(db, "users", uid, "appData", "current");
   const snapshot = await getDoc(userDocRef);
@@ -76,6 +80,10 @@ export async function saveUserAppData(uid, data, options = {}) {
 }
 
 async function executeSave(uid, data) {
+  if (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__) {
+    localStorage.setItem(`isolated_dev_appData_${uid}`, JSON.stringify(data));
+    return { success: true };
+  }
   const db = getDb();
   const userDocRef = doc(db, "users", uid, "appData", "current");
   const payload = {

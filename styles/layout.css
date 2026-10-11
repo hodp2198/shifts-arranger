@@ -1,11 +1,12 @@
     .shell {
       width: min(1160px, calc(100% - 32px));
+      max-width: 100%;
       margin: 0 auto;
       padding: 28px 0 52px;
       min-height: 100dvh;
       height: auto;
       overflow: visible;
-      touch-action: pan-y;
+      box-sizing: border-box;
     }
 
     .topbar {
@@ -132,6 +133,10 @@
       grid-template-columns: minmax(0, .98fr) minmax(420px, 1.02fr);
       gap: 18px;
       align-items: stretch;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .panel {
@@ -140,6 +145,10 @@
       border-radius: 16px;
       box-shadow: var(--shadow);
       align-self: start;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .panel-header {
@@ -150,6 +159,10 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .panel-header h2 {
@@ -161,4 +174,8 @@
 
     .panel-body {
       padding: 20px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
