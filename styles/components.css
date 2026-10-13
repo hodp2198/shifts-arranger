@@ -1274,6 +1274,18 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .fairness-table th.col-opened,
+    .fairness-table td.col-opened {
+      color: #19783b;
+      font-weight: 600;
+    }
+
+    .fairness-table th.col-closed,
+    .fairness-table td.col-closed {
+      color: #b83329;
+      font-weight: 600;
+    }
+
     .fairness-table td {
       padding: 10px 14px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.04);

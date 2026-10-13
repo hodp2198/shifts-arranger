@@ -108,12 +108,10 @@ export function snapshotAssignments(schedule) {
 /**
  * Computes fairness statistics for a single period, grouped by monthKey (YYYY-MM).
  * Strictly adheres to:
- * 1. פתח (opened): eligible open days the employee explicitly marked available (submitted and not blocked).
- * 2. סגר (closed): eligible open days the employee explicitly marked unavailable (blocked).
- * 3. לא דיווח (unreported): eligible open days where employee neither marked available nor unavailable.
- *    (Crucial: Unreported days are NOT counted as סגר).
- * 4. קיבל (assigned): shifts actually assigned in the official saved schedule.
- * 5. אחוז שיבוץ: assigned / opened.
+ * 1. פתח (opened): every eligible schedule shift the employee did NOT explicitly block.
+ * 2. סגר (closed): only eligible schedule shifts the employee explicitly blocked ("לא יכול").
+ * 3. קיבל (assigned): shifts actually assigned in the official saved schedule.
+ * 4. אחוז שיבוץ: assigned / opened.
  */
 export function computePeriodFairness(days, workerConstraints, assignments) {
   const eligibleDays = (Array.isArray(days) ? days : []).filter(d => !d.closed);
@@ -133,7 +131,6 @@ export function computePeriodFairness(days, workerConstraints, assignments) {
         resultByMonth[monthKey][name] = {
           opened: 0,
           closed: 0,
-          unreported: 0,
           assigned: 0
         };
       }
@@ -143,20 +140,15 @@ export function computePeriodFairness(days, workerConstraints, assignments) {
 
     for (const name of workerNames) {
       const constraints = workerConstraints[name] || { submittedDays: [], blockedDays: [] };
-      const subSet = new Set(constraints.submittedDays || []);
       const blkSet = new Set(constraints.blockedDays || []);
 
       const stats = resultByMonth[monthKey][name];
 
-      // Explicit availability:
-      if (subSet.has(day.iso) && !blkSet.has(day.iso)) {
-        stats.opened += 1;
-      } else if (blkSet.has(day.iso)) {
-        // Explicit unavailability:
+      // Business Rule: Every eligible shift that is not explicitly blocked is open
+      if (blkSet.has(day.iso)) {
         stats.closed += 1;
       } else {
-        // Lack of reporting:
-        stats.unreported += 1;
+        stats.opened += 1;
       }
 
       // Assigned:
@@ -265,7 +257,6 @@ export function calculateAggregatedFairness(officialSchedules, periodFilter = "c
       name,
       opened: 0,
       closed: 0,
-      unreported: 0,
       assigned: 0,
       assignmentRate: 0,
       assignmentRateFormatted: "0%"
@@ -283,16 +274,22 @@ export function calculateAggregatedFairness(officialSchedules, periodFilter = "c
 
     for (const name of allWorkers) {
       const stats = workerStats.get(name);
+      const isParticipant = Boolean(
+        (constraintsSnapshot && constraintsSnapshot[name]) ||
+        (assignment && (assignment.slot1 === name || assignment.slot2 === name))
+      );
+      if (!isParticipant) {
+        continue;
+      }
+
       const workerC = constraintsSnapshot[name] || { submittedDays: [], blockedDays: [] };
-      const subSet = new Set(workerC.submittedDays || []);
       const blkSet = new Set(workerC.blockedDays || []);
 
-      if (subSet.has(iso) && !blkSet.has(iso)) {
-        stats.opened += 1;
-      } else if (blkSet.has(iso)) {
+      // Business Rule: Every eligible shift that is not explicitly blocked is open
+      if (blkSet.has(iso)) {
         stats.closed += 1;
       } else {
-        stats.unreported += 1;
+        stats.opened += 1;
       }
 
       if (assignment) {
@@ -303,23 +300,25 @@ export function calculateAggregatedFairness(officialSchedules, periodFilter = "c
   }
 
   // Calculate assignment percentage
-  const records = Array.from(workerStats.values()).map(worker => {
-    let rate = 0;
-    let rateFormatted = "-";
-    if (worker.opened > 0) {
-      rate = Math.round((worker.assigned / worker.opened) * 100);
-      rateFormatted = `${rate}%`;
-    } else if (worker.assigned > 0) {
-      // Assigned despite 0 opened (e.g. forced or manual override)
-      rateFormatted = "100%";
-      rate = 100;
-    }
-    return {
-      ...worker,
-      assignmentRate: rate,
-      assignmentRateFormatted: rateFormatted
-    };
-  });
+  const records = Array.from(workerStats.values())
+    .filter(worker => worker.opened > 0 || worker.closed > 0 || worker.assigned > 0)
+    .map(worker => {
+      let rate = 0;
+      let rateFormatted = "-";
+      if (worker.opened > 0) {
+        rate = Math.round((worker.assigned / worker.opened) * 100);
+        rateFormatted = `${rate}%`;
+      } else if (worker.assigned > 0) {
+        // Assigned despite 0 opened (e.g. forced or manual override)
+        rateFormatted = "100%";
+        rate = 100;
+      }
+      return {
+        ...worker,
+        assignmentRate: rate,
+        assignmentRateFormatted: rateFormatted
+      };
+    });
 
   // Sort by highest assignment rate, then by name Hebrew locale
   records.sort((a, b) => {

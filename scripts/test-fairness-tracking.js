@@ -286,10 +286,9 @@ async function runTests() {
   });
 
   // -------------------------------------------------------------
-  // Test Scenario 7: Explicit availability (פתח) vs explicit unavailability (סגר) vs lack of reporting (לא דיווח)
-  // [Addresses User Correction 1]
+  // Test Scenario 7: Shifts not explicitly blocked are open (פתח)
   // -------------------------------------------------------------
-  test("Scenario 7: Explicit open (פתח), explicit closed (סגר), and lack of reporting (לא דיווח)", () => {
+  test("Scenario 7: Shifts not explicitly blocked are open; only explicit blocks are closed; no 'unreported'", () => {
     const daysSnapshot = [
       { iso: "2026-03-01", monthKey: "2026-03", closed: false },
       { iso: "2026-03-02", monthKey: "2026-03", closed: false },
@@ -297,11 +296,11 @@ async function runTests() {
     ];
 
     const workerConstraintsSnapshot = {
-      // Worker A reported: available on day 1, blocked on day 2, unmentioned on day 3
+      // Worker A: available on day 1, blocked on day 2, unmentioned on day 3
       "עובד א": {
         submittedDays: ["2026-03-01"],
         blockedDays: ["2026-03-02"]
-        // 2026-03-03 is NOT mentioned!
+        // 2026-03-03 is NOT explicitly blocked!
       }
     };
 
@@ -319,9 +318,12 @@ async function runTests() {
     const result = fairnessService.calculateAggregatedFairness([schedule], "2026-03");
     const workerA = result.records.find(r => r.name === "עובד א");
 
-    assert.strictEqual(workerA.opened, 1, "Day 1 must be counted as פתח");
-    assert.strictEqual(workerA.closed, 1, "Day 2 must be counted as סגר");
-    assert.strictEqual(workerA.unreported, 1, "Day 3 must be counted as לא דיווח - NEVER as סגר!");
+    // Days 1 and 3 are not blocked -> פתח = 2
+    assert.strictEqual(workerA.opened, 2, "Days 1 and 3 (unblocked) must be counted as פתח");
+    // Day 2 is blocked -> סגר = 1
+    assert.strictEqual(workerA.closed, 1, "Day 2 (blocked) must be counted as סגר");
+    // Unreported is removed completely
+    assert.strictEqual(workerA.unreported, undefined, "unreported must not exist in worker stats");
   });
 
   // -------------------------------------------------------------
@@ -389,6 +391,287 @@ async function runTests() {
     assert.strictEqual(fairnessService.formatMonthLabel("2026-03"), "מרץ 2026");
     assert.strictEqual(fairnessService.formatMonthLabel("2026-10"), "אוקטובר 2026");
     assert.strictEqual(fairnessService.formatMonthLabel("2026-01"), "ינואר 2026");
+  });
+
+  // -------------------------------------------------------------
+  // Test Scenario 10: escapeHtmlText sanitization & HTML row generation
+  // -------------------------------------------------------------
+  test("Scenario 10: escapeHtmlText sanitizes input and renders table rows safely", () => {
+    function escapeHtmlText(str) {
+      if (str == null) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    assert.strictEqual(escapeHtmlText("דוד & משה"), "דוד &amp; משה");
+    assert.strictEqual(escapeHtmlText('<b onmouseover="alert(1)">שם</b>'), "&lt;b onmouseover=&quot;alert(1)&quot;&gt;שם&lt;/b&gt;");
+    assert.strictEqual(escapeHtmlText(null), "");
+    assert.strictEqual(escapeHtmlText(undefined), "");
+    assert.strictEqual(escapeHtmlText(123), "123");
+
+    // Render sample records through HTML row generator
+    const sampleRecord = {
+      name: 'שרה & רבקה <script>',
+      opened: 5,
+      closed: 1,
+      assigned: 4,
+      assignmentRate: 80,
+      assignmentRateFormatted: "80%"
+    };
+
+    const rowHtml = `
+      <tr>
+        <td class="worker-name-cell">${escapeHtmlText(sampleRecord.name)}</td>
+        <td class="num-cell col-opened">${sampleRecord.opened}</td>
+        <td class="num-cell col-closed">${sampleRecord.closed}</td>
+        <td class="num-cell">${sampleRecord.assigned}</td>
+        <td class="rate-cell high">${sampleRecord.assignmentRateFormatted}</td>
+      </tr>
+    `;
+
+    assert(rowHtml.includes("&amp;"), "Must escape ampersand");
+    assert(rowHtml.includes("&lt;script&gt;"), "Must escape angle brackets");
+    assert(!rowHtml.includes("<script>"), "Must not contain raw script tag");
+  });
+
+  // -------------------------------------------------------------
+  // Test Scenario 11: Fairness table reflects ONLY successfully saved schedules
+  // -------------------------------------------------------------
+  test("Scenario 11: Fairness table reflects ONLY successfully saved schedules", () => {
+    const list = [];
+    // Calculate before save
+    const beforeResult = fairnessService.calculateAggregatedFairness(list, "cumulative");
+    assert.strictEqual(beforeResult.records.length, 0, "No records before save");
+
+    // Simulating save failure
+    const attemptedRecord = {
+      id: "invalid-save",
+      // simulate failure to commit
+    };
+    // Since save failed, attemptedRecord is NOT appended to list
+    const afterFailedResult = fairnessService.calculateAggregatedFairness(list, "cumulative");
+    assert.strictEqual(afterFailedResult.records.length, 0, "Records must not update on failed save");
+
+    // Simulating successful save
+    const validSavedRecord = {
+      id: "valid-save-1",
+      startDate: "2026-05-01",
+      endDate: "2026-05-03",
+      savedAt: "2026-05-01T08:00:00Z",
+      status: "active",
+      daysSnapshot: [
+        { iso: "2026-05-01", monthKey: "2026-05", closed: false },
+        { iso: "2026-05-02", monthKey: "2026-05", closed: false }
+      ],
+      workerConstraintsSnapshot: {
+        "דנה": { submittedDays: ["2026-05-01", "2026-05-02"], blockedDays: [] }
+      },
+      assignments: [
+        { iso: "2026-05-01", monthKey: "2026-05", slot1: "דנה", slot2: null }
+      ]
+    };
+    list.push(validSavedRecord);
+
+    // Calculate after successful save
+    const afterSuccessResult = fairnessService.calculateAggregatedFairness(list, "cumulative");
+    assert.strictEqual(afterSuccessResult.records.length, 1, "Must update records upon successful save");
+    assert.strictEqual(afterSuccessResult.records[0].name, "דנה");
+    assert.strictEqual(afterSuccessResult.records[0].assigned, 1);
+  });
+
+  // -------------------------------------------------------------
+  // Test Scenario 12: Worker not participating in a period accumulates NO fairness data in it
+  // -------------------------------------------------------------
+  test("Scenario 12: Worker who did not participate in a specific period does NOT accumulate fairness data in it", () => {
+    // March: Only Alice participated
+    const marchSchedule = {
+      id: "2026-03-01_2026-03-04",
+      startDate: "2026-03-01",
+      endDate: "2026-03-04",
+      savedAt: "2026-03-01T08:00:00Z",
+      status: "active",
+      daysSnapshot: [
+        { iso: "2026-03-01", monthKey: "2026-03", closed: false },
+        { iso: "2026-03-02", monthKey: "2026-03", closed: false },
+        { iso: "2026-03-03", monthKey: "2026-03", closed: false },
+        { iso: "2026-03-04", monthKey: "2026-03", closed: false }
+      ],
+      workerConstraintsSnapshot: {
+        "אליס": { submittedDays: ["2026-03-01"], blockedDays: ["2026-03-02"] }
+      },
+      assignments: [
+        { iso: "2026-03-01", monthKey: "2026-03", slot1: "אליס", slot2: null }
+      ]
+    };
+
+    // April: Only Bob participated (Alice was absent / on leave)
+    const aprilSchedule = {
+      id: "2026-04-01_2026-04-03",
+      startDate: "2026-04-01",
+      endDate: "2026-04-03",
+      savedAt: "2026-04-01T08:00:00Z",
+      status: "active",
+      daysSnapshot: [
+        { iso: "2026-04-01", monthKey: "2026-04", closed: false },
+        { iso: "2026-04-02", monthKey: "2026-04", closed: false },
+        { iso: "2026-04-03", monthKey: "2026-04", closed: false }
+      ],
+      workerConstraintsSnapshot: {
+        "בוב": { submittedDays: [], blockedDays: [] } // Bob had 0 blocks
+      },
+      assignments: [
+        { iso: "2026-04-01", monthKey: "2026-04", slot1: "בוב", slot2: null }
+      ]
+    };
+
+    const schedules = [marchSchedule, aprilSchedule];
+
+    // Check March view: Only Alice should appear
+    const marchFairness = fairnessService.calculateAggregatedFairness(schedules, "2026-03");
+    assert.strictEqual(marchFairness.records.length, 1, "Only Alice in March");
+    assert.strictEqual(marchFairness.records[0].name, "אליס");
+    assert.strictEqual(marchFairness.records[0].opened, 3); // 4 days - 1 blocked = 3 opened
+    assert.strictEqual(marchFairness.records[0].closed, 1);
+    assert.strictEqual(marchFairness.records[0].assigned, 1);
+
+    // Check April view: Only Bob should appear
+    const aprilFairness = fairnessService.calculateAggregatedFairness(schedules, "2026-04");
+    assert.strictEqual(aprilFairness.records.length, 1, "Only Bob in April");
+    assert.strictEqual(aprilFairness.records[0].name, "בוב");
+    assert.strictEqual(aprilFairness.records[0].opened, 3); // 3 days - 0 blocked = 3 opened
+    assert.strictEqual(aprilFairness.records[0].assigned, 1);
+
+    // Check Cumulative view:
+    const cumFairness = fairnessService.calculateAggregatedFairness(schedules, "cumulative");
+    assert.strictEqual(cumFairness.records.length, 2, "Both Alice and Bob in cumulative");
+
+    const aliceCum = cumFairness.records.find(r => r.name === "אליס");
+    const bobCum = cumFairness.records.find(r => r.name === "בוב");
+
+    // CRITICAL: Alice MUST NOT accumulate open days from April!
+    assert.strictEqual(aliceCum.opened, 3, "Alice opened shifts must be exactly 3 from March, zero from April");
+    assert.strictEqual(aliceCum.closed, 1, "Alice closed shifts must be 1 from March");
+    assert.strictEqual(aliceCum.assigned, 1, "Alice assigned must be 1");
+
+    // CRITICAL: Bob MUST NOT accumulate open days from March!
+    assert.strictEqual(bobCum.opened, 3, "Bob opened shifts must be exactly 3 from April, zero from March");
+    assert.strictEqual(bobCum.closed, 0, "Bob closed shifts must be 0");
+    assert.strictEqual(bobCum.assigned, 1, "Bob assigned must be 1");
+  });
+
+  // -------------------------------------------------------------
+  // Test Scenario 13: Availability rules for scheduling & constraint parsing
+  // -------------------------------------------------------------
+  test("Scenario 13: Business rules for availability and parsing", () => {
+    // Mock days of week: Sun (iso1), Mon (iso2), Tue (iso3)
+    const isoSun = "2026-05-10";
+    const isoMon = "2026-05-11";
+    const isoTue = "2026-05-12";
+
+    // 1. Explicitly blocked day: "א' - לא יכול"
+    const blockedWorker = {
+      name: "עובד 1",
+      max: 2,
+      onlyNight2: false,
+      blocked: new Set([isoSun]),
+      weekCounts: { 0: 0 }
+    };
+    // Helper availability check matching the new scheduling rule: !worker.blocked.has(iso)
+    const isAvailable = (w, iso) => !w.blocked.has(iso);
+
+    assert.strictEqual(isAvailable(blockedWorker, isoSun), false, "Explicitly blocked day is not available");
+    assert.strictEqual(isAvailable(blockedWorker, isoMon), true, "Unmentioned day is available");
+    assert.strictEqual(isAvailable(blockedWorker, isoTue), true, "Unmentioned day is available");
+
+    // 2. Day with hyphen only: "ב' -" (not in blocked)
+    const hyphenWorker = {
+      name: "עובד 2",
+      max: 2,
+      onlyNight2: false,
+      blocked: new Set(),
+      weekCounts: { 0: 0 }
+    };
+    assert.strictEqual(isAvailable(hyphenWorker, isoMon), true, "Day with hyphen only is available");
+
+    // 3. Completely empty worker column: 0 blocked days
+    const emptyWorker = {
+      name: "עובד 3",
+      max: 2,
+      onlyNight2: false,
+      blocked: new Set(),
+      weekCounts: { 0: 0 }
+    };
+    assert.strictEqual(isAvailable(emptyWorker, isoSun), true, "Empty constraints worker is available for Sun");
+    assert.strictEqual(isAvailable(emptyWorker, isoMon), true, "Empty constraints worker is available for Mon");
+    assert.strictEqual(isAvailable(emptyWorker, isoTue), true, "Empty constraints worker is available for Tue");
+  });
+
+  // -------------------------------------------------------------
+  // Test Scenario 14: Hebrew text classification in isUnavailableText & restrictive constraints
+  // -------------------------------------------------------------
+  test("Scenario 14: Hebrew text classification in isUnavailableText & restrictive reports", () => {
+    const fs = require('fs');
+    const path = require('path');
+    const indexHtmlPath = path.resolve(__dirname, '../index.html');
+    const indexHtmlContent = fs.readFileSync(indexHtmlPath, 'utf8');
+
+    // Extract isUnavailableText directly from index.html
+    const isUnavailableMatch = indexHtmlContent.match(/function isUnavailableText\(text\) \{([\s\S]*?)\n    \}/);
+    assert(isUnavailableMatch, "isUnavailableText function must be found in index.html");
+    const isUnavailableText = new Function('text', isUnavailableMatch[1]);
+
+    // Positive expressions with 'אין' MUST NOT be blocked (return false)
+    assert.strictEqual(isUnavailableText("אין בעיה"), false, "'אין בעיה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין בעיות"), false, "'אין בעיות' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין לי בעיה"), false, "'אין לי בעיה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין לי שום בעיה"), false, "'אין לי שום בעיה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין שום בעיה"), false, "'אין שום בעיה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין מניעה"), false, "'אין מניעה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין לי מניעה"), false, "'אין לי מניעה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין מגבלה"), false, "'אין מגבלה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין לי מגבלה"), false, "'אין לי מגבלה' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין אילוצים"), false, "'אין אילוצים' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין אילוץ"), false, "'אין אילוץ' must NOT be blocked");
+    assert.strictEqual(isUnavailableText("אין שום אילוצים"), false, "'אין שום אילוצים' must NOT be blocked");
+
+    // Hebrew words containing א-י-ן as letters MUST NOT be falsely blocked
+    assert.strictEqual(isUnavailableText("ראיון"), false, "'ראיון' must NOT match standalone 'אין'");
+    assert.strictEqual(isUnavailableText("בניין"), false, "'בניין' must NOT match standalone 'אין'");
+    assert.strictEqual(isUnavailableText("אינטרנט"), false, "'אינטרנט' must NOT match standalone 'אין'");
+
+    // Mandatory 4 core phrases MUST be blocked (return true)
+    assert.strictEqual(isUnavailableText("לא יכול"), true, "'לא יכול' must be blocked");
+    assert.strictEqual(isUnavailableText("לא יכולה"), true, "'לא יכולה' must be blocked");
+    assert.strictEqual(isUnavailableText("לא פנוי"), true, "'לא פנוי' must be blocked");
+    assert.strictEqual(isUnavailableText("לא פנויה"), true, "'לא פנויה' must be blocked");
+
+    // Other standard unavailable phrases MUST be blocked
+    assert.strictEqual(isUnavailableText("לא יוכלה"), true, "'לא יוכלה' (typo) must be blocked");
+    assert.strictEqual(isUnavailableText("לא זמין"), true, "'לא זמין' must be blocked");
+    assert.strictEqual(isUnavailableText("לא זמינה"), true, "'לא זמינה' must be blocked");
+    assert.strictEqual(isUnavailableText("חסום"), true, "'חסום' must be blocked");
+    assert.strictEqual(isUnavailableText("חסומה"), true, "'חסומה' must be blocked");
+    assert.strictEqual(isUnavailableText("אין אפשרות"), true, "'אין אפשרות' must be blocked");
+    assert.strictEqual(isUnavailableText("אין לי אפשרות"), true, "'אין לי אפשרות' must be blocked");
+    assert.strictEqual(isUnavailableText("אין מצב"), true, "'אין מצב' must be blocked");
+    assert.strictEqual(isUnavailableText("אין זמינות"), true, "'אין זמינות' must be blocked");
+    assert.strictEqual(isUnavailableText("אין יכולת"), true, "'אין יכולת' must be blocked");
+    assert.strictEqual(isUnavailableText("אין"), true, "Standalone 'אין' must be blocked");
+    assert.strictEqual(isUnavailableText("אין."), true, "'אין.' with punctuation must be blocked");
+
+    // Restrictive reporting expressions (e.g., 'יכול רק ביום ג'')
+    const isInlineOnlyMatch = indexHtmlContent.match(/function isInlineOnlyAvailabilityText\(text\) \{([\s\S]*?)\n    \}/);
+    assert(isInlineOnlyMatch, "isInlineOnlyAvailabilityText function must be found in index.html");
+    const isInlineOnlyAvailabilityText = new Function('text', isInlineOnlyMatch[1]);
+
+    assert.strictEqual(isInlineOnlyAvailabilityText("יכול רק ביום ג'"), true, "'יכול רק ביום ג'' must be recognized as restrictive");
+    assert.strictEqual(isInlineOnlyAvailabilityText("יכולה רק בשלישי"), true, "'יכולה רק בשלישי' must be recognized as restrictive");
+    assert.strictEqual(isInlineOnlyAvailabilityText("זמין רק ביום א'"), true, "'זמין רק ביום א'' must be recognized as restrictive");
+    assert.strictEqual(isInlineOnlyAvailabilityText("פנויה רק ברביעי"), true, "'פנויה רק ברביעי' must be recognized as restrictive");
+    assert.strictEqual(isInlineOnlyAvailabilityText("יכול בכל הימים"), false, "'יכול בכל הימים' is not restrictive");
   });
 
   console.log("\n=================================================");

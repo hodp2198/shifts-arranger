@@ -217,15 +217,14 @@
                 <thead>
                   <tr>
                     <th>עובד</th>
-                    <th class="num-col">פתח</th>
-                    <th class="num-col">סגר</th>
-                    <th class="num-col">לא דיווח</th>
+                    <th class="num-col col-opened">פתח</th>
+                    <th class="num-col col-closed">סגר</th>
                     <th class="num-col">קיבל</th>
                     <th class="num-col">אחוז שיבוץ</th>
                   </tr>
                 </thead>
                 <tbody id="fairnessTableBody">
-                  <tr><td colspan="6" class="fairness-empty-cell">טרם נשמרו סידורים רשמיים במערכת.</td></tr>
+                  <tr><td colspan="5" class="fairness-empty-cell">טרם נשמרו סידורים רשמיים במערכת.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -283,6 +282,16 @@
     }
 
     const getEl = id => document.getElementById(id) || mainShell?.querySelector("#" + id) || authGatekeeper?.querySelector("#" + id);
+
+    function escapeHtmlText(str) {
+      if (str == null) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+    window.escapeHtmlText = escapeHtmlText;
 
     let currentAuthUid = null;
     let currentAuthUser = null;
@@ -1238,7 +1247,7 @@
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
         if (!card) return;
         card.querySelector(".constraints").value = text;
-        card.querySelector(".active-worker").checked = hasMeaningfulWorkerInput(text);
+        card.querySelector(".active-worker").checked = true;
         imported += 1;
       });
 
@@ -1532,7 +1541,12 @@
     }
 
     function isUnavailableText(text) {
-      return /לא\s*יכול|לא\s*יכולה|לא\s*יוכלה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(text);
+      const clean = String(text || "").trim();
+      if (!clean) return false;
+      if (/אין\s*(?:לי\s*)?(?:שום\s*)?(?:בעיה|בעיות|מניעה|מגבלה|מגבלות|אילוץ|אילוצים|העדפה|העדפות|קושי)/.test(clean)) {
+        return false;
+      }
+      return /לא\s*יכול|לא\s*יכולה|לא\s*יוכלה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|לא\s*זמינה|חסום|חסומה|אין\s*(?:לי\s*)?(?:אפשרות|מצב|זמינות|יכולת)|(?:^|[^א-ת])אין(?:$|[^א-ת])/i.test(clean);
     }
 
     function isPreferredText(text) {
@@ -1595,11 +1609,12 @@
 
       document.querySelectorAll(".worker").forEach(card => {
         const text = card.querySelector(".constraints").value.trim();
+        const isActive = card.querySelector(".active-worker")?.checked;
+        if (isActive) activeWorkers += 1;
         if (!text) return;
         const parsed = parseConstraints(text);
         blocked += parsed.blocked.size;
         preferred += parsed.preferred.size;
-        if (hasMeaningfulWorkerInput(text)) activeWorkers += 1;
       });
 
       return { blocked, preferred, activeWorkers };
@@ -1651,8 +1666,8 @@
         const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText);
         return {
           name,
-          active: (manuallyActive && hasWorkerInput) || oneTimeActive,
-          oneTimeOnly: oneTimeActive && !hasWorkerInput,
+          active: manuallyActive || oneTimeActive,
+          oneTimeOnly: oneTimeActive && !manuallyActive,
           onlyNight2: settings.onlyNight2,
           color: getWorkerColor(name, workerDefinition?.color),
           min: settings.min,
@@ -1734,7 +1749,6 @@
         candidate.name !== worker.name
         && !alreadyChosen.includes(candidate.name)
         && !candidate.blocked.has(day.iso)
-        && candidate.submitted?.has(day.iso)
         && !(slot === 1 && candidate.onlyNight2)
         && (candidate.weekCounts[day.week] || 0) < candidate.max
       ));
@@ -1742,7 +1756,6 @@
         .filter(worker => !alreadyChosen.includes(worker.name))
         .filter(worker => worker.max > 0)
         .filter(worker => !worker.blocked.has(day.iso))
-        .filter(worker => worker.submitted?.has(day.iso))
         .filter(worker => !(slot === 1 && worker.onlyNight2))
         .filter(worker => (worker.weekCounts[day.week] || 0) < worker.max || (allowOverMax && !hasUnderMaxAlternative(worker)))
         .sort((a, b) => workerScore(a, day, slot) - workerScore(b, day, slot) || a.name.localeCompare(b.name, "he"));
@@ -1755,7 +1768,6 @@
     function canAssign(worker, day, slot, options = {}) {
       if (!worker || worker.blocked.has(day.iso)) return false;
       if (worker.max <= 0) return false;
-      if (!worker.submitted?.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
       if (!options.allowOverMax && (worker.weekCounts[day.week] || 0) >= worker.max) return false;
       return true;
@@ -1828,7 +1840,6 @@
     function canWorkSlot(worker, day, slot, entry) {
       if (!worker || worker.blocked.has(day.iso)) return false;
       if (worker.max <= 0) return false;
-      if (!worker.submitted?.has(day.iso)) return false;
       if (slot === 1 && worker.onlyNight2) return false;
       if (slot !== 1 && entry.first?.name === worker.name) return false;
       if (slot !== 2 && entry.second?.name === worker.name) return false;
@@ -2706,9 +2717,6 @@
           if (item.slot === 1 && worker.onlyNight2) {
             issues.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} is only night 2 but assigned to night 1.`);
           }
-          if (!worker.submitted?.has(entry.day.iso)) {
-            issues.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} assigned without submitting this day.`);
-          }
           if (worker.blocked.has(entry.day.iso)) {
             issues.push(`${entry.day.dayName} ${displayDate(entry.day.date)}: ${worker.name} assigned on a blocked day.`);
           }
@@ -2760,13 +2768,13 @@
       for (const day of days) {
         if (day.closed) continue;
         const submitters = workers.filter(worker => (
-          worker.submitted?.has(day.iso) && !worker.blocked.has(day.iso)
+          !worker.blocked.has(day.iso)
         ));
 
         if (!submitters.length) {
-          warnings.push(`${day.dayName} ${displayDate(day.date)}: אף עובד לא הגיש את היום הזה.`);
+          warnings.push(`${day.dayName} ${displayDate(day.date)}: אף עובד אינו זמין ביום הזה.`);
         } else if (submitters.length === 1) {
-          warnings.push(`${day.dayName} ${displayDate(day.date)}: רק ${submitters[0].name} הגיש/ה את היום הזה.`);
+          warnings.push(`${day.dayName} ${displayDate(day.date)}: רק ${submitters[0].name} זמין/ה ביום הזה.`);
         }
       }
     }
@@ -2896,9 +2904,6 @@
           if (slot === 1 && worker.onlyNight2) {
             warnings.push(`${prefix}: ${worker.name} מוגדר/ת רק נייט 2.`);
           }
-          if (!worker.submitted?.has(entry.day.iso)) {
-            warnings.push(`${prefix}: ${worker.name} לא הגיש/ה זמינות ליום הזה.`);
-          }
           if (worker.blocked.has(entry.day.iso)) {
             warnings.push(`${prefix}: ${worker.name} לא זמין/ה ביום הזה.`);
           }
@@ -2966,7 +2971,6 @@
         for (let week = 0; week < weekConfigs.length; week++) {
           worker.availableDaysByWeek[week] = days
             .filter(day => day.week === week && !day.closed)
-            .filter(day => worker.submitted?.has(day.iso))
             .filter(day => !worker.blocked.has(day.iso))
             .filter(day => !(worker.onlyNight2 && day.closed))
             .length;
@@ -2977,7 +2981,6 @@
         for (const worker of workers) {
           day.remainingByWorker[worker.name] = days
             .filter(item => item.week === day.week && item.iso >= day.iso && !item.closed)
-            .filter(item => worker.submitted?.has(item.iso))
             .filter(item => !worker.blocked.has(item.iso))
             .length;
         }
@@ -3334,7 +3337,6 @@
         worker
         && worker.name !== otherName
         && !worker.blocked.has(day.iso)
-        && worker.submitted?.has(day.iso)
         && !(slot === 1 && worker.onlyNight2)
       );
       const getAlternativeSlotCandidates = (entry, slot, otherName = null) => workers
@@ -3763,7 +3765,7 @@
 
       if (data.bulkExcelNotes) {
         renderImportSummary({
-          imported: savedWorkers.filter(worker => worker.constraints).length,
+          imported: savedWorkers.filter(worker => worker.active || worker.constraints).length,
           importedWeeks: getDetectedWeekConfigs().length
         });
       }
@@ -3892,14 +3894,14 @@
       const officialList = state.officialSchedules || [];
 
       if (!officialList.length) {
-        tableBody.innerHTML = `<tr><td colspan="6" class="fairness-empty-cell">טרם נשמרו סידורים רשמיים במערכת.<br><span class="helper">לחץ על כפתור "שמור" כדי לקבוע את הסידור המוצג כסידור רשמי ראשון.</span></td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="fairness-empty-cell">טרם נשמרו סידורים רשמיים במערכת.<br><span class="helper">לחץ על כפתור "שמור" כדי לקבוע את הסידור המוצג כסידור רשמי ראשון.</span></td></tr>`;
         return;
       }
 
       const result = window.fairnessService.calculateAggregatedFairness(officialList, selectedPeriod);
 
       if (!result.records.length) {
-        tableBody.innerHTML = `<tr><td colspan="6" class="fairness-empty-cell">אין נתוני עובדים לתקופה שנבחרה.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="fairness-empty-cell">אין נתוני עובדים לתקופה שנבחרה.</td></tr>`;
         return;
       }
 
@@ -3908,9 +3910,8 @@
         return `
           <tr>
             <td class="worker-name-cell">${escapeHtmlText(record.name)}</td>
-            <td class="num-cell">${record.opened}</td>
-            <td class="num-cell">${record.closed}</td>
-            <td class="num-cell" style="color: var(--muted-soft);">${record.unreported}</td>
+            <td class="num-cell col-opened">${record.opened}</td>
+            <td class="num-cell col-closed">${record.closed}</td>
             <td class="num-cell">${record.assigned}</td>
             <td class="rate-cell ${rateClass}">${record.assignmentRateFormatted}</td>
           </tr>
@@ -3979,9 +3980,12 @@
           manualOverrides: { ...state.manualOverrides }
         };
 
-        await window.fairnessService.saveOfficialScheduleDoc(currentAuthUid, record);
+        const saveRes = await window.fairnessService.saveOfficialScheduleDoc(currentAuthUid, record);
+        if (!saveRes || !saveRes.success) {
+          throw new Error("פעולת השמירה נכשלה.");
+        }
 
-        // Reload official schedules from Firestore
+        // Reload official schedules from storage
         state.officialSchedules = await window.fairnessService.loadOfficialSchedulesDocs(currentAuthUid);
         state.isCurrentScheduleOfficial = true;
         state.currentOfficialSchedule = record;
@@ -3994,7 +3998,8 @@
       } catch (err) {
         console.error("Failed to save official schedule:", err);
         alert("שגיאה בשמירת הסידור הרשמי: " + (err.message || err));
-        if (saveBtn) {
+        checkCurrentScheduleOfficialStatus();
+        if (saveBtn && !state.isCurrentScheduleOfficial) {
           saveBtn.disabled = false;
           saveBtn.textContent = "שמור";
         }
@@ -4585,9 +4590,7 @@
         }
       }
 
-      function escapeHtmlText(str) {
-        return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-      }
+      // escapeHtmlText is defined in the top-level script scope
 
       if (adminRequestsBtn && !adminRequestsBtn._hasListener) {
         adminRequestsBtn._hasListener = true;
