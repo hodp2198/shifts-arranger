@@ -293,6 +293,11 @@
     }
     window.escapeHtmlText = escapeHtmlText;
 
+    var CSS = (typeof CSS !== "undefined" && CSS.escape) ? CSS : {
+      escape: s => String(s).replace(/["\\]/g, '\\$&')
+    };
+    if (typeof window !== "undefined") window.CSS = CSS;
+
     let currentAuthUid = null;
     let currentAuthUser = null;
 
@@ -314,6 +319,13 @@
       officialSchedules: []
     };
     let WORKERS = [];
+    try {
+      Object.defineProperty(window, "WORKERS", {
+        get: () => WORKERS,
+        set: (val) => { WORKERS = val; },
+        configurable: true
+      });
+    } catch (e) {}
 
     const workersEl = getEl("workers");
     const specialDaysEl = getEl("specialDays");
@@ -442,10 +454,12 @@
       const day = String(date.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     }
+    window.isoDate = isoDate;
 
     function displayDate(date) {
       return `${date.getDate()}.${date.getMonth() + 1}`;
     }
+    window.displayDate = displayDate;
 
     function calendarRulesHelper() {
       return window.calendarRules || {
@@ -643,16 +657,12 @@
     }
 
     function safeImportDate(day, month, year = importYear()) {
-      if (!day || !month || day < 1 || day > 31) return null;
-      while (month > 12) {
-        month -= 12;
-        year += 1;
+      if (!day || !month || day < 1 || day > 31 || month < 1 || month > 12) return null;
+      const date = new Date(year, month - 1, day, 12);
+      if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+        return null;
       }
-      while (month < 1) {
-        month += 12;
-        year -= 1;
-      }
-      return new Date(year, month - 1, day, 12);
+      return date;
     }
 
     function normalizeWeekHeaderText(text) {
@@ -693,54 +703,55 @@
       const line = normalizeWeekHeaderText(text);
       if (!line) return null;
 
-      const fullRange = line.match(/(\d{1,2})[./](\d{1,2})\s*-\s*(\d{1,2})(?:[./](\d{1,2}))?/);
-      if (fullRange) {
-        const startDay = Number(fullRange[1]);
-        const startMonth = Number(fullRange[2]);
-        const endDay = Number(fullRange[3]);
-        const endMonth = Number(fullRange[4] || (endDay < startDay ? startMonth + 1 : startMonth));
-        const start = safeImportDate(startDay, startMonth);
-        const endYear = (start?.getFullYear() || importYear()) + (endMonth < startMonth ? 1 : 0);
-        const end = safeImportDate(endDay, endMonth, endYear);
+      // 1. Full range with month on both: e.g. 15/03/2026 - 21/03/2026 or 15/03 - 21/03 or 15.03 - 21.03
+      const full = line.match(/(^|[^\d])(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\s*(?:-|–|—|עד)\s*(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?![./\d])/);
+      if (full) {
+        const sDay = Number(full[2]), sMonth = Number(full[3]);
+        let sYear = full[4] ? Number(full[4]) : importYear();
+        if (sYear < 100) sYear += 2000;
+        const eDay = Number(full[5]), eMonth = Number(full[6]);
+        let eYear = full[7] ? Number(full[7]) : (sYear + (eMonth < sMonth ? 1 : 0));
+        if (eYear < 100) eYear += 2000;
+        const start = safeImportDate(sDay, sMonth, sYear);
+        const end = safeImportDate(eDay, eMonth, eYear);
         return start && end ? { start, end } : null;
       }
 
-      const startWithEndMonth = line.match(/(^|[^\d])(\d{1,2})\s*-\s*(\d{1,2})[./](\d{1,2})(?![./\d])/);
-      if (startWithEndMonth) {
-        const startDay = Number(startWithEndMonth[2]);
-        const endDay = Number(startWithEndMonth[3]);
-        const endMonth = Number(startWithEndMonth[4]);
-        const startMonth = inferStartMonth(startDay, endDay, endMonth);
-        const start = safeImportDate(startDay, startMonth);
-        const endYear = (start?.getFullYear() || importYear()) + (endMonth < startMonth ? 1 : 0);
-        const end = safeImportDate(endDay, endMonth, endYear);
+      // 2. Start day with end day and month: e.g. 15 - 21/03 or 15 - 21/03/2026
+      const startDayEndMonth = line.match(/(^|[^\d])(\d{1,2})\s*(?:-|–|—|עד)\s*(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?![./\d])/);
+      if (startDayEndMonth) {
+        const sDay = Number(startDayEndMonth[2]);
+        const eDay = Number(startDayEndMonth[3]);
+        const eMonth = Number(startDayEndMonth[4]);
+        let eYear = startDayEndMonth[5] ? Number(startDayEndMonth[5]) : importYear();
+        if (eYear < 100) eYear += 2000;
+        let sMonth = eMonth;
+        let sYear = eYear;
+        if (sDay > eDay) {
+          sMonth = eMonth === 1 ? 12 : eMonth - 1;
+          if (sMonth === 12) sYear = eYear - 1;
+        }
+        const start = safeImportDate(sDay, sMonth, sYear);
+        const end = safeImportDate(eDay, eMonth, eYear);
         return start && end ? { start, end } : null;
       }
 
-      const startOnly = line.match(/(\d{1,2})[./](\d{1,2})/);
+      // 3. Start date only: e.g. 15/03 or 15/03/2026 or שבוע של 15/03
+      const startOnly = line.match(/(^|[^\d])(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?![./\d])/);
       if (startOnly) {
-        const start = safeImportDate(Number(startOnly[1]), Number(startOnly[2]));
+        const sDay = Number(startOnly[2]), sMonth = Number(startOnly[3]);
+        let sYear = startOnly[4] ? Number(startOnly[4]) : importYear();
+        if (sYear < 100) sYear += 2000;
+        const start = safeImportDate(sDay, sMonth, sYear);
         return start ? { start, end: addDays(start, 6) } : null;
       }
 
-      const simpleRange = line.match(/(^|[^\d])(\d{1,2})\s*-\s*(\d{1,2})(?![./\d])/);
-      if (simpleRange && rowContext) {
-        const startDay = Number(simpleRange[2]);
-        const endDay = Number(simpleRange[3]);
-        if (startDay === rowContext.start.getDate() && endDay === rowContext.end.getDate()) {
+      // 4. Simple range with context: e.g. 15-21
+      const simple = line.match(/(^|[^\d])(\d{1,2})\s*(?:-|–|—|עד)\s*(\d{1,2})(?![./\d])/);
+      if (simple && rowContext) {
+        const sDay = Number(simple[2]), eDay = Number(simple[3]);
+        if (sDay === rowContext.start.getDate() && eDay === rowContext.end.getDate()) {
           return { start: new Date(rowContext.start), end: new Date(rowContext.end) };
-        }
-      }
-
-      if (simpleRange) {
-        const startDay = Number(simpleRange[2]);
-        const endDay = Number(simpleRange[3]);
-        if (startDay > endDay) {
-          const endMonth = new Date().getMonth() + 1;
-          const startMonth = inferStartMonth(startDay, endDay, endMonth);
-          const start = safeImportDate(startDay, startMonth);
-          const end = safeImportDate(endDay, endMonth, start?.getFullYear());
-          return start && end ? { start, end } : null;
         }
       }
 
@@ -758,91 +769,143 @@
       );
     }
 
-    function chooseRowWeekRange(ranges) {
-      const counts = new Map();
-      ranges.forEach(range => {
-        const key = weekRangeKey(range);
-        if (!key) return;
-        const current = counts.get(key) || { range, count: 0 };
-        current.count += 1;
-        counts.set(key, current);
+    function findHodColumnIndex(headers) {
+      if (!Array.isArray(headers)) return -1;
+      let idx = headers.findIndex(h => normalizeWorkerName(h) === "הוד");
+      if (idx >= 0) return idx;
+      idx = headers.findIndex(h => {
+        const clean = normalizeWorkerName(h);
+        return clean.startsWith("הוד") || clean.includes("הוד");
       });
-      return [...counts.values()]
-        .sort((a, b) => b.count - a.count || a.range.start - b.range.start)[0]?.range || null;
+      return idx;
+    }
+
+    function validateHodWeek(week) {
+      if (!week || !week.start || !week.end) {
+        return { valid: false, reason: "תאריכים חסרים" };
+      }
+      if (isNaN(week.start.getTime()) || isNaN(week.end.getTime())) {
+        return { valid: false, reason: "תאריך לא חוקי" };
+      }
+      if (week.start > week.end) {
+        return { valid: false, reason: "תאריך התחלה מאוחר מתאריך סיום" };
+      }
+      if (week.start.getDay() !== 0) {
+        return { valid: false, reason: "שבוע העבודה לפי הוד חייב להתחיל ביום ראשון (א')" };
+      }
+      return { valid: true };
     }
 
     function applyWeekDatesFromRows(rows) {
-      const rawDetected = [];
-      const normalized = [];
-      const deduplicated = new Map();
-      const missingMonthWarnings = new Set();
       state.weekDetectionWarnings = [];
+      state.detectedSchedulePeriod = null;
 
-      rows.forEach((row, rowIndex) => {
-        const cells = (row || [])
-          .map((cell, columnIndex) => ({ columnIndex, text: String(cell || "").trim() }))
-          .filter(cell => cell.text && isConstraintWeekHeader(cell.text));
-
-        if (!cells.length) return;
-
-        const explicitRanges = cells
-          .map(cell => parseWeekLabelToRange(cell.text))
-          .filter(Boolean);
-        const rowRange = chooseRowWeekRange(explicitRanges);
-        if (!rowRange) {
-          cells.map(cell => simpleWeekRangeLabel(cell.text)).filter(Boolean).forEach(label => {
-            missingMonthWarnings.add(`לא זוהה חודש עבור השבוע ${label}, לא ניתן לבדוק חגים.`);
-          });
-          return;
-        }
-
-        rawDetected.push({
-          row: rowIndex + 1,
-          labels: cells.map(cell => cell.text)
-        });
-
-        cells.forEach(cell => {
-          const range = parseWeekLabelToRange(cell.text, rowRange) || rowRange;
-          normalized.push({
-            row: rowIndex + 1,
-            column: cell.columnIndex + 1,
-            raw: cell.text,
-            canonical: weekRangeDebug(range)
-          });
-        });
-
-        const key = weekRangeKey(rowRange);
-        if (!deduplicated.has(key)) deduplicated.set(key, rowRange);
-      });
-
-      const weeks = [...deduplicated.values()].sort((a, b) => a.start - b.start);
-      state.weekDetectionWarnings = [...missingMonthWarnings];
-      const trace = {
-        "raw detected": rawDetected,
-        normalized,
-        deduplicated: [...deduplicated.values()].map(weekRangeDebug),
-        final: weeks.map(weekRangeDebug),
-        warnings: state.weekDetectionWarnings
-      };
-      console.info("[weeks]", trace);
-
-      if (!weeks.length) {
+      if (!rows || !rows.length) {
         setDetectedWeeks([]);
-        if (state.weekDetectionWarnings.length) {
-          startDateEl.value = "";
-          weekCountEl.value = "0";
-        }
         renderWeekSettings();
         refreshCalendarDays();
-        return 0;
+        return { success: false, error: "קובץ האקסל ריק או שלא זוהו שורות.", weekCount: 0 };
       }
 
-      setDetectedWeeks(weeks);
-      startDateEl.value = editDateValue(weeks[0].start);
-      weekCountEl.value = String(weeks.length);
+      const headers = rows[0] || [];
+      const hodColIndex = findHodColumnIndex(headers);
+      if (hodColIndex === -1) {
+        setDetectedWeeks([]);
+        renderWeekSettings();
+        refreshCalendarDays();
+        return {
+          success: false,
+          error: "העובד הוד לא נמצא בקובץ האקסל. הוד הוא מקור התאריכים הקובע לסידור.",
+          weekCount: 0
+        };
+      }
+
+      const rawDetected = [];
+      const detectedWeeks = [];
+      const weekRowIndices = [];
+
+      for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+        const text = String(rows[rowIndex]?.[hodColIndex] || "").trim();
+        if (!text || !isConstraintWeekHeader(text)) continue;
+
+        rawDetected.push({ row: rowIndex + 1, label: text });
+        const range = parseWeekLabelToRange(text);
+        if (!range) {
+          setDetectedWeeks([]);
+          renderWeekSettings();
+          refreshCalendarDays();
+          return {
+            success: false,
+            error: `לא ניתן לפענח את התאריכים של הוד משורת הכותרת: "${text}".`,
+            weekCount: 0
+          };
+        }
+
+        const validation = validateHodWeek(range);
+        if (!validation.valid) {
+          setDetectedWeeks([]);
+          renderWeekSettings();
+          refreshCalendarDays();
+          return {
+            success: false,
+            error: `התאריכים של הוד אינם תקינים (${text}): ${validation.reason}.`,
+            weekCount: 0
+          };
+        }
+
+        detectedWeeks.push(range);
+        weekRowIndices.push(rowIndex);
+      }
+
+      if (!detectedWeeks.length) {
+        setDetectedWeeks([]);
+        renderWeekSettings();
+        refreshCalendarDays();
+        return {
+          success: false,
+          error: "לא זוהו כותרות תאריכים בעמודה של הוד. לא ניתן לקבוע את תקופת הסידור.",
+          weekCount: 0
+        };
+      }
+
+      for (let i = 1; i < detectedWeeks.length; i++) {
+        if (detectedWeeks[i].start <= detectedWeeks[i - 1].start) {
+          setDetectedWeeks([]);
+          renderWeekSettings();
+          refreshCalendarDays();
+          return {
+            success: false,
+            error: `תאריכי השבועות של הוד אינם עקביים בסדר כרונולוגי (${displayDate(detectedWeeks[i].start)} מול ${displayDate(detectedWeeks[i - 1].start)}).`,
+            weekCount: 0
+          };
+        }
+      }
+
+      console.info("[weeks from Hod]", {
+        raw: rawDetected,
+        weeks: detectedWeeks.map(weekRangeDebug)
+      });
+
+      setDetectedWeeks(detectedWeeks);
+      startDateEl.value = editDateValue(detectedWeeks[0].start);
+      weekCountEl.value = String(detectedWeeks.length);
+      state.detectedSchedulePeriod = {
+        start: detectedWeeks[0].start,
+        end: detectedWeeks[detectedWeeks.length - 1].end,
+        weekCount: detectedWeeks.length,
+        source: "הוד",
+        weekRowIndices
+      };
+
       renderWeekSettings();
       refreshCalendarDays();
-      return weeks.length;
+
+      return {
+        success: true,
+        weeks: detectedWeeks,
+        weekCount: detectedWeeks.length,
+        weekRowIndices
+      };
     }
 
     function getScheduleDays() {
@@ -1187,7 +1250,16 @@
       const headers = rows[0] || [];
       let imported = 0;
       const issues = [];
-      const importedWeeks = applyWeekDatesFromRows(rows);
+      const weekDetection = applyWeekDatesFromRows(rows);
+      if (!weekDetection.success) {
+        statusEl.innerHTML = `
+          <div class="import-summary">
+            <div class="import-issues" style="color: #ba1a1a; font-weight: bold;">❌ ${escapeHtmlText(weekDetection.error)}</div>
+          </div>
+        `;
+        return;
+      }
+      const importedWeeks = weekDetection.weekCount;
       const existingWorkers = WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
       const existingState = getCurrentWorkerState();
       const importedDefinitions = [];
@@ -1249,6 +1321,11 @@
         card.querySelector(".constraints").value = text;
         card.querySelector(".active-worker").checked = true;
         imported += 1;
+
+        const parsed = parseConstraints(text, { workerName: worker.name });
+        if (parsed.warnings && parsed.warnings.length) {
+          issues.push(...parsed.warnings);
+        }
       });
 
       if (!imported) issues.push("לא זוהו עמודות עובדים.");
@@ -1432,15 +1509,18 @@
     }
 
     function isConstraintWeekHeader(line) {
-      return /^תאריך\s*[:\-/]?/i.test(line)
-        || /^שבוע\s+של\s+\d{1,2}[./]\d{1,2}/i.test(line)
-        || /^שבוע\s+\d{1,2}[./]\d{1,2}/i.test(line)
-        || /^\d{1,2}[./]\d{1,2}\s*[-–]\s*\d{1,2}(?:[./]\d{1,2})?/i.test(line)
-        || /^\d{1,2}\s*[-–]\s*\d{1,2}[./]\d{1,2}/i.test(line)
-        || /^\d{1,2}\s*[-–]\s*\d{1,2}$/i.test(line);
+      const clean = normalizeWeekHeaderText(line);
+      if (!clean) return false;
+      return Boolean(parseWeekLabelToRange(clean))
+        || /^תאריך\s*[:\-/]?/i.test(clean)
+        || /^שבוע\s*(?:של)?\s*\d{1,2}[./]\d{1,2}/i.test(clean)
+        || /^שבוע\s+\d+/i.test(clean)
+        || /^\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\s*[-–]\s*\d{1,2}(?:[./]\d{1,2})?(?:[./]\d{2,4})?/i.test(clean)
+        || /^\d{1,2}\s*[-–]\s*\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?/i.test(clean)
+        || /^\d{1,2}\s*[-–]\s*\d{1,2}$/i.test(clean);
     }
 
-    function resolveConstraintWeekOffset(line, currentOffset, sawDate, weekConfigs) {
+    function resolveConstraintWeekOffset(line, currentOffset, sawDate, weekConfigs, weekHeaderIndex = 0) {
       const parsed = parseWeekLabelToRange(line);
       if (parsed) {
         const key = weekRangeKey(parsed);
@@ -1448,11 +1528,10 @@
         if (matchedWeek >= 0) return matchedWeek;
 
         const matchedStart = weekConfigs.findIndex(week => isoDate(week.start) === isoDate(parsed.start));
-        return matchedStart >= 0 ? matchedStart : null;
+        if (matchedStart >= 0) return matchedStart;
       }
 
-      const baseOffset = Number.isInteger(currentOffset) ? currentOffset : -1;
-      return sawDate ? baseOffset + 1 : 0;
+      return weekHeaderIndex;
     }
 
     function isInlineOnlyAvailabilityText(text) {
@@ -1488,13 +1567,15 @@
       return true;
     }
 
-    function parseConstraints(text) {
+    function parseConstraints(text, options = {}) {
+      const workerName = options.workerName || "";
       const blocked = new Set();
       const preferred = new Set();
       const submitted = new Set();
-      const lines = text.split(/\r?\n/);
-      let weekOffset = 0;
-      let sawDate = false;
+      const warnings = [];
+      const lines = String(text || "").split(/\r?\n/);
+      let weekOffset = null;
+      let weekHeaderCount = 0;
       const weekConfigs = getWeekConfigs();
 
       for (const rawLine of lines) {
@@ -1506,8 +1587,14 @@
         }
 
         if (isConstraintWeekHeader(line)) {
-          weekOffset = resolveConstraintWeekOffset(line, weekOffset, sawDate, weekConfigs);
-          sawDate = true;
+          weekOffset = resolveConstraintWeekOffset(line, weekOffset, weekHeaderCount > 0, weekConfigs, weekHeaderCount);
+          weekHeaderCount += 1;
+
+          if (weekOffset >= weekConfigs.length) {
+            const label = workerName ? `לעובד/ת ${workerName}` : "לעובד";
+            warnings.push(`${label} דווח שבוע ${weekHeaderCount} מעבר לתקופת הסידור (${weekConfigs.length} שבועות לפי הוד). אילוצים אלו לא שובצו.`);
+            weekOffset = null;
+          }
           continue;
         }
 
@@ -1521,6 +1608,16 @@
 
         const dayIndex = day === "שבת" ? 6 : DAY_NAMES.indexOf(day);
         if (!SCHEDULE_DAYS.includes(dayIndex)) continue;
+
+        if (weekOffset === null && weekHeaderCount === 0) {
+          if (weekConfigs.length === 1) {
+            weekOffset = 0;
+          } else {
+            const label = workerName ? ` עבור ${workerName}` : "";
+            warnings.push(`לא ניתן לקבוע בוודאות לאיזה שבוע שייך האילוץ "${line}"${label} (חסרה כותרת שבוע).`);
+            continue;
+          }
+        }
 
         if (weekOffset === null) continue;
 
@@ -1537,7 +1634,7 @@
         if (wanted && !unavailable) preferred.add(iso);
       }
 
-      return { blocked, preferred, submitted };
+      return { blocked, preferred, submitted, warnings };
     }
 
     function isUnavailableText(text) {
@@ -1622,21 +1719,34 @@
 
     function renderImportSummary({ imported, importedWeeks, issues = [] }) {
       const counts = countImportedConstraints();
-      issues.push(...state.weekDetectionWarnings);
+      const allIssues = [...issues, ...(state.weekDetectionWarnings || [])];
+
+      const configs = getWeekConfigs();
+      let periodText = "לא נקבעה";
+      if (configs.length > 0) {
+        const first = configs[0].start;
+        const last = configs[configs.length - 1].end;
+        periodText = `${displayDate(first)} – ${displayDate(last)}`;
+      }
+
       const rows = [
-        "✓ נתוני אמת מיובאים",
+        "✓ מקור התאריכים: הוד",
+        `✓ תקופת הסידור שזוהתה: ${periodText}`,
+        `✓ מספר השבועות: ${importedWeeks || configs.length || 0}`,
         `✓ זוהו ${imported} עובדים`,
-        `✓ זוהו ${importedWeeks || getWeekConfigs().length || 0} שבועות`,
         `✓ זוהו ${counts.blocked} חסימות`,
         `✓ זוהו ${counts.preferred} ימים מועדפים`
       ];
-      if (!counts.activeWorkers) issues.push("לא נמצאו אילוצים פעילים לעובדים.");
-      if (!importedWeeks && !getDetectedWeekConfigs().length) issues.push("לא זוהו שבועות מתוך האקסל.");
+
+      if (!counts.activeWorkers) allIssues.push("לא נמצאו אילוצים פעילים לעובדים.");
+      if (!importedWeeks && !getDetectedWeekConfigs().length) allIssues.push("לא זוהו שבועות מתוך האקסל.");
+
+      const uniqueIssues = [...new Set(allIssues)];
 
       bulkExcelStatusEl.innerHTML = `
         <div class="import-summary">
           ${rows.map(row => `<div>${row}</div>`).join("")}
-          ${issues.length ? `<div class="import-issues">${issues.map(issue => `⚠ ${issue}`).join("<br>")}</div>` : ""}
+          ${uniqueIssues.length ? `<div class="import-issues">${uniqueIssues.map(issue => `⚠ ${escapeHtmlText(issue)}`).join("<br>")}</div>` : ""}
         </div>
       `;
     }
@@ -1651,7 +1761,7 @@
           onlyNight2: card.querySelector(".night2-only").checked
         });
         const workerDefinition = WORKERS.find(worker => worker.name === name);
-        const parsedConstraints = parseConstraints(constraintsText);
+        const parsedConstraints = parseConstraints(constraintsText, { workerName: name });
         console.log(
           "[parsed-one-time-constraints]",
           name,
@@ -4734,6 +4844,15 @@
         enterDevIsolatedMode();
       }
     };
+
+    window.state = state;
+    window.applyWeekDatesFromRows = applyWeekDatesFromRows;
+    window.getDetectedWeekConfigs = getDetectedWeekConfigs;
+    window.parseConstraints = parseConstraints;
+    window.findHodColumnIndex = findHodColumnIndex;
+    window.validateHodWeek = validateHodWeek;
+    window.importRowsMatrix = importRowsMatrix;
+    window.getScheduleDays = getScheduleDays;
   </script>
 
   <!-- Admin Authentication, Access Requests & Firestore User Persistence Module -->
