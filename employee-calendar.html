@@ -2,6 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
+  <script src="src/runtimeEnvironment.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>הוספת משמרות ליומן גוגל</title>
   <meta name="description" content="סנכרון והוספת משמרות עבודה ליומן Google בלחיצת כפתור">
@@ -204,6 +205,13 @@
     }
 
     async function initEmployeeCalendarPage() {
+      if (window.runtimeEnvironment.isTestMode) {
+        document.title = "TEST MODE — יומן בדיקה";
+        const banner = document.createElement("p");
+        banner.textContent = "TEST MODE — תצוגה מקומית בלבד. כתיבה ל-Google Calendar חסומה.";
+        banner.setAttribute("role", "status");
+        document.body.prepend(banner);
+      }
       renderLoading();
       try {
         const params = new URLSearchParams(window.location.search);

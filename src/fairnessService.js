@@ -340,6 +340,10 @@ export function calculateAggregatedFairness(officialSchedules, periodFilter = "c
 let firestoreInstance = null;
 
 async function getFirestoreDb(customDb = null) {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   if (customDb) return customDb;
   if (firestoreInstance) return firestoreInstance;
 

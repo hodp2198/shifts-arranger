@@ -1,22 +1,12 @@
-/**
- * Test Suite: Excel Date Recognition & Authoritative Hod Source
- * Verifies all 8 mandatory scenarios:
- * 1. All employees report correct dates
- * 2. One employee reports wrong date but day of week and order are valid
- * 3. Hod reports 2 weeks and another employee reports 3 weeks
- * 4. Employee reports only 1 block and rest of days are empty
- * 5. Employee does not appear in file
- * 6. Hod does not appear in file
- * 7. Hod's dates are invalid (unparseable, invalid date, not Sunday, inverted range, inconsistent order)
- * 8. Period including an Israeli holiday
- */
-
+/** Phase 2 integration: automatic employee matching and calendar-dated imports. */
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
 function createSandbox() {
+  const listeners = new Map();
+  const documentListeners = new Map();
   const content = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
 
   const elements = new Map();
@@ -47,7 +37,9 @@ function createSandbox() {
         return getOrCreateMockEl(`${id}_sub`);
       },
       querySelectorAll: () => [],
-      addEventListener: () => {},
+      closest: () => null,
+      appendChild: () => {},
+      addEventListener: (event, handler) => listeners.set(`${id}:${event}`, handler),
       removeEventListener: () => {},
       remove: () => {},
       select: () => {}
@@ -86,7 +78,13 @@ function createSandbox() {
   }
 
   const sandbox = {
-    console,
+    console: { log() {}, info() {}, warn() {}, error() {} },
+    Date: class extends Date {
+      constructor(...args) { super(...(args.length ? args : ['2026-03-01T10:00:00Z'])); }
+      static now() { return new Date('2026-03-01T10:00:00Z').getTime(); }
+    },
+    alert: () => {},
+    confirm: () => true,
     setTimeout: () => {},
     setInterval: () => {},
     clearTimeout: () => {},
@@ -111,7 +109,7 @@ function createSandbox() {
         return [];
       },
       createElement: (tag) => getOrCreateMockEl(`tag_${tag}`),
-      addEventListener: () => {},
+      addEventListener: (event, handler) => documentListeners.set(event, handler),
       removeEventListener: () => {}
     },
     navigator: {},
@@ -123,6 +121,7 @@ function createSandbox() {
     }
   };
 
+  sandbox.window.confirm = () => true;
   sandbox.window.document = sandbox.document;
   sandbox.window.window = sandbox.window;
   sandbox.globalThis = sandbox;
@@ -138,357 +137,250 @@ function createSandbox() {
   const calendarRulesCode = fs.readFileSync(path.resolve(__dirname, '../src/calendarRules.js'), 'utf8');
   vm.runInContext(calendarRulesCode, sandbox);
 
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../src/schedulePeriodService.js'), 'utf8'), sandbox);
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../src/draftSnapshot.js'), 'utf8'), sandbox);
+
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../src/constraintImportService.js'), 'utf8'), sandbox);
+
   // Load index.html main inline script
   const scriptText = content.match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInContext(scriptText, sandbox);
 
-  return { sandbox, getOrCreateMockEl, getWorkerCard, workerCards };
+  return { sandbox, getOrCreateMockEl, getWorkerCard, workerCards, listeners, documentListeners,
+    run: code => vm.runInContext(code, sandbox) };
 }
 
 async function runTests() {
-  console.log('=================================================');
-  console.log('Testing Excel Date Recognition & Authoritative Hod');
-  console.log('=================================================\n');
-
+  const { storageHarness } = require('./test-draft-safety');
+  const { workers, screenshotRows } = require('./test-constraint-import');
   let passed = 0;
-  let failed = 0;
-
-  function test(name, fn) {
-    try {
-      fn();
-      console.log(`[PASS] ${name}`);
-      passed++;
-    } catch (err) {
-      console.error(`[FAIL] ${name}`);
-      console.error(err);
-      failed++;
+  async function test(name, fn) { await fn(); console.log(`[PASS] ${name}`); passed++; }
+  async function ready() {
+    const c = createSandbox();
+    const storage = storageHarness();
+    c.sandbox.Date = class extends Date {
+      constructor(...args) { super(...(args.length ? args : ['2026-10-20T09:00:00Z'])); }
+    };
+    c.sandbox.window.userDataService = storage.api;
+    c.sandbox.window.fairnessService = { ...(await import('../src/fairnessService.js')), loadOfficialSchedulesDocs: async () => [] };
+    c.run(`currentAuthUid='manager'; state.historyStatus='ready'; WORKERS=${JSON.stringify(workers.map(worker => ({ ...worker, min: 1, max: 2 })))}; selectPeriod(window.schedulePeriodService.createPeriod({startDate:'2026-10-25',weekCount:2}))`);
+    for (const worker of workers) c.getWorkerCard(worker.name);
+    return { ...c, storage, state: c.sandbox.window.state };
+  }
+  async function importRows(c, rows) {
+    c.getOrCreateMockEl('bulkExcelNotes').value = rows.map(row => row.join('\t')).join('\n');
+    return c.sandbox.window.importRowsMatrix(rows, c.getOrCreateMockEl('bulkExcelStatus'));
+  }
+  function issueContainer(id, choice) {
+    return { dataset: { importIssue: id }, querySelector: selector => ({ value: choice[selector] || '' }) };
+  }
+  await test('Real screenshot layout matches all employees and automatically applies dated constraints', async () => {
+    const c = await ready();
+    const before = JSON.stringify(c.state.period);
+    const result = await importRows(c, screenshotRows('1.11-7.11', false));
+    assert.equal(result.success, true);
+    assert.equal(JSON.stringify(c.state.period), before);
+    assert.equal(c.state.pendingExcelImport, null);
+    assert.equal(c.run('periodReadiness()'), '');
+    const daniel = c.run("getAllWorkersData().find(worker=>worker.name==='דניאל')");
+    assert(daniel.blocked.has('2026-10-25'));
+    assert(daniel.blocked.has('2026-11-01'));
+    const hod = c.run("getAllWorkersData().find(worker=>worker.name==='הוד')");
+    assert.equal(hod.blocked.has('2026-10-25'), true, 'first Excel block maps to first canonical week');
+    assert(c.getOrCreateMockEl('bulkExcelStatus').textContent.includes('סדר בלוקים'));
+    assert(c.getWorkerCard('דניאל').querySelector('.imported-constraints').textContent.includes('2026-10-25'));
+    assert.equal((await c.storage.api.loadDraftBackups('manager')).length, 1);
+  });
+  await test('Screenshot date errors and election note do not require review; Saturday shorthand applies', async () => {
+    const c = await ready();
+    await importRows(c, screenshotRows());
+    assert.equal(c.state.constraintImport.issues.length, 0);
+    assert.equal(c.run('periodReadiness()'), '');
+    assert.equal(c.run('requireReadyPeriod()'), true);
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='דניאל').blocked.has('2026-10-25')"));
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='דניאל').blocked.has('2026-11-01')"));
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='נעמי').blocked.has('2026-10-31')"));
+    assert(c.state.constraintImport.notes.some(note => note.workerName === 'הוד' && note.date === '2026-11-03'));
+    assert(c.getOrCreateMockEl('constraintImportReview').innerHTML.includes('יום בחירות'));
+  });
+  await test('Audited screenshot corrections reach engine inputs and permit all 24 audited assignments', async () => {
+    const c = await ready();
+    await importRows(c, screenshotRows());
+    const input = c.run('getAllWorkersData()');
+    const worker = name => input.find(item => item.name === name);
+    assert(worker('דניאל').blocked.has('2026-11-03'));
+    for (const date of ['2026-11-01', '2026-11-02', '2026-11-04', '2026-11-05']) assert(worker('יהלי').blocked.has(date), date);
+    for (const date of ['2026-11-03', '2026-11-07']) {
+      assert.equal(worker('יהלי').blocked.has(date), false, date);
+      assert(worker('יהלי').submitted.has(date), date);
     }
-  }
-
-  // -------------------------------------------------------------
-  // Test 1: All employees report correct dates
-  // -------------------------------------------------------------
-  test('Test 1: All employees report correct dates', () => {
-    const { sandbox } = createSandbox();
-
-    const rows = [
-      ['הוד', 'אשרקת', 'דניאל'],
-      ['15/03/2026 - 21/03/2026', '15/03/2026 - 21/03/2026', '15/03/2026 - 21/03/2026'],
-      ['א\' - לא יכול', 'א\' -', 'א\' -'],
-      ['ב\' -', 'ב\' - לא יכול', 'ב\' -'],
-      ['22/03/2026 - 28/03/2026', '22/03/2026 - 28/03/2026', '22/03/2026 - 28/03/2026'],
-      ['א\' -', 'א\' -', 'א\' - לא יכול']
+    for (const date of ['2026-10-25', '2026-11-01']) {
+      assert.equal(worker('נעמי').blocked.has(date), false, date);
+      assert(worker('נעמי').submitted.has(date), date);
+    }
+    for (const date of ['2026-10-27', '2026-11-03']) assert.equal(worker('שדא').blocked.has(date), false, date);
+    for (const date of ['2026-10-28', '2026-10-29', '2026-11-04', '2026-11-05']) assert(worker('שדא').blocked.has(date), date);
+    const audited = [
+      ['2026-10-25', 'נעמי', 'הדס'], ['2026-10-26', 'סיואר', 'הוד'],
+      ['2026-10-27', 'דניאל', 'שדא'], ['2026-10-28', 'הוד', 'אשרקת'],
+      ['2026-10-29', 'הדס', 'דניאל'], ['2026-10-31', 'יהלי', 'סיואר'],
+      ['2026-11-01', 'הוד', 'נעמי'], ['2026-11-02', 'אשרקת', 'דניאל'],
+      ['2026-11-03', 'הדס', 'יהלי'], ['2026-11-04', 'סיואר', 'הוד'],
+      ['2026-11-05', 'דניאל', 'אשרקת'], ['2026-11-07', 'שדא', 'הדס']
     ];
-
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(rows, statusEl);
-
-    // Week detection check
-    const weeks = sandbox.window.getDetectedWeekConfigs();
-    assert.strictEqual(weeks.length, 2, 'Must detect 2 weeks from Hod');
-    assert.strictEqual(sandbox.window.isoDate(weeks[0].start), '2026-03-15');
-    assert.strictEqual(sandbox.window.isoDate(weeks[0].end), '2026-03-21');
-    assert.strictEqual(sandbox.window.isoDate(weeks[1].start), '2026-03-22');
-    assert.strictEqual(sandbox.window.isoDate(weeks[1].end), '2026-03-28');
-
-    // UI text check
-    assert(statusEl.innerHTML.includes('מקור התאריכים: הוד'), 'Summary must declare Hod as date source');
-    assert(statusEl.innerHTML.includes('מספר השבועות: 2'), 'Summary must declare 2 weeks');
-
-    // Worker constraints check
-    const hodCard = sandbox.document.querySelector('.worker[data-worker="הוד"]');
-    const ashraqatCard = sandbox.document.querySelector('.worker[data-worker="אשרקת"]');
-    const danielCard = sandbox.document.querySelector('.worker[data-worker="דניאל"]');
-
-    assert(hodCard.querySelector('.active-worker').checked, 'Hod must be active');
-    assert(ashraqatCard.querySelector('.active-worker').checked, 'Ashraqat must be active');
-    assert(danielCard.querySelector('.active-worker').checked, 'Daniel must be active');
-
-    const hodParsed = sandbox.window.parseConstraints(hodCard.querySelector('.constraints').value, { workerName: 'הוד' });
-    const ashraqatParsed = sandbox.window.parseConstraints(ashraqatCard.querySelector('.constraints').value, { workerName: 'אשרקת' });
-    const danielParsed = sandbox.window.parseConstraints(danielCard.querySelector('.constraints').value, { workerName: 'דניאל' });
-
-    assert(hodParsed.blocked.has('2026-03-15'), 'Hod blocked on 2026-03-15');
-    assert(ashraqatParsed.blocked.has('2026-03-16'), 'Ashraqat blocked on 2026-03-16');
-    assert(danielParsed.blocked.has('2026-03-22'), 'Daniel blocked on 2026-03-22');
+    assert.equal(c.run('periodReadiness()'), '');
+    let checked = 0;
+    for (const [date, ...names] of audited) {
+      const day = c.sandbox.window.getScheduleDays().find(item => item.iso === date);
+      assert(day && !day.closed, date);
+      for (const name of names) {
+        assert(worker(name).active, name);
+        assert.equal(worker(name).blocked.has(date), false, name + ' ' + date);
+        checked++;
+      }
+    }
+    assert.equal(checked, 24);
+    for (const date of ['2026-10-30', '2026-11-06']) assert.equal(c.sandbox.window.getScheduleDays().some(day => day.iso === date), false);
   });
-
-  // -------------------------------------------------------------
-  // Test 2: One employee reports wrong date but day of week and order are valid
-  // -------------------------------------------------------------
-  test('Test 2: One employee reports wrong date but day of week and order are valid', () => {
-    const { sandbox } = createSandbox();
-
-    // Daniel has wrong dates: 14/03 - 20/03 instead of 15-21, and 21/03 - 27/03 instead of 22-28
-    const rows = [
-      ['הוד', 'דניאל'],
-      ['15/03/2026 - 21/03/2026', '14/03/2026 - 20/03/2026'],
-      ['א\' -', 'ב\' - לא יכול'],
-      ['22/03/2026 - 28/03/2026', '21/03/2026 - 27/03/2026'],
-      ['א\' -', 'ג\' - לא יכול']
-    ];
-
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(rows, statusEl);
-
-    // Schedule period must be determined by Hod
-    const weeks = sandbox.window.getDetectedWeekConfigs();
-    assert.strictEqual(weeks.length, 2, 'Schedule weeks determined by Hod (2 weeks)');
-    assert.strictEqual(sandbox.window.isoDate(weeks[0].start), '2026-03-15', 'Week 1 starts 15/03 from Hod');
-    assert.strictEqual(sandbox.window.isoDate(weeks[1].start), '2026-03-22', 'Week 2 starts 22/03 from Hod');
-
-    // Daniel's constraints must NOT be lost!
-    const danielCard = sandbox.document.querySelector('.worker[data-worker="דניאל"]');
-    const danielParsed = sandbox.window.parseConstraints(danielCard.querySelector('.constraints').value, { workerName: 'דניאל' });
-
-    // In week 1 (15-21/03), day 'ב' is Monday 2026-03-16
-    assert(danielParsed.blocked.has('2026-03-16'), 'Daniel day ב in week 1 must map to 2026-03-16');
-    // In week 2 (22-28/03), day 'ג' is Tuesday 2026-03-24
-    assert(danielParsed.blocked.has('2026-03-24'), 'Daniel day ג in week 2 must map to 2026-03-24');
-
-    // Original constraints text must remain unmodified
-    assert(danielCard.querySelector('.constraints').value.includes('14/03/2026'), 'Original text in card is preserved');
+  await test('Manager resolves genuinely unclear boundaries and weekday labels with a backed-up decision', async () => {
+    const c = await ready();
+    await importRows(c, [['הוד', 'דניאל'], ["ב' - לא יכול", 'תאריך: טעות'], ["ב' - יכול", 'ז - לא יכול']]);
+    let item = c.state.constraintImport.issues.find(issue => issue.type === 'block');
+    c.sandbox.reviewContainer = issueContainer(item.id, { '.resolve-block': '2' });
+    await c.run('resolveImportIssue(reviewContainer,false)');
+    item = c.state.constraintImport.issues.find(issue => issue.type === 'entry');
+    c.sandbox.reviewContainer = issueContainer(item.id, { '.resolve-weekday': '6', '.resolve-status': 'unavailable' });
+    await c.run('resolveImportIssue(reviewContainer,false)');
+    assert.equal(c.state.constraintImport.issues.length, 0);
+    assert.equal(c.run('periodReadiness()'), '');
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='דניאל').blocked.has('2026-10-31')"));
+    assert(c.state.constraintImport.sources[0].rawText.includes('תאריך: טעות'));
+    assert.equal((await c.storage.api.loadDraftBackups('manager')).length, 3);
   });
-
-  // -------------------------------------------------------------
-  // Test 3: Hod reports 2 weeks and another employee reports 3 weeks
-  // -------------------------------------------------------------
-  test('Test 3: Hod reports 2 weeks and another employee reports 3 weeks', () => {
-    const { sandbox } = createSandbox();
-
-    // Hod has 2 weeks, Sarah has 3 weeks
-    const rows = [
-      ['הוד', 'שרה'],
-      ['15/03/2026 - 21/03/2026', '15/03/2026 - 21/03/2026'],
-      ['א\' -', 'א\' - לא יכול'],
-      ['22/03/2026 - 28/03/2026', '22/03/2026 - 28/03/2026'],
-      ['א\' -', 'ב\' - לא יכול'],
-      ['', '29/03/2026 - 04/04/2026'],
-      ['', 'ג\' - לא יכול']
-    ];
-
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(rows, statusEl);
-
-    // Schedule remains 2 weeks (determined by Hod)
-    const weeks = sandbox.window.getDetectedWeekConfigs();
-    assert.strictEqual(weeks.length, 2, 'Schedule length must be 2 weeks (from Hod)');
-
-    const sarahCard = sandbox.document.querySelector('.worker[data-worker="שרה"]');
-    const sarahParsed = sandbox.window.parseConstraints(sarahCard.querySelector('.constraints').value, { workerName: 'שרה' });
-
-    // Weeks 1 and 2 constraints are mapped
-    assert(sarahParsed.blocked.has('2026-03-15'), 'Sarah week 1 blocked mapped');
-    assert(sarahParsed.blocked.has('2026-03-23'), 'Sarah week 2 blocked mapped');
-
-    // Week 3 must trigger a warning and NOT be assigned
-    assert(sarahParsed.warnings.length > 0, 'Warning must be generated for out-of-bounds week 3');
-    assert(sarahParsed.warnings.some(w => w.includes('מעבר לתקופת הסידור')), 'Warning message explains week 3 is beyond Hod period');
-
-    // Week 3 constraint (Tuesday 2026-03-31) must NOT be assigned into week 1 or week 2
-    assert(!sarahParsed.blocked.has('2026-03-17'), 'Week 3 constraint must not be falsely mapped to week 1');
-    assert(!sarahParsed.blocked.has('2026-03-24'), 'Week 3 constraint must not be falsely mapped to week 2');
-
-    // UI summary displays the warning
-    assert(statusEl.innerHTML.includes('מעבר לתקופת הסידור'), 'Summary issues must display week 3 warning');
+  await test('An employee becomes active when their only unresolved entry is resolved', async () => {
+    const c = await ready();
+    await importRows(c, [['דניאל'], ['25-31.10'], ["א' - אולי"]]);
+    assert.equal(c.getWorkerCard('דניאל').querySelector('.active-worker').checked, false);
+    const item = c.state.constraintImport.issues[0];
+    c.sandbox.reviewContainer = issueContainer(item.id, { '.resolve-status': 'unavailable' });
+    await c.run('resolveImportIssue(reviewContainer,false)');
+    assert.equal(c.getWorkerCard('דניאל').querySelector('.active-worker').checked, true);
   });
-
-  // -------------------------------------------------------------
-  // Test 4: Employee reports only 1 block and rest of days are empty
-  // -------------------------------------------------------------
-  test('Test 4: Employee reports only 1 block and rest of days are empty', () => {
-    const { sandbox } = createSandbox();
-
-    const rows = [
-      ['הוד', 'עומר'],
-      ['15/03/2026 - 21/03/2026', '15/03/2026 - 21/03/2026'],
-      ['א\' -', 'א\' - לא יכול'],
-      ['22/03/2026 - 28/03/2026', '22/03/2026 - 28/03/2026']
-    ];
-
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(rows, statusEl);
-
-    const omerCard = sandbox.document.querySelector('.worker[data-worker="עומר"]');
-    const omerParsed = sandbox.window.parseConstraints(omerCard.querySelector('.constraints').value, { workerName: 'עומר' });
-
-    // Exactly 1 block
-    assert.strictEqual(omerParsed.blocked.size, 1, 'Omer must have exactly 1 blocked day');
-    assert(omerParsed.blocked.has('2026-03-15'), 'Omer blocked on 2026-03-15');
-
-    // Availability check: unmentioned days are available
-    const isAvailable = (blocked, iso) => !blocked.has(iso);
-    assert.strictEqual(isAvailable(omerParsed.blocked, '2026-03-15'), false, '2026-03-15 is blocked');
-    assert.strictEqual(isAvailable(omerParsed.blocked, '2026-03-16'), true, '2026-03-16 is available');
-    assert.strictEqual(isAvailable(omerParsed.blocked, '2026-03-17'), true, '2026-03-17 is available');
-    assert.strictEqual(isAvailable(omerParsed.blocked, '2026-03-22'), true, '2026-03-22 is available');
-    assert.strictEqual(isAvailable(omerParsed.blocked, '2026-03-23'), true, '2026-03-23 is available');
+  await test('Backup failure cannot overwrite employee settings, prior constraints or imported state', async () => {
+    const c = await ready();
+    c.getWorkerCard('הוד').querySelector('.constraints').value = 'original manual data';
+    c.storage.fail('draftBackup');
+    const result = await importRows(c, [['הוד'], ['25-31.10'], ["א' - לא יכול"]]);
+    assert.equal(result.success, false);
+    assert.equal(c.state.constraintImport, null);
+    assert.equal(c.getWorkerCard('הוד').querySelector('.constraints').value, 'original manual data');
   });
-
-  // -------------------------------------------------------------
-  // Test 5: Employee does not appear in file
-  // -------------------------------------------------------------
-  test('Test 5: Employee does not appear in file', () => {
-    const { sandbox, getWorkerCard } = createSandbox();
-
-    // Initialize an existing worker in WORKERS
-    sandbox.window.WORKERS.push(
-      { name: 'עובד ותיק', aliases: [], min: 1, max: 2, color: ['#eee', '#333', '#ccc'] }
-    );
-    const veteranCard = getWorkerCard('עובד ותיק');
-    veteranCard.querySelector('.active-worker').checked = true;
-
-    // Excel file does NOT include 'עובד ותיק'
-    const rows = [
-      ['הוד', 'אשרקת'],
-      ['15/03/2026 - 21/03/2026', '15/03/2026 - 21/03/2026'],
-      ['א\' -', 'א\' -']
-    ];
-
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(rows, statusEl);
-
-    // 'עובד ותיק' must be marked inactive
-    assert.strictEqual(veteranCard.querySelector('.active-worker').checked, false, 'Veteran worker must be marked inactive');
-
-    // UI summary notes that veteran worker was marked inactive
-    assert(statusEl.innerHTML.includes('עובד ותיק'), 'Status summary must mention inactive worker');
-    assert(statusEl.innerHTML.includes('סומנו כלא פעילים'), 'Status summary notes worker is inactive');
+  await test('Reimporting a recognized legacy column preserves a backup before replacing its old parser text', async () => {
+    const c = await ready();
+    const original = "25-31.10\nא' - לא יכול";
+    c.getWorkerCard('הוד').querySelector('.constraints').value = original;
+    c.state.legacyImportReviewRequired = true;
+    c.state.pendingExcelImport = { rawText: original };
+    await importRows(c, [['הוד'], ['25-31.10'], ["א' - לא יכול"]]);
+    assert.equal(c.getWorkerCard('הוד').querySelector('.constraints').value, '');
+    assert.equal(c.state.legacyImportReviewRequired, false);
+    assert.equal(c.run('periodReadiness()'), '');
+    const backups = await c.storage.api.loadDraftBackups('manager');
+    assert.equal(JSON.parse(backups[0].draftJson).workers.find(worker => worker.name === 'הוד').constraints, original);
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='הוד').blocked.has('2026-10-25')"));
   });
-
-  // -------------------------------------------------------------
-  // Test 6: Hod does not appear in file
-  // -------------------------------------------------------------
-  test('Test 6: Hod does not appear in file', () => {
-    const { sandbox } = createSandbox();
-
-    // Excel headers without Hod
-    const rows = [
-      ['אשרקת', 'דניאל'],
-      ['15/03/2026 - 21/03/2026', '15/03/2026 - 21/03/2026'],
-      ['א\' - לא יכול', 'ב\' - לא יכול']
-    ];
-
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(rows, statusEl);
-
-    // Must show clear error and NOT guess
-    assert(statusEl.innerHTML.includes('העובד הוד לא נמצא בקובץ האקסל'), 'Error must explicitly state Hod is missing');
-    assert(statusEl.innerHTML.includes('מקור התאריכים הקובע'), 'Error mentions Hod is the authoritative source');
-
-    // Detected weeks must remain empty
-    assert.strictEqual(sandbox.window.getDetectedWeekConfigs().length, 0, 'No weeks must be guessed or detected');
+  await test('Repeated imports merge restrictions instead of overwriting earlier columns or sources', async () => {
+    const c = await ready();
+    await importRows(c, [['הוד'], ['25-31.10'], ["א' - לא יכול"]]);
+    await importRows(c, [['הוד'], ['25-31.10'], ["ב' - לא יכול"]]);
+    assert.equal(c.state.constraintImport.sources.length, 2);
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='הוד').blocked.has('2026-10-25')"));
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='הוד').blocked.has('2026-10-26')"));
+    await importRows(c, [['הוד'], ['25-31.10'], ["ב' - לא יכול"]]);
+    assert.equal(c.state.constraintImport.sources.length, 2, 'same matrix is idempotent');
   });
-
-  // -------------------------------------------------------------
-  // Test 7: Hod's dates are invalid
-  // -------------------------------------------------------------
-  test('Test 7: Hod\'s dates are invalid', () => {
-    const { sandbox } = createSandbox();
-
-    // Subcase a: Unparseable header text
-    const unparseableRows = [
-      ['הוד'],
-      ['שבוע בלי תאריכים בכלל'],
-      ['א\' - לא יכול']
-    ];
-    let res = sandbox.window.applyWeekDatesFromRows(unparseableRows);
-    assert.strictEqual(res.success, false);
-    assert(res.error.includes('לא זוהו כותרות תאריכים') || res.error.includes('לא ניתן לפענח'));
-
-    // Subcase b: Invalid calendar date (31/02)
-    const invalidDateRows = [
-      ['הוד'],
-      ['31/02/2026 - 06/03/2026'],
-      ['א\' - לא יכול']
-    ];
-    res = sandbox.window.applyWeekDatesFromRows(invalidDateRows);
-    assert.strictEqual(res.success, false);
-    assert(res.error.includes('לא ניתן לפענח') || res.error.includes('אינם תקינים') || res.error.includes('לא זוהו'));
-
-    // Subcase c: Week does not start on Sunday (e.g., Monday 16/03)
-    const notSundayRows = [
-      ['הוד'],
-      ['16/03/2026 - 22/03/2026'],
-      ['א\' - לא יכול']
-    ];
-    res = sandbox.window.applyWeekDatesFromRows(notSundayRows);
-    assert.strictEqual(res.success, false);
-    assert(res.error.includes('חייב להתחיל ביום ראשון'));
-
-    // Subcase d: Inconsistent week chronological order (Week 2 before Week 1)
-    const inconsistentRows = [
-      ['הוד'],
-      ['22/03/2026 - 28/03/2026'],
-      ['א\' -'],
-      ['15/03/2026 - 21/03/2026'],
-      ['א\' -']
-    ];
-    res = sandbox.window.applyWeekDatesFromRows(inconsistentRows);
-    assert.strictEqual(res.success, false);
-    assert(res.error.includes('אינם עקביים בסדר כרונולוגי'));
-
-    // Ensure importRowsMatrix displays error in statusEl
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(notSundayRows, statusEl);
-    assert(statusEl.innerHTML.includes('חייב להתחיל ביום ראשון'));
+  await test('Imported sources, decisions, matching and typed restrictions survive reload', async () => {
+    const c = await ready();
+    await importRows(c, screenshotRows('1.11-7.11', false));
+    const original = JSON.stringify(c.state.constraintImport);
+    await c.run("loadUserWorkspace('manager')");
+    assert.equal(JSON.stringify(c.state.constraintImport), original);
+    assert(c.run("getAllWorkersData().find(worker=>worker.name==='דניאל').blocked.has('2026-11-01')"));
+    assert.equal(c.run('periodReadiness()'), '');
   });
-
-  // -------------------------------------------------------------
-  // Test 8: Period including an Israeli holiday
-  // -------------------------------------------------------------
-  test('Test 8: Period including an Israeli holiday', () => {
-    const { sandbox } = createSandbox();
-
-    // Passover 2026:
-    // 2026-03-29 is Sunday (11 Nisan 5786)
-    // 2026-04-01 is Wednesday (14 Nisan 5786 - Erev Pesach)
-    // 2026-04-02 is Thursday (15 Nisan 5786 - Pesach Day 1)
-    // 2026-04-04 is Saturday (17 Nisan 5786 - Shabbat Chol HaMoed)
-    const rows = [
-      ['הוד', 'אשרקת'],
-      ['29/03/2026 - 04/04/2026', '29/03/2026 - 04/04/2026'],
-      ['א\' -', 'א\' -'],
-      ['ב\' -', 'ב\' -']
-    ];
-
-    const statusEl = sandbox.document.getElementById('bulkExcelStatus');
-    sandbox.window.importRowsMatrix(rows, statusEl);
-
-    const weeks = sandbox.window.getDetectedWeekConfigs();
-    assert.strictEqual(weeks.length, 1, '1 week detected from Hod');
-    assert.strictEqual(sandbox.window.isoDate(weeks[0].start), '2026-03-29');
-
-    // Inspect schedule days and holiday handling
-    const scheduleDays = sandbox.window.getScheduleDays();
-    assert(scheduleDays.length > 0, 'Schedule days generated');
-
-    const erevPesach = scheduleDays.find(d => d.iso === '2026-04-01');
-    const pesach = scheduleDays.find(d => d.iso === '2026-04-02');
-
-    assert(erevPesach, 'Erev Pesach exists in schedule days');
-    assert(pesach, 'Pesach exists in schedule days');
-
-    // Verify holiday dayType identification from hebcal-core and calendarRules
-    assert.strictEqual(erevPesach.closed, true, 'Erev Pesach (2026-04-01) is marked closed');
-    assert.strictEqual(pesach.dayType.status, 'holiday', '2026-04-02 is identified as holiday');
-    assert.strictEqual(pesach.closed, false, 'Motzei Pesach (2026-04-02) has a holiday shift for Friday delivery');
-
-    // Regular workdays like Sunday 2026-03-29 must be open workdays
-    const sunday = scheduleDays.find(d => d.iso === '2026-03-29');
-    assert.strictEqual(sunday.closed, false, 'Sunday is open workday');
+  await test('Switching canonical periods maps the same block positions into the new period', async () => {
+    const c = await ready();
+    await importRows(c, [['דניאל'], ['25-31.10'], ["א' - לא יכול"]]);
+    c.run("selectPeriod(window.schedulePeriodService.createPeriod({startDate:'2026-11-01',weekCount:2}))");
+    assert.equal(c.state.constraintImport.applied.length, 1);
+    assert.equal(c.state.constraintImport.applied[0].date, '2026-11-01');
+    assert.equal(c.getWorkerCard('דניאל').querySelector('.active-worker').checked, true);
+    assert(c.getOrCreateMockEl('bulkExcelStatus').textContent.includes('סדר בלוקים'));
   });
-
-  console.log('\n=================================================');
-  console.log(`Excel Import Test Results: ${passed} Passed, ${failed} Failed`);
-  console.log('=================================================');
-
-  if (failed > 0) {
-    process.exit(1);
-  }
+  await test('Existing manual restrictions remain and conflicting manual availability blocks generation', async () => {
+    const c = await ready();
+    c.getWorkerCard('הוד').querySelector('.constraints').value = "25/10/2026 - 31/10/2026\nא' -";
+    await importRows(c, [['הוד'], ['25-31.10'], ["א' - לא יכול"]]);
+    assert(c.run('periodReadiness()').includes('סתירה'));
+    assert(c.getWorkerCard('הוד').querySelector('.constraints').value.includes("א' -"));
+  });
+  await test('Canonical grid and engine use imported blocked dates, while holiday rules remain unchanged', async () => {
+    const c = await ready();
+    await importRows(c, screenshotRows('1.11-7.11', false));
+    const result = c.run('generateSchedule()');
+    for (const entry of Object.values(result.schedule).flat()) {
+      assert(entry.day.iso >= '2026-10-25' && entry.day.iso <= '2026-11-07');
+      for (const worker of [entry.first, entry.second].filter(Boolean)) assert.equal(worker.blocked.has(entry.day.iso), false);
+    }
+    assert.equal(c.run('periodService().validateScheduleDates(state.period,generateSchedule().schedule).valid'), true);
+    // Calendar rules are exercised directly for the previously verified Pesach fixture.
+    c.run("state.constraintImport=null; selectPeriod(window.schedulePeriodService.createPeriod({startDate:'2026-03-29',weekCount:1}))");
+    assert.equal(c.sandbox.window.getScheduleDays().find(day => day.iso === '2026-04-01').closed, true);
+    assert.equal(c.sandbox.window.getScheduleDays().find(day => day.iso === '2026-04-02').closed, false);
+  });
+  await test('Unknown new employee is created safely without requiring column-order matching', async () => {
+    const c = await ready();
+    await importRows(c, [['נועם'], ['25-31.10'], ["א' - לא יכול"]]);
+    assert(c.run("WORKERS.some(worker=>worker.name==='נועם')"));
+    assert(c.run("getWorkersData().find(worker=>worker.name==='נועם').blocked.has('2026-10-25')"));
+  });
+  await test('Explicitly deferred restrictions remain in original source and decision audit', async () => {
+    const c = await ready();
+    await importRows(c, [['הוד'], ['25-31.10'], ["א' - אולי"]]);
+    const id = c.state.constraintImport.issues[0].id;
+    c.sandbox.reviewContainer = issueContainer(id, {});
+    await c.run('resolveImportIssue(reviewContainer,true)');
+    assert.equal(c.state.constraintImport.issues.length, 0);
+    assert.equal(c.state.constraintImport.resolutions[id].action, 'defer');
+    assert(c.state.constraintImport.sources[0].rawText.includes('אולי'));
+  });
+  await test('Old date-anchored drafts stay unchanged and blocked until confirmed reimport', async () => {
+    const c = await ready();
+    await importRows(c, screenshotRows());
+    c.state.constraintImport.version = 2;
+    delete c.state.constraintImport.mappingMode;
+    c.state.constraintImport.resolutions = { old: { weekStart: '2026-12-06', status: 'unavailable' } };
+    const old = JSON.stringify(c.state.constraintImport);
+    assert(c.run('periodReadiness()').includes('שיוך תאריכים קודם'));
+    c.run("selectPeriod(window.schedulePeriodService.createPeriod({startDate:'2026-11-01',weekCount:2}))");
+    assert.equal(JSON.stringify(c.state.constraintImport), old, 'no silent reinterpretation on period change');
+    c.sandbox.window.confirm = () => false;
+    assert.equal((await importRows(c, screenshotRows())).success, false);
+    assert.equal(JSON.stringify(c.state.constraintImport), old);
+    c.sandbox.window.confirm = () => true;
+    c.storage.fail('draftBackup');
+    assert.equal((await importRows(c, screenshotRows())).success, false);
+    assert.equal(JSON.stringify(c.state.constraintImport), old);
+    c.storage.fail('');
+    assert.equal((await importRows(c, screenshotRows())).success, true);
+    assert.equal(c.state.constraintImport.version, 3);
+    assert.equal(Object.keys(c.state.constraintImport.resolutions).length, 0);
+    const backups = await c.storage.api.loadDraftBackups('manager');
+    assert(backups.some(backup => JSON.stringify(JSON.parse(backup.draftJson).constraintImport) === old));
+    assert.equal(c.run('periodReadiness()'), '');
+  });
+  console.log(`Excel import integration: ${passed} passed`);
 }
 
-runTests().catch(err => {
-  console.error('Test execution failed:', err);
-  process.exit(1);
-});
+module.exports = { createSandbox };
+if (require.main === module) runTests().catch(error => { console.error(error); process.exitCode = 1; });

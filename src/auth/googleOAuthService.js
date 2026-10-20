@@ -3,6 +3,7 @@
   let accessToken = "";
 
   function hasConfiguredClient() {
+    if (window.runtimeEnvironment?.isTestMode) return false;
     const clientId = window.googleCalendarConfig?.clientId || "";
     return Boolean(
       clientId &&
@@ -29,6 +30,8 @@
   }
 
   async function initialize() {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
     if (!hasConfiguredClient()) {
       throw new Error("Google OAuth לא מוגדר. יש להגדיר Client ID בקובץ src/googleConfig.js.");
     }

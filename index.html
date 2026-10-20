@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>סידור משמרות</title>
+  <script src="src/runtimeEnvironment.js?v=1"></script>
   <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="8" y="12" width="48" height="44" rx="8" fill="%23ffffff"/><rect x="8" y="12" width="48" height="14" rx="8" fill="%231c7c63"/><rect x="8" y="22" width="48" height="34" rx="6" fill="%23ffffff"/><path d="M20 8v10M44 8v10" stroke="%2317201d" stroke-width="5" stroke-linecap="round"/><path d="M18 34h8M30 34h8M42 34h4M18 44h8M30 44h8M42 44h4" stroke="%231c7c63" stroke-width="4" stroke-linecap="round"/></svg>'>
   <link rel="stylesheet" href="styles/theme.css?v=2.5">
   <link rel="stylesheet" href="styles/base.css?v=2.5">
@@ -65,7 +66,7 @@
 
   <main class="shell" id="mainShell">
     <div id="devIsolatedBanner" class="dev-isolated-banner" style="display: none;">
-      <span>🔬 <strong>סביבת בדיקות מבודדת (Isolated Sandbox)</strong> – הנתונים נשמרים במאגר מקומי מבודד, ללא שום גישה לייצור.</span>
+      <span>🔬 <strong>TEST MODE — סביבת בדיקות מבודדת</strong> – הנתונים נשמרים במאגר מקומי מבודד, ללא שום גישה לייצור.</span>
       <button type="button" id="btnResetDevData" class="btn-reset-dev">איפוס נתוני בדיקה</button>
     </div>
     <section class="topbar">
@@ -106,6 +107,7 @@
               <button class="btn secondary accent-action" id="applyBulkExcelNotes" type="button">שייך לעובדים</button>
             </div>
             <div class="intake-status" id="bulkExcelStatus"></div>
+            <div id="constraintImportReview" aria-live="polite"></div>
           </div>
           <div class="employee-tools">
             <input type="text" id="newWorkerName" placeholder="שם עובד חדש">
@@ -121,24 +123,50 @@
           <span class="badge" id="statusBadge">ממתין</span>
         </div>
         <div class="panel-body">
+          <section id="periodSelection" aria-label="בחירת תקופת הסידור">
+            <div id="draftStatus" class="intake-status" role="status" aria-live="polite"></div>
+            <div id="periodStatus" class="intake-status" role="status" aria-live="polite"></div>
+            <div id="automaticPeriodProposal" class="intake-status" aria-live="polite"></div>
+            <div class="mini-actions">
+              <button class="btn secondary" id="proposePeriod" type="button">רענן הצעה אוטומטית</button>
+              <button class="btn secondary" id="previewAutomaticPeriod" type="button">בחר את ההצעה לתצוגה מקדימה</button>
+              <button class="btn secondary" id="startNewSchedule" type="button">התחל סידור חדש ושמור עותק מהטיוטה</button>
+              <button class="btn secondary" id="retryPeriodHistory" type="button">טען היסטוריה מחדש</button>
+            </div>
+            <div class="field-row">
+              <div>
+                <label for="startDate">תאריך התחלה — יום ראשון</label>
+                <input type="date" id="startDate" aria-describedby="periodPreviewStatus">
+              </div>
+              <div>
+                <label for="weekCount">מספר שבועות (1–8)</label>
+                <input type="number" id="weekCount" min="1" max="8" step="1" value="2" aria-describedby="periodPreviewStatus">
+              </div>
+            </div>
+            <div id="periodPreviewStatus" class="intake-status" role="status" aria-live="polite"></div>
+            <div id="periodPreviewRanges" class="week-settings" aria-live="polite"></div>
+            <div class="mini-actions">
+              <button class="btn secondary" id="buildWeeks" type="button">החל תקופה ושמור עותק טיוטה</button>
+              <button class="btn secondary" id="cancelPeriodPreview" type="button">חזור לתקופה הפעילה</button>
+            </div>
+            <div id="weekSettings" class="week-settings" aria-live="polite"></div>
+          </section>
           <details class="collapsible" id="weekDetails">
-            <summary>שבועות וימים מיוחדים</summary>
+            <summary>ימים מיוחדים ועותקי טיוטות</summary>
             <div class="collapsible-body">
-              <div id="weekSettings" class="week-settings" aria-live="polite"></div>
+              <div class="mini-actions">
+                <button class="btn secondary" id="cancelPendingExcel" type="button">בטל ייבוא ממתין</button>
+              </div>
+              <div class="field-row">
+                <select id="draftBackupSelect" aria-label="עותקי טיוטות לשחזור"></select>
+                <button class="btn secondary" id="refreshDraftBackups" type="button">רענן עותקים</button>
+                <button class="btn secondary" id="restoreDraftBackup" type="button">שחזר טיוטה נבחרת</button>
+              </div>
+              <div id="draftBackupStatus" class="intake-status" role="status"></div>
               <div id="specialDays" class="days" aria-live="polite"></div>
               <details class="collapsible">
-                <summary>Override ידני</summary>
+                <summary>יום ללא עבודה — הוספה ידנית</summary>
                 <div class="collapsible-body">
-                  <div class="field-row">
-                    <div>
-                      <label for="startDate">תאריך התחלה ראשוני</label>
-                      <input type="date" id="startDate">
-                    </div>
-                    <div>
-                      <label for="weekCount">כמה שבועות לסדר</label>
-                      <input type="number" id="weekCount" min="1" max="8" value="2">
-                    </div>
-                  </div>
                   <div class="manual-offday">
                     <div>
                       <label for="manualOffDate">יום ללא עבודה</label>
@@ -154,7 +182,6 @@
                     <button class="btn secondary" id="addManualOffDay" type="button">הוסף</button>
                   </div>
                   <div class="mini-actions">
-                    <button class="btn secondary" id="buildWeeks" type="button">עדכן שבועות</button>
                     <button class="btn secondary" id="refreshDays" type="button">רענן</button>
                   </div>
                 </div>
@@ -252,6 +279,9 @@
   <script src="vendor/hebcal-core.min.js?v=2.5"></script>
   <script src="src/stateStorage.js?v=2.5"></script>
   <script src="src/calendarRules.js?v=2.5"></script>
+  <script src="src/schedulePeriodService.js?v=2"></script>
+  <script src="src/draftSnapshot.js?v=1"></script>
+  <script src="src/constraintImportService.js?v=3"></script>
   <script src="src/calendarLinkUi.js?v=2.5"></script>
   <script src="src/scheduleExport.js?v=2.5"></script>
   <script src="src/calendarService.js?v=2.5"></script>
@@ -302,6 +332,20 @@
     let currentAuthUser = null;
 
     const state = {
+      draftOrigin: "new",
+      draftTransition: false,
+      draftBackups: [],
+      restoredRuntimeJson: null,
+      rejectedGridSnapshotJson: null,
+      period: null,
+      historyStatus: "loading",
+      workspaceLoadFailed: false,
+      constraintImport: null,
+      pendingExcelImport: null,
+      constraintPeriod: null,
+      legacyImportReviewRequired: false,
+      legacyPeriodReviewRequired: false,
+      legacyPeriodData: null,
       special: {},
       detectedWeeks: [],
       currentSchedule: null,
@@ -580,8 +624,328 @@
         : { start: end, end: start };
     }
 
+    function periodService() {
+      return window.schedulePeriodService;
+    }
+
+    function periodKey(period = state.period) {
+      return period ? JSON.stringify([period.startDate, Number(period.weekCount), period.weekStartsOn ?? 0]) : "";
+    }
+
+    function hasPeriodBoundInput() {
+      return [...document.querySelectorAll(".worker")].some(card => card.querySelector(".constraints").value.trim())
+        || Boolean(oneTimeRulesEl.value.trim()) || Object.keys(state.manualOverrides).length > 0
+        || Object.keys(state.special).length > 0;
+    }
+
+    function invalidatePeriodOutput() {
+      if (state.currentSchedule) {
+        state.rejectedGridSnapshotJson = window.draftSnapshot.stringify({ schedule: state.currentSchedule,
+          workers: state.currentWorkers, plainResult: plainResultEl.value, calendarExportLink: calendarExportLinkEl.value });
+      } else if (state.restoredRuntimeJson) {
+        state.rejectedGridSnapshotJson = state.restoredRuntimeJson;
+      }
+      state.restoredRuntimeJson = null;
+      state.currentSchedule = null;
+      state.currentWorkers = [];
+      state.currentWarnings = [];
+      state.isCurrentScheduleOfficial = false;
+      state.currentOfficialSchedule = null;
+      outputEl.innerHTML = "";
+      plainResultEl.value = "";
+      calendarExportLinkEl.value = "";
+      calendarExportLinkTextEl.textContent = "כאן יופיע קישור לעובדים";
+      updateOfficialScheduleBanner();
+    }
+
+    function selectPeriod(period) {
+      // Keep invalid input visible for correction; normalize valid periods once.
+      try { period = periodService().createPeriod(period); } catch { /* validation is shown below */ }
+      if (hasPeriodBoundInput() && !state.constraintPeriod) state.constraintPeriod = periodKey();
+      if (periodKey(period) !== periodKey()) invalidatePeriodOutput();
+      state.period = period;
+      if (isSequenceImport(state.constraintImport)) {
+        try {
+          const previous = state.constraintImport;
+          state.constraintImport = window.constraintImportService.interpret({ ...previous, workers: WORKERS, period }, periodService());
+          for (const employee of state.constraintImport.employees) {
+            const hadDates = previous.applied.some(entry => entry.workerName === employee.name);
+            const hasDates = importedWorkerRecords(employee.name).length > 0;
+            const card = document.querySelector(`.worker[data-worker="${CSS.escape(employee.name)}"]`);
+            if (card && hadDates !== hasDates) card.querySelector(".active-worker").checked = hasDates;
+          }
+          renderConstraintImport();
+        }
+        catch { /* Invalid period input remains visible and blocks generation. */ }
+      }
+      startDateEl.value = period?.startDate || "";
+      weekCountEl.value = period?.weekCount ?? 2;
+      if (!hasPeriodBoundInput()) state.constraintPeriod = periodKey();
+      renderWeekSettings();
+      refreshCalendarDays();
+    }
+
+    function periodReadiness() {
+      if (state.draftTransition) return "שומר עותק טיוטה ומחליף סידור. יש להמתין לסיום.";
+      if (state.workspaceLoadFailed) return "טעינת הטיוטה נכשלה. יש לטעון את הדף מחדש לפני עבודה ושמירה.";
+      if (state.period && state.period.weekStartsOn !== 0) return "בשלב זה הממשק תומך בשבוע שמתחיל ביום ראשון בלבד.";
+      const validation = periodService().validate(state.period, {
+        historyStatus: state.historyStatus, officialSchedules: state.officialSchedules, allowOverlap: true
+      });
+      if (!validation.valid) return validation.error;
+      if (state.constraintImport && !isSequenceImport(state.constraintImport)) return "הייבוא השמור משתמש בשיוך תאריכים קודם. המקור והטיוטה נשמרו. יש לשייך מחדש ולאשר מעבר לשיוך לפי סדר בלוקים; תחילה יישמר עותק לשחזור.";
+      if (state.constraintImport && state.constraintImport.issues.length) return `נדרשת הכרעת מנהל ב-${state.constraintImport.issues.length} אילוצי אקסל. הפרטים מוצגים מתחת לסיכום הייבוא.`;
+      if (state.constraintImport && state.constraintImport.periodKey !== periodKey()) return "האילוצים טרם נבדקו לתקופה הפעילה. יש לשייך את האקסל מחדש.";
+      const manualConflict = importManualConflict();
+      if (manualConflict) return manualConflict;
+      if (state.pendingExcelImport) {
+        return "נתוני האקסל מהייבוא הקודם נשמרו ללא שינוי. יש ללחוץ על שיוך לעובדים כדי לנתח את התאריכים והאילוצים, או לבטל במפורש את הייבוא הממתין. עד אז היצירה, השמירה והייצוא חסומים.";
+      }
+      if (state.legacyImportReviewRequired) {
+        return "האקסל והאילוצים מהטיוטה הישנה נשמרו. יש לשייך מחדש את טבלת המקור ולבדוק אילוצים ידניים שנותרו מהייבוא הישן. יצירה, שמירה וייצוא חסומים עד להשלמת הבדיקה. אפשר גם להתחיל סידור חדש עם עותק לשחזור.";
+      }
+      if (state.legacyPeriodReviewRequired) {
+        return "הטיוטה הישנה כוללת שבועות שאינם טווח רצוף של ראשון–שבת. הטווחים המקוריים נשמרו. יש להתחיל סידור חדש עם עותק לשחזור ולייבא אליו את טבלת המקור לפי תאריכיה.";
+      }
+      if (hasPeriodBoundInput() && state.constraintPeriod !== periodKey()) {
+        return "התקופה השתנתה ויש אילוצים או חריגים השייכים לתקופה קודמת. הנתונים נשמרו ללא שינוי. יש לשחזר את התקופה הקודמת או לנקות במפורש את האילוצים והחריגים לפני יצירה.";
+      }
+      return "";
+    }
+
+    function requireReadyPeriod() {
+      const error = periodReadiness();
+      if (error) {
+        warningsEl.textContent = error;
+        statusBadgeEl.textContent = "נדרשת בדיקת התקופה";
+        renderWeekSettings();
+        return false;
+      }
+      return true;
+    }
+
+    function automaticProposal() {
+      return periodService().propose({ historyStatus: state.historyStatus,
+        officialSchedules: state.officialSchedules, weekCount: state.period?.weekCount ?? 2 });
+    }
+
+    function proposePeriod() {
+      // Preview only. Refreshing today's suggestion must never change the current draft.
+      renderWeekSettings();
+    }
+
+    function requireCurrentGrid() {
+      if (!state.currentSchedule) return true;
+      const validation = periodService().validateScheduleDates(state.period, state.currentSchedule);
+      if (validation.valid) return true;
+      rejectStaleGrid(state.currentSchedule, validation.error);
+      return false;
+    }
+
+    function rejectStaleGrid(schedule, error) {
+      const preserved = window.draftSnapshot.stringify({ schedule, workers: state.currentWorkers,
+        plainResult: plainResultEl.value, calendarExportLink: calendarExportLinkEl.value });
+      invalidatePeriodOutput();
+      state.rejectedGridSnapshotJson = preserved;
+      warningsEl.textContent = error;
+      getEl("draftStatus").textContent = error;
+    }
+
+    async function refreshDraftBackups() {
+      if (!currentAuthUid || !window.userDataService?.loadDraftBackups) return;
+      const uid = currentAuthUid;
+      try {
+        const backups = await window.userDataService.loadDraftBackups(uid);
+        if (uid !== currentAuthUid) return;
+        state.draftBackups = backups;
+        const select = getEl("draftBackupSelect");
+        select.innerHTML = '<option value="">בחר טיוטה לשחזור</option>' + backups.map(backup =>
+          '<option value="' + escapeHtmlText(backup.id) + '">' + escapeHtmlText(backup.startDate || "ללא תקופה")
+          + ' — ' + escapeHtmlText(new Date(backup.savedAt).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })) + '</option>').join("");
+        getEl("draftBackupStatus").textContent = backups.length ? "עותקי הטיוטות נשמרים בנפרד מההיסטוריה הרשמית." : "אין עדיין עותקי טיוטות.";
+      } catch (error) {
+        getEl("draftBackupStatus").textContent = "לא ניתן לטעון את עותקי הטיוטות. נסה לרענן עותקים.";
+      }
+    }
+
+    async function switchDraft(nextDraft, { origin = "restored" } = {}) {
+      if (state.draftTransition || state.workspaceLoadFailed || !currentAuthUid) return;
+      const uid = currentAuthUid;
+      const previousDraft = captureDraftData();
+      let switched = false;
+      state.draftTransition = true;
+      getEl("mainShell").inert = true;
+      window.userDataService.cancelPendingSave?.();
+      renderWeekSettings();
+      try {
+        await window.userDataService.replaceDraftWithBackup(uid, previousDraft, nextDraft);
+        if (uid !== currentAuthUid) return;
+        invalidatePeriodOutput();
+        await loadUserWorkspace(uid, nextDraft);
+        state.draftOrigin = origin;
+        switched = true;
+        await refreshDraftBackups();
+      } catch (error) {
+        getEl("draftBackupStatus").textContent = "המעבר לא הושלם. הטיוטה לא נוקתה. אם השמירה כבר הסתיימה, העותק המקורי זמין בשחזור טיוטות. " + error.message;
+      } finally {
+        if (uid === currentAuthUid) {
+          state.draftTransition = false;
+          getEl("mainShell").inert = false;
+          renderWeekSettings();
+          if (switched) await restoreDraftGrid();
+        }
+      }
+      return switched;
+    }
+
+    async function startNewSchedule() {
+      if (state.draftTransition || state.workspaceLoadFailed) return;
+      if (!await loadUserOfficialSchedules(currentAuthUid)) return;
+      let proposal;
+      try { proposal = automaticProposal(); } catch (error) {
+        getEl("draftBackupStatus").textContent = error.message;
+        return;
+      }
+      if (!window.confirm("לשמור עותק מלא לשחזור ולהתחיל סידור חדש? אילוצים, חריגים ושיבוצים מהטיוטה הנוכחית יישארו בעותק ולא יועברו לסידור החדש.")) return;
+      const previous = captureDraftData();
+      await switchDraft({ schedulePeriod: proposal, startDate: proposal.startDate, weekCount: proposal.weekCount,
+        constraintPeriod: periodKey(proposal), workers: previous.workers.map(worker => ({ ...worker, active: false, constraints: "" })),
+        bulkExcelNotes: "", oneTimeRules: "", plainResult: "", special: {}, manualOverrides: {},
+        detectedWeeks: [], weeks: [], pendingExcelImport: null, legacyImportReviewRequired: false,
+        legacyPeriodReviewRequired: false, legacyPeriodData: null, runtimeSnapshotJson: null, draftOrigin: "new" }, { origin: "new" });
+    }
+
+    async function restoreDraftBackup() {
+      if (state.draftTransition) return;
+      const backup = state.draftBackups.find(item => item.id === getEl("draftBackupSelect").value);
+      if (!backup) return;
+      let draft;
+      try {
+        draft = JSON.parse(backup.draftJson);
+        if (!draft || typeof draft !== "object" || !Array.isArray(draft.workers)) throw new Error();
+      } catch {
+        getEl("draftBackupStatus").textContent = "עותק הטיוטה אינו תקין. לא בוצע שינוי.";
+        return;
+      }
+      if (!window.confirm("לשחזר את הטיוטה הנבחרת? קודם יישמר עותק מלא של הטיוטה הנוכחית.")) return;
+      await switchDraft(draft);
+    }
+
+    async function restoreDraftGrid() {
+      if (!state.restoredRuntimeJson || state.draftTransition) return;
+      let runtime;
+      try { runtime = window.draftSnapshot.parse(state.restoredRuntimeJson); } catch {
+        getEl("draftStatus").textContent = "לא ניתן לשחזר את הלוח השמור. האילוצים והתקופה נשמרו; יש לבדוק וליצור לוח מחדש.";
+        return;
+      }
+      state.shuffleSeed = runtime.shuffleSeed || 0;
+      state.rejectedGridSnapshotJson = runtime.rejectedGridSnapshotJson || null;
+      if (runtime.fields) {
+        manualOffDateEl.value = runtime.fields.manualOffDate || "";
+        manualOffLabelEl.value = runtime.fields.manualOffLabel || "אין עבודה";
+        getEl("newWorkerName").value = runtime.fields.newWorkerName || "";
+      }
+      if (!runtime.currentSchedule) return;
+      const valid = periodService().validateScheduleDates(state.period, runtime.currentSchedule);
+      if (!valid.valid) { rejectStaleGrid(runtime.currentSchedule, valid.error); return; }
+      // Past or unresolved drafts are retained, but never rebuilt as a current usable grid.
+      if (periodReadiness()) return;
+      const workers = runtime.currentWorkers || [];
+      const workersByName = new Map(workers.map(worker => [worker.name, worker]));
+      // JSON snapshots cannot retain shared object references. Reconnect entries to
+      // the worker registry before the existing renderer rebuilds scheduling stats.
+      const schedule = Object.fromEntries(Object.entries(runtime.currentSchedule).map(([week, entries]) =>
+        [week, entries.map(entry => remapEntryWorkers(entry, workersByName))]));
+      await renderSchedule({ schedule, workers,
+        warnings: runtime.currentWarnings || [] }, { restoring: true });
+    }
+
+    function updateManualPeriod() {
+      renderPeriodPreview();
+    }
+
+    function manualPeriodCandidate() {
+      return periodService().createPeriod({ startDate: startDateEl.value, weekCount: weekCountEl.value,
+        weekStartsOn: 0, source: "manual", explanation: "תקופה שנבחרה ידנית על ידי המנהל." });
+    }
+
+    function inspectPeriodPreview() {
+      const period = manualPeriodCandidate();
+      const weeks = periodService().getWeeks(period);
+      const messages = ["תצוגה מקדימה בלבד — התקופה הפעילה והאילוצים לא השתנו."];
+      if (period.startDate <= periodService().today()) messages.push("התאריך הוא היום או בעבר לפי שעון ישראל. יצירת סידור מחייבת יום ראשון עתידי.");
+      let historyValid = false;
+      try {
+        // Validate history independently of the candidate's past/future status.
+        automaticProposal();
+        const overlaps = periodService().findOverlaps(period, state.officialSchedules);
+        if (overlaps.length) messages.push("חפיפה עם " + overlaps.length + " סידורים רשמיים. ההיסטוריה לא תשתנה; שמירה רשמית תחייב אישור החלפה מפורש.");
+        historyValid = true;
+      } catch (error) { messages.push(error.message); }
+      const imported = isSequenceImport(state.constraintImport) ? window.constraintImportService.interpret({ ...state.constraintImport,
+        workers: WORKERS, period }, periodService()) : state.constraintImport;
+      if (isSequenceImport(imported)) messages.push("לאחר החלה: " + imported.applied.length + " אילוצים בתקופה, " + imported.skipped.length
+        + " רשומות מחוץ לתקופה, " + imported.issues.length + " נושאים לבדיקה. בלוק ראשון לשבוע ראשון וכן הלאה; כותרות התאריכים הן מידע בלבד.");
+      if (imported && !isSequenceImport(imported)) messages.push("ייבוא ישן נשמר ללא שינוי. נדרש שיוך מחדש מאושר לפני יצירה.");
+      if (hasPeriodBoundInput() && state.constraintPeriod !== periodKey(period)) messages.push("אילוצים ידניים וחריגים יישמרו בתאריכיהם. יצירה תיחסם עד לבדיקת התאמתם לתקופה החדשה.");
+      return { period, weeks, messages, imported, historyValid };
+    }
+
+    function renderPeriodPreview() {
+      const status = getEl("periodPreviewStatus");
+      const ranges = getEl("periodPreviewRanges");
+      const button = getEl("buildWeeks");
+      try {
+        const preview = inspectPeriodPreview();
+        status.textContent = preview.messages.join(" ");
+        ranges.innerHTML = preview.weeks.map((week, index) => '<div>' + escapeHtmlText("שבוע " + (index + 1)
+          + ": " + week.start + " — " + week.end) + '</div>').join("");
+        button.disabled = !preview.historyValid || state.draftTransition || state.workspaceLoadFailed || !currentAuthUid;
+      } catch (error) {
+        status.textContent = "תצוגה מקדימה: " + error.message + " התקופה הפעילה לא השתנתה.";
+        ranges.innerHTML = "";
+        button.disabled = true;
+      }
+    }
+
+    function cancelPeriodPreview() {
+      startDateEl.value = state.period?.startDate || "";
+      weekCountEl.value = state.period?.weekCount ?? 2;
+      renderPeriodPreview();
+    }
+
+    function previewAutomaticPeriod() {
+      try {
+        const proposal = automaticProposal();
+        startDateEl.value = proposal.startDate;
+        weekCountEl.value = proposal.weekCount;
+        renderPeriodPreview();
+      } catch (error) { getEl("periodPreviewStatus").textContent = error.message; }
+    }
+
+    async function applyManualPeriod() {
+      if (state.draftTransition || state.workspaceLoadFailed || !currentAuthUid) return false;
+      let preview;
+      try { preview = inspectPeriodPreview(); } catch { renderPeriodPreview(); return false; }
+      if (!preview.historyValid) { renderPeriodPreview(); return false; }
+      if (periodKey(preview.period) === periodKey()) return false;
+      const affected = hasPeriodBoundInput() || state.constraintImport || state.pendingExcelImport
+        || bulkExcelNotesEl.value.trim() || state.currentSchedule || state.restoredRuntimeJson || state.rejectedGridSnapshotJson
+        || state.legacyImportReviewRequired || state.legacyPeriodReviewRequired || plainResultEl.value;
+      if (affected && !window.confirm("להחיל שינוי תקופה מ-" + (state.period?.startDate || "ללא תקופה") + " אל "
+        + preview.period.startDate + " למשך " + preview.period.weekCount + " שבועות? יישמר עותק מלא לשחזור לפני השינוי. בלוקי האקסל ישויכו לשבועות התקופה החדשה לפי סדרם. אילוצים ידניים וחריגים יישמרו לבדיקה, והלוח הקודם יישמר בעותק וידרוש יצירה מחדש.\n"
+        + preview.messages.join("\n"))) return false;
+      const previous = captureDraftData();
+      const switched = await switchDraft({ ...previous, schedulePeriod: preview.period, startDate: preview.period.startDate,
+        weekCount: preview.period.weekCount, constraintImport: preview.imported,
+        constraintPeriod: hasPeriodBoundInput() ? previous.constraintPeriod : periodKey(preview.period),
+        runtimeSnapshotJson: null, plainResult: "", detectedWeeks: preview.weeks, weeks: [] }, { origin: state.draftOrigin });
+      if (!switched) getEl("periodPreviewStatus").textContent = getEl("draftBackupStatus").textContent;
+      return switched;
+    }
+
     function getBaseStartDate() {
-      return parseUiDate(startDateEl.value);
+      return state.period && periodService().parseDate(state.period.startDate) ? parseUiDate(state.period.startDate) : null;
     }
 
     function normalizeWeekConfigs(weeks) {
@@ -597,7 +961,7 @@
     }
 
     function getDetectedWeekConfigs() {
-      return normalizeWeekConfigs(state.detectedWeeks);
+      return getWeekConfigs();
     }
 
     function setDetectedWeeks(weeks) {
@@ -605,51 +969,40 @@
     }
 
     function getWeekConfigs() {
-      const detectedWeeks = getDetectedWeekConfigs();
-      if (detectedWeeks.length) return detectedWeeks;
-
-      const weeks = Number(weekCountEl.value) || 1;
-      const rows = [...document.querySelectorAll(".week-row")];
-      const baseStart = getBaseStartDate();
-      if (rows.length) {
-        return rows.map((row, index) => {
-          const startValue = row.querySelector(".week-start").value;
-          const endValue = row.querySelector(".week-end").value;
-          const fallbackStart = baseStart ? addDays(baseStart, index * 7) : null;
-          const start = parseUiDate(startValue, baseStart?.getFullYear()) || fallbackStart;
-          if (!start) return null;
-          const end = parseUiDate(endValue, start.getFullYear()) || addDays(start, 6);
-          return { start, end };
-        }).filter(Boolean);
-      }
-
-      const start = getBaseStartDate();
-      if (!start) return [];
-      return Array.from({ length: weeks }, (_, index) => {
-        const weekStart = addDays(start, index * 7);
-        return { start: weekStart, end: addDays(weekStart, 6) };
-      });
+      if (!state.period) return [];
+      try {
+        return periodService().getWeeks(state.period).map(week => ({
+          start: parseUiDate(week.start), end: parseUiDate(week.end)
+        }));
+      } catch { return []; }
     }
 
-    function renderWeekSettings(savedWeeks) {
-      if (savedWeeks) setDetectedWeeks(savedWeeks);
-      const baseStart = getBaseStartDate();
-      const detectedWeeks = getDetectedWeekConfigs();
-      if (!baseStart && !detectedWeeks.length) {
-        weekSettingsEl.innerHTML = `<p class="helper">עדיין לא זוהו שבועות. הדבק אקסל ולחץ על שייך לעובדים.</p>`;
-        return;
-      }
-      const current = detectedWeeks.length ? detectedWeeks : getWeekConfigs();
-      const title = detectedWeeks.length ? "שבועות שזוהו" : "שבועות ידניים";
-      const weekItems = current.map(week => `<span class="summary-pill">${displayDate(week.start)}–${displayDate(week.end)}</span>`).join("");
-      weekSettingsEl.innerHTML = `
-        <div class="week-summary">
-          <div class="summary-group">
-            <div class="summary-label">${title}: ${current.length}</div>
-            <div class="summary-list">${weekItems}</div>
-          </div>
-        </div>
-      `;
+    function renderWeekSettings() {
+      const current = getWeekConfigs();
+      const error = periodReadiness();
+      getEl("cancelPendingExcel").disabled = !state.pendingExcelImport;
+      let proposalText;
+      try {
+        const proposal = automaticProposal();
+        const weeks = periodService().getWeeks(proposal);
+        proposalText = "ההצעה האוטומטית להיום (לא משנה את הטיוטה): " + proposal.startDate + " — " + weeks.at(-1).end + ". " + proposal.explanation;
+      } catch (error) { proposalText = "ההצעה האוטומטית אינה זמינה: " + error.message; }
+      getEl("automaticPeriodProposal").textContent = proposalText;
+      getEl("startNewSchedule").disabled = state.draftTransition || state.workspaceLoadFailed || state.historyStatus !== "ready";
+      const origin = state.draftOrigin === "restored" ? "טיוטה ששוחזרה — זו אינה ההצעה האוטומטית להיום." : "טיוטה נוכחית.";
+      getEl("draftStatus").textContent = origin + (state.period ? " התקופה הפעילה: " + state.period.startDate + "." : "");
+      const explanation = state.period?.source === "manual" ? "התקופה נבחרה ידנית." : "התאריכים שייכים לטיוטה הפעילה.";
+      const overlap = state.historyStatus === "ready" && current.length
+        ? periodService().findOverlaps(state.period, state.officialSchedules).length : 0;
+      getEl("periodStatus").textContent = [explanation, error,
+        overlap ? "התקופה חופפת לסידור רשמי. שמירה תחייב אישור החלפה מפורש." : ""].filter(Boolean).join(" ");
+      const buildButton = getEl("buildSchedule");
+      if (buildButton) buildButton.disabled = Boolean(error);
+      weekSettingsEl.innerHTML = current.length
+        ? '<div class="week-summary"><div class="summary-label">התקופה הפעילה — שבועות: ' + current.length + '</div><div class="summary-list">'
+          + current.map(week => '<span class="summary-pill">' + displayDate(week.start) + '–' + displayDate(week.end) + '</span>').join("") + '</div></div>'
+        : '<p class="helper">יש לבחור תקופה חוקית.</p>';
+      renderPeriodPreview();
     }
 
     function importYear() {
@@ -791,121 +1144,13 @@
         return { valid: false, reason: "תאריך התחלה מאוחר מתאריך סיום" };
       }
       if (week.start.getDay() !== 0) {
-        return { valid: false, reason: "שבוע העבודה לפי הוד חייב להתחיל ביום ראשון (א')" };
+        return { valid: false, reason: "שבוע הסידור חייב להתחיל ביום ראשון (א')" };
       }
       return { valid: true };
     }
 
-    function applyWeekDatesFromRows(rows) {
-      state.weekDetectionWarnings = [];
-      state.detectedSchedulePeriod = null;
-
-      if (!rows || !rows.length) {
-        setDetectedWeeks([]);
-        renderWeekSettings();
-        refreshCalendarDays();
-        return { success: false, error: "קובץ האקסל ריק או שלא זוהו שורות.", weekCount: 0 };
-      }
-
-      const headers = rows[0] || [];
-      const hodColIndex = findHodColumnIndex(headers);
-      if (hodColIndex === -1) {
-        setDetectedWeeks([]);
-        renderWeekSettings();
-        refreshCalendarDays();
-        return {
-          success: false,
-          error: "העובד הוד לא נמצא בקובץ האקסל. הוד הוא מקור התאריכים הקובע לסידור.",
-          weekCount: 0
-        };
-      }
-
-      const rawDetected = [];
-      const detectedWeeks = [];
-      const weekRowIndices = [];
-
-      for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
-        const text = String(rows[rowIndex]?.[hodColIndex] || "").trim();
-        if (!text || !isConstraintWeekHeader(text)) continue;
-
-        rawDetected.push({ row: rowIndex + 1, label: text });
-        const range = parseWeekLabelToRange(text);
-        if (!range) {
-          setDetectedWeeks([]);
-          renderWeekSettings();
-          refreshCalendarDays();
-          return {
-            success: false,
-            error: `לא ניתן לפענח את התאריכים של הוד משורת הכותרת: "${text}".`,
-            weekCount: 0
-          };
-        }
-
-        const validation = validateHodWeek(range);
-        if (!validation.valid) {
-          setDetectedWeeks([]);
-          renderWeekSettings();
-          refreshCalendarDays();
-          return {
-            success: false,
-            error: `התאריכים של הוד אינם תקינים (${text}): ${validation.reason}.`,
-            weekCount: 0
-          };
-        }
-
-        detectedWeeks.push(range);
-        weekRowIndices.push(rowIndex);
-      }
-
-      if (!detectedWeeks.length) {
-        setDetectedWeeks([]);
-        renderWeekSettings();
-        refreshCalendarDays();
-        return {
-          success: false,
-          error: "לא זוהו כותרות תאריכים בעמודה של הוד. לא ניתן לקבוע את תקופת הסידור.",
-          weekCount: 0
-        };
-      }
-
-      for (let i = 1; i < detectedWeeks.length; i++) {
-        if (detectedWeeks[i].start <= detectedWeeks[i - 1].start) {
-          setDetectedWeeks([]);
-          renderWeekSettings();
-          refreshCalendarDays();
-          return {
-            success: false,
-            error: `תאריכי השבועות של הוד אינם עקביים בסדר כרונולוגי (${displayDate(detectedWeeks[i].start)} מול ${displayDate(detectedWeeks[i - 1].start)}).`,
-            weekCount: 0
-          };
-        }
-      }
-
-      console.info("[weeks from Hod]", {
-        raw: rawDetected,
-        weeks: detectedWeeks.map(weekRangeDebug)
-      });
-
-      setDetectedWeeks(detectedWeeks);
-      startDateEl.value = editDateValue(detectedWeeks[0].start);
-      weekCountEl.value = String(detectedWeeks.length);
-      state.detectedSchedulePeriod = {
-        start: detectedWeeks[0].start,
-        end: detectedWeeks[detectedWeeks.length - 1].end,
-        weekCount: detectedWeeks.length,
-        source: "הוד",
-        weekRowIndices
-      };
-
-      renderWeekSettings();
-      refreshCalendarDays();
-
-      return {
-        success: true,
-        weeks: detectedWeeks,
-        weekCount: detectedWeeks.length,
-        weekRowIndices
-      };
+    function applyWeekDatesFromRows() {
+      return { success: false, error: "תקופת הסידור נקבעת רק בשירות התקופה. קליטת האקסל אינה משנה תאריכים." };
     }
 
     function getScheduleDays() {
@@ -1002,7 +1247,8 @@
                   <select class="max-shifts">${shiftOptions(worker.max)}</select>
                 </div>
               </div>
-              <textarea class="constraints" placeholder="אילוצים לעובד הזה"></textarea>
+              <div class="imported-constraints" aria-label="אילוצים שיובאו מאקסל"></div>
+              <textarea class="constraints" placeholder="אילוצים ידניים נוספים לעובד הזה"></textarea>
             </div>
           </details>
       </article>
@@ -1211,6 +1457,7 @@
     }
 
     function syncOneTimeConstraintsNow(source = "unknown") {
+      if (periodReadiness()) return [];
       const days = getScheduleDays();
       const rawLines = rawOneTimeLines();
       console.log("[one-time sync]", { source, rawLines, days: days.map(day => day.iso) });
@@ -1246,118 +1493,128 @@
       saveState();
     }
 
-    function importRowsMatrix(rows, statusEl) {
-      const headers = rows[0] || [];
-      let imported = 0;
-      const issues = [];
-      const weekDetection = applyWeekDatesFromRows(rows);
-      if (!weekDetection.success) {
-        statusEl.innerHTML = `
-          <div class="import-summary">
-            <div class="import-issues" style="color: #ba1a1a; font-weight: bold;">❌ ${escapeHtmlText(weekDetection.error)}</div>
-          </div>
-        `;
-        return;
-      }
-      const importedWeeks = weekDetection.weekCount;
-      const existingWorkers = WORKERS.map(worker => ({ ...worker, aliases: worker.aliases || [] }));
-      const existingState = getCurrentWorkerState();
-      const importedDefinitions = [];
-      const importedNames = new Set();
-
-      headers.forEach(header => {
-        const name = String(header || "").trim();
-        if (!name) return;
-        if (looksLikeDateRangeHeader(name)) {
-          issues.push(`דולג ערך שנראה כמו טווח תאריכים ולא שם עובד: ${name}.`);
-          return;
-        }
-        const worker = getWorkerDefinitionForImport(name, [...existingWorkers, ...importedDefinitions]);
-        if (importedNames.has(worker.name)) return;
-        importedNames.add(worker.name);
-        importedDefinitions.push(worker);
-      });
-
-      const inactiveWorkers = existingWorkers
-        .filter(worker => !importedNames.has(worker.name))
-        .filter(worker => existingState[worker.name]?.active || existingState[worker.name]?.constraints)
-        .map(worker => worker.name);
-      const registryByName = new Map(existingWorkers.map(worker => [worker.name, worker]));
-      importedDefinitions.forEach(worker => {
-        registryByName.set(worker.name, worker);
-      });
-
-      WORKERS = ensureUniqueWorkerColors([...registryByName.values()]).workers;
-      renderWorkers();
-      const importState = {};
-      WORKERS.forEach(worker => {
-        const existingWorkerState = existingState[worker.name] || {};
-        importState[worker.name] = {
-          ...existingWorkerState,
-          min: existingWorkerState.min ?? worker.min ?? 1,
-          max: existingWorkerState.max ?? worker.max ?? 2,
-          onlyNight2: existingWorkerState.onlyNight2 ?? worker.onlyNight2 ?? false,
-          active: false,
-          constraints: ""
-        };
-      });
-      applyWorkerState(importState);
-
-      headers.forEach((header, columnIndex) => {
-        const name = String(header || "").trim();
-        if (!name) return;
-        if (looksLikeDateRangeHeader(name)) return;
-        const worker = getWorkerDefinitionForImport(name, importedDefinitions);
-        if (!worker) return;
-
-        const text = rows
-          .slice(1)
-          .map(row => String(row[columnIndex] || "").trim())
-          .filter(Boolean)
-          .join("\n");
-
+    function importManualConflict() {
+      if (!state.constraintImport) return "";
+      for (const worker of WORKERS) {
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
-        if (!card) return;
-        card.querySelector(".constraints").value = text;
-        card.querySelector(".active-worker").checked = true;
-        imported += 1;
-
-        const parsed = parseConstraints(text, { workerName: worker.name });
-        if (parsed.warnings && parsed.warnings.length) {
-          issues.push(...parsed.warnings);
+        const text = card?.querySelector(".constraints")?.value || "";
+        if (!text.trim()) continue;
+        const manual = parseConstraints(text, { workerName: worker.name });
+        const imported = state.constraintImport.applied.filter(entry => entry.workerName === worker.name);
+        if (manual.warnings.length || imported.some(entry =>
+          (entry.status === "unavailable" && manual.submitted.has(entry.date))
+          || (entry.status !== "unavailable" && manual.blocked.has(entry.date)))) {
+          return "יש סתירה או שיוך לא ברור בין אילוצים ידניים לאקסל עבור " + worker.name + ". שני המקורות נשמרו; יש לבדוק את האילוץ הידני לפני יצירה.";
         }
-      });
-
-      if (!imported) issues.push("לא זוהו עמודות עובדים.");
-      if (inactiveWorkers.length) {
-        issues.push(`עובדים שלא הופיעו בייבוא החדש סומנו כלא פעילים לסידור הזה: ${inactiveWorkers.join(", ")}.`);
       }
-      renderImportSummary({ imported, importedWeeks, issues });
-      updateOneTimeIndicators();
-      syncOneTimeConstraintsNow("after import");
-      saveState();
+      return "";
     }
 
-    function handleBulkExcelNotes() {
-      try {
-        const text = bulkExcelNotesEl.value.trim();
-        if (!text) {
-          bulkExcelStatusEl.textContent = "הדבק כאן טווח מאקסל לפני קליטה.";
-          return;
+    function importedWorkerRecords(name) {
+      return state.constraintImport?.applied.filter(entry => entry.workerName === name) || [];
+    }
+
+    function isSequenceImport(plan) {
+      return plan?.version === 3 && plan.mappingMode === "block-sequence";
+    }
+
+    function renderConstraintImport() {
+      const plan = state.constraintImport;
+      const panel = getEl("constraintImportReview");
+      if (!plan) { panel.innerHTML = ""; return; }
+      const escape = escapeHtmlText;
+      const matched = plan.employees.map(employee => employee.name + (employee.isNew ? " (חדש)" : "")).join(", ");
+      bulkExcelStatusEl.textContent = (isSequenceImport(plan) ? "שיוך לפי סדר בלוקים בלבד: בלוק 1 לשבוע 1, בלוק 2 לשבוע 2. כותרות תאריכים הן מידע בלבד. " : "ייבוא ישן נשמר ללא שינוי — נדרש שיוך מחדש מאושר לפי סדר בלוקים. ")
+        + "עובדים ששויכו: " + matched + ". הוחלו " + plan.applied.length
+        + " אילוצים; " + plan.skipped.length + " רשומות מעבר לתקופה נשמרו ללא שיבוץ; " + (plan.notes?.length || 0) + " הערות נשמרו; " + plan.issues.length + " נושאים לבדיקה. ימים שלא דווחו והערות ללא הגבלת זמינות נשארים פתוחים לפי הכלל הקיים.";
+      panel.innerHTML = '<details><summary>פירוט אילוצים ורשומות מחוץ לתקופה</summary>'
+        + plan.applied.map(entry => '<div>' + escape(entry.workerName + " — " + entry.date + ": " + (entry.status === "unavailable" ? "לא זמין" : entry.status === "preferred" ? "זמין ומעדיף" : "זמין")) + '</div>').join("")
+        + plan.skipped.map(entry => '<div>' + escape(entry.workerName + " — " + entry.date + " — מחוץ לתקופה: " + entry.raw) + '</div>').join("")
+        + (plan.notes || []).map(note => '<div>' + escape(note.workerName + " — " + note.date + " — הערה: " + note.text) + '</div>').join("")
+        + plan.sources.map((source, index) => '<details><summary>מקור אקסל ' + (index + 1) + ' — נשמר ללא שינוי</summary><textarea readonly>' + escape(source.rawText || JSON.parse(source.rowsJson).map(row => row.join("\t")).join("\n")) + '</textarea></details>').join("")
+        + '<div>החלטות מפורשות לשמירה מחוץ לסידור: ' + Object.values(plan.resolutions).filter(choice => choice.action === "defer").length + '</div></details>'
+        + plan.issues.map(item => '<div class="import-issues" data-import-issue="' + escape(item.id) + '"><p>'
+          + escape((item.workerName || "עמודה " + item.column) + ", שורה " + item.row + ": " + item.raw + " — " + item.reason) + '</p>'
+          + (["employee", "note"].includes(item.type) ? '<select class="resolve-employee"><option value="">בחר עובד</option>' + WORKERS.map(worker => '<option>' + escape(worker.name) + '</option>').join("") + '</select>' : "")
+          + (item.type === "block" ? '<label>מספר בלוק <input class="resolve-block" type="number" min="1" max="8"></label>' : "")
+          + (item.type === "entry" ? '<select class="resolve-weekday"><option value="">בחר יום שבוע</option>' + DAY_NAMES.map((day, index) => '<option value="' + index + '">' + escape(day) + '</option>').join("") + '</select>' : "")
+          + (item.type === "note" ? '<label>תאריך ההערה החד פעמית <input class="resolve-date" type="date"></label>' : "")
+          + (["entry", "note", "meaning", "conflict"].includes(item.type) ? '<select class="resolve-status"><option value="">בחר פירוש מפורש</option><option value="unavailable">לא זמין לכל המשמרת</option><option value="available">זמין לכל המשמרת</option><option value="preferred">זמין ומעדיף</option></select>' : "")
+          + '<button type="button" class="btn secondary resolve-import">החל החלטה</button>'
+          + (!["conflict", "block"].includes(item.type) ? '<button type="button" class="btn secondary defer-import">שמור מחוץ לסידור הנוכחי</button>' : "") + '</div>').join("");
+      document.querySelectorAll(".worker").forEach(card => {
+        const el = card.querySelector(".imported-constraints");
+        if (el) el.textContent = importedWorkerRecords(card.dataset.worker).map(entry => entry.date + ": " + (entry.status === "unavailable" ? "לא זמין" : entry.status === "preferred" ? "מעדיף" : "זמין")).join(" | ");
+      });
+    }
+
+    async function importRowsMatrix(rows, statusEl) {
+      if (state.draftTransition || state.workspaceLoadFailed) return { success: false };
+      const validation = periodService().validate(state.period, { historyStatus: state.historyStatus, officialSchedules: state.officialSchedules, allowOverlap: true });
+      if (!validation.valid) { statusEl.textContent = validation.error; return { success: false, error: validation.error }; }
+      const service = window.constraintImportService;
+      const rawText = bulkExcelNotesEl.value;
+      const old = state.constraintImport;
+      const migrating = old && !isSequenceImport(old);
+      if (migrating && !window.confirm("לעבור משיוך לפי תאריכי האקסל לשיוך לפי סדר בלוקים? כל מקורות האקסל השמורים ינותחו מחדש: בלוק 1 לשבוע 1 וכן הלאה, ללא הסתמכות על התאריכים שנכתבו. ההחלטות מהמודל הקודם יישארו בעותק לשחזור ולא יועברו אוטומטית. תחילה יישמר עותק מלא של הטיוטה.")) return { success: false };
+      const source = { rawText, rowsJson: JSON.stringify(rows), anchorPeriod: { ...state.period } };
+      const sources = old ? [...old.sources] : [];
+      if (!sources.some(item => item.rowsJson === source.rowsJson)) sources.push(source);
+      let plan;
+      try { plan = service.interpret({ sources, workers: WORKERS, period: state.period, resolutions: migrating ? {} : old?.resolutions || {} }, periodService()); }
+      catch (error) { statusEl.textContent = "לא ניתן לקלוט את הטבלה: " + error.message; return { success: false }; }
+      if (!plan.employees.length && !plan.issues.length) { statusEl.textContent = "לא זוהו עובדים או אילוצים. הנתונים הקודמים לא שונו."; return { success: false }; }
+      const previous = captureDraftData();
+      const definitions = [...previous.workers];
+      for (const employee of plan.employees) {
+        let worker = definitions.find(item => item.name === employee.name);
+        if (!worker) {
+          worker = { ...getWorkerDefinitionForImport(employee.name, definitions), active: false, constraints: "" };
+          definitions.push(worker);
         }
-
-        const lines = text.split(/\r?\n/);
-        const notesIndex = lines.findIndex(line => line.trim() === "הערות");
-        const tableLines = notesIndex >= 0 ? lines.slice(0, notesIndex) : lines;
-        const noteLines = notesIndex >= 0 ? lines.slice(notesIndex + 1).map(line => line.trim()).filter(Boolean) : [];
-        oneTimeRulesEl.value = noteLines.join("\n");
-
-        const rows = tableLines.map(line => line.split("\t"));
-        importRowsMatrix(rows, bulkExcelStatusEl);
-      } catch (error) {
-        console.error("[bulk import]", error);
-        bulkExcelStatusEl.textContent = "שגיאה בקליטת האילוצים. בדוק את הפורמט ונסה שוב.";
+        const columnSource = rows.slice(1).map(row => row[employee.columns[0] - 1] || "").map(text => String(text).trim()).filter(Boolean).join("\n");
+        // A re-import of an unchanged legacy column replaces only its known old
+        // import text. The full pre-import draft remains recoverable in backups.
+        if (state.legacyImportReviewRequired && worker.constraints.trim() === columnSource) worker.constraints = "";
+        worker.active = plan.applied.some(entry => entry.workerName === employee.name) || !employee.hasInput || Boolean(worker.constraints.trim());
       }
+      const next = { ...previous, workers: definitions, constraintImport: plan, pendingExcelImport: null,
+        legacyImportReviewRequired: state.legacyImportReviewRequired && definitions.some(worker => worker.constraints.trim()),
+        bulkExcelNotes: rawText, runtimeSnapshotJson: null, plainResult: "" };
+      if (!hasPeriodBoundInput()) next.constraintPeriod = periodKey();
+      const switched = await switchDraft(next, { origin: state.draftOrigin });
+      if (!switched) return { success: false };
+      renderConstraintImport();
+      renderWeekSettings();
+      return { success: true, plan: state.constraintImport };
+    }
+
+    async function handleBulkExcelNotes() {
+      if (!bulkExcelNotesEl.value.trim()) { bulkExcelStatusEl.textContent = "הדבק טווח מאקסל לפני קליטה."; return; }
+      return importRowsMatrix(window.constraintImportService.parseTsv(bulkExcelNotesEl.value), bulkExcelStatusEl);
+    }
+
+    async function resolveImportIssue(container, defer) {
+      const id = container.dataset.importIssue;
+      if (!isSequenceImport(state.constraintImport)) { renderWeekSettings(); return; }
+      const decision = defer ? { action: "defer" } : {
+        employee: container.querySelector(".resolve-employee")?.value || "",
+        blockNumber: container.querySelector(".resolve-block")?.value || "",
+        weekday: container.querySelector(".resolve-weekday")?.value ?? "",
+        date: container.querySelector(".resolve-date")?.value || "",
+        status: container.querySelector(".resolve-status")?.value || ""
+      };
+      decision.resolvedAt = new Date().toISOString();
+      decision.evidenceKey = state.constraintImport.issues.find(item => item.id === id)?.evidenceKey || "";
+      if (!window.confirm(defer ? "לאשר במפורש שרשומה זו תישמר ללא שיבוץ בסידור הנוכחי? המקור לא יימחק." : "לאשר את הפירוש שנבחר? הטקסט המקורי יישמר.")) return;
+      const previous = captureDraftData();
+      const plan = window.constraintImportService.interpret({ ...state.constraintImport, workers: WORKERS,
+        period: state.period, resolutions: { ...state.constraintImport.resolutions, [id]: decision } }, periodService());
+      const workers = previous.workers.map(worker => ({ ...worker, active: worker.active || (
+        !state.constraintImport.applied.some(entry => entry.workerName === worker.name)
+        && plan.applied.some(entry => entry.workerName === worker.name)) }));
+      await switchDraft({ ...previous, workers, constraintImport: plan, runtimeSnapshotJson: null, plainResult: "" }, { origin: state.draftOrigin });
+      renderConstraintImport(); renderWeekSettings();
     }
 
     function getPersistentWorkerState() {
@@ -1404,6 +1661,18 @@
       outputEl.innerHTML = "";
       warningsEl.innerHTML = "";
       manualOffDateEl.value = "";
+      state.constraintImport = null;
+      state.pendingExcelImport = null;
+      state.legacyImportReviewRequired = false;
+      state.legacyPeriodReviewRequired = false;
+      state.constraintPeriod = null;
+      state.legacyPeriodData = null;
+      state.period = null;
+      invalidatePeriodOutput();
+      state.draftOrigin = "new";
+      state.restoredRuntimeJson = null;
+      state.rejectedGridSnapshotJson = null;
+      try { selectPeriod(automaticProposal()); } catch { /* history retry will propose after a successful load */ }
       renderWeekSettings();
       await refreshCalendarDays();
       updateOneTimeIndicators();
@@ -1592,7 +1861,7 @@
 
           if (weekOffset >= weekConfigs.length) {
             const label = workerName ? `לעובד/ת ${workerName}` : "לעובד";
-            warnings.push(`${label} דווח שבוע ${weekHeaderCount} מעבר לתקופת הסידור (${weekConfigs.length} שבועות לפי הוד). אילוצים אלו לא שובצו.`);
+            warnings.push(`${label} דווח שבוע ${weekHeaderCount} מעבר לתקופת הסידור (${weekConfigs.length} שבועות). אילוצים אלו לא שובצו.`);
             weekOffset = null;
           }
           continue;
@@ -1762,6 +2031,12 @@
         });
         const workerDefinition = WORKERS.find(worker => worker.name === name);
         const parsedConstraints = parseConstraints(constraintsText, { workerName: name });
+        for (const entry of importedWorkerRecords(name)) {
+          if (entry.status === "unavailable") parsedConstraints.blocked.add(entry.date);
+          else parsedConstraints.submitted.add(entry.date);
+          if (entry.status === "preferred") parsedConstraints.preferred.add(entry.date);
+        }
+        for (const date of parsedConstraints.blocked) { parsedConstraints.submitted.delete(date); parsedConstraints.preferred.delete(date); }
         console.log(
           "[parsed-one-time-constraints]",
           name,
@@ -3042,6 +3317,7 @@
       4. Enforce hard caps/rules, fill genuine missing slots, then validate final output.
     */
     function generateSchedule() {
+      if (!requireReadyPeriod()) return { schedule: {}, workers: [], warnings: [periodReadiness()] };
       const warnings = [];
       const weekConfigs = getWeekConfigs();
       const days = getScheduleDays();
@@ -3289,11 +3565,14 @@
       };
     }
 
-    async function renderSchedule(existing = null) {
+    async function renderSchedule(existing = null, { restoring = false } = {}) {
+      if (!requireReadyPeriod()) return;
       const result = existing || generateSchedule();
       const { schedule, workers } = result;
+      const dateValidation = periodService().validateScheduleDates(state.period, schedule);
+      if (!dateValidation.valid) { rejectStaleGrid(schedule, dateValidation.error); return; }
       let warnings = result.warnings || [];
-      const appliedManualOverrides = applyManualOverrides(schedule, workers);
+      const appliedManualOverrides = !restoring && applyManualOverrides(schedule, workers);
       if (appliedManualOverrides) {
         warnings = [
           ...collectFinalWarnings(schedule, workers),
@@ -3677,7 +3956,7 @@
       outputEl.innerHTML = html;
       plainResultEl.value = plain.join("\n").trim();
       checkCurrentScheduleOfficialStatus();
-      saveState();
+      if (!restoring) saveState();
     }
 
     function finalizedSchedulePayload() {
@@ -3720,6 +3999,7 @@
     }
 
     async function createCalendarExportLink() {
+      if (!requireReadyPeriod() || !requireCurrentGrid()) return;
       if (!state.currentSchedule) await renderSchedule();
       const payload = finalizedSchedulePayload();
       if (!payload) {
@@ -3747,6 +4027,7 @@
     }
 
     async function copyCalendarExportLink() {
+      if (!requireReadyPeriod() || !requireCurrentGrid()) return;
       if (!calendarExportLinkEl.value.trim()) await createCalendarExportLink();
       if (!calendarExportLinkEl.value.trim()) return;
       try {
@@ -3758,6 +4039,7 @@
     }
 
     async function openCalendarExportLink() {
+      if (!requireReadyPeriod() || !requireCurrentGrid()) return;
       if (!calendarExportLinkEl.value.trim()) await createCalendarExportLink();
       const link = calendarExportLinkEl.value.trim();
       if (!link) return;
@@ -3765,6 +4047,21 @@
     }
 
     function resetWorkspaceToEmpty() {
+      state.draftTransition = false;
+      getEl("mainShell").inert = false;
+      state.draftOrigin = "new";
+      state.draftBackups = [];
+      state.restoredRuntimeJson = null;
+      state.rejectedGridSnapshotJson = null;
+      state.period = null;
+      state.historyStatus = "loading";
+      state.workspaceLoadFailed = false;
+      state.constraintImport = null;
+      state.pendingExcelImport = null;
+      state.constraintPeriod = null;
+      state.legacyImportReviewRequired = false;
+      state.legacyPeriodReviewRequired = false;
+      state.legacyPeriodData = null;
       WORKERS = [];
       state.special = {};
       state.detectedWeeks = [];
@@ -3803,13 +4100,16 @@
       renderFairnessTable();
     }
 
-    async function loadUserWorkspace(uid) {
+    async function loadUserWorkspace(uid, providedDraft) {
       if (!window.userDataService) return;
+      state.historyStatus = "loading";
       let data = null;
       try {
-        data = await window.userDataService.loadUserAppData(uid);
+        data = providedDraft === undefined ? await window.userDataService.loadUserAppData(uid) : providedDraft;
       } catch (err) {
-        console.warn("Could not load from Firestore:", err);
+        state.workspaceLoadFailed = true;
+        state.historyStatus = "error";
+        throw err;
       }
 
       if (!data) {
@@ -3819,13 +4119,42 @@
         renderWeekSettings();
         await refreshCalendarDays();
         await loadUserOfficialSchedules(uid);
+        await refreshDraftBackups();
         return;
       }
 
-      const savedStartDate = data.startDate || "";
+      state.workspaceLoadFailed = false;
+      invalidatePeriodOutput();
+      manualOffDateEl.value = "";
+      manualOffLabelEl.value = "אין עבודה";
+      getEl("newWorkerName").value = "";
+      state.draftOrigin = "restored";
+      state.restoredRuntimeJson = data.runtimeSnapshotJson || null;
+      state.rejectedGridSnapshotJson = null;
+      state.constraintImport = data.constraintImport || null;
+      state.pendingExcelImport = data.pendingExcelImport || null;
+      state.legacyPeriodData = data.legacyPeriodData || { startDate: data.startDate ?? null, weekCount: data.weekCount ?? null,
+        detectedWeeks: data.detectedWeeks ?? null, weeks: data.weeks ?? null };
+      const legacyWeeks = data.detectedWeeks?.length ? data.detectedWeeks : data.weeks;
+      const savedPeriod = data.schedulePeriod || (data.startDate ? {
+        version: 1, startDate: data.startDate, weekCount: legacyWeeks?.length || data.weekCount || 2,
+        weekStartsOn: 0, timezone: "Asia/Jerusalem", source: "saved", explanation: "תקופה מטיוטה שמורה. התאריכים והאילוצים לא הוזזו."
+      } : null);
+      state.period = savedPeriod;
+      state.constraintPeriod = data.constraintPeriod || periodKey(savedPeriod);
+      state.legacyImportReviewRequired = data.legacyImportReviewRequired ?? Boolean(!data.schedulePeriod && data.bulkExcelNotes);
+      state.legacyPeriodReviewRequired = Boolean(data.legacyPeriodReviewRequired);
+      if (!data.schedulePeriod && legacyWeeks?.length) {
+        try {
+          const expected = periodService().getWeeks(savedPeriod);
+          state.legacyPeriodReviewRequired = legacyWeeks.some((week, index) =>
+            week.start !== expected[index]?.start || week.end !== expected[index]?.end);
+        } catch { state.legacyPeriodReviewRequired = true; }
+      }
+      const savedStartDate = savedPeriod?.startDate || "";
       const startDate = parseUiDate(savedStartDate);
       if (startDateEl) startDateEl.value = startDate ? editDateValue(startDate) : "";
-      if (weekCountEl) weekCountEl.value = data.weekCount || 2;
+      if (weekCountEl) weekCountEl.value = savedPeriod?.weekCount ?? data.weekCount ?? 2;
       if (bulkExcelNotesEl) bulkExcelNotesEl.value = data.bulkExcelNotes || "";
       if (oneTimeRulesEl) oneTimeRulesEl.value = data.oneTimeRules || "";
       if (plainResultEl) plainResultEl.value = data.plainResult || "";
@@ -3873,11 +4202,8 @@
       applyWorkerState(workersState);
       updateOneTimeIndicators();
 
-      if (data.bulkExcelNotes) {
-        renderImportSummary({
-          imported: savedWorkers.filter(worker => worker.active || worker.constraints).length,
-          importedWeeks: getDetectedWeekConfigs().length
-        });
+      if (state.pendingExcelImport || state.legacyImportReviewRequired) {
+        bulkExcelStatusEl.textContent = "נתוני האקסל והאילוצים השמורים נשמרו. יש ללחוץ על שיוך לעובדים לניתוח התאריכים והאילוצים מהטבלה המקורית.";
       }
 
       await refreshCalendarDays();
@@ -3886,7 +4212,10 @@
         saveState(true);
       }
 
+      renderConstraintImport();
       await loadUserOfficialSchedules(uid);
+      await refreshDraftBackups();
+      await restoreDraftGrid();
     }
 
     function updateOfficialScheduleBanner() {
@@ -3960,16 +4289,29 @@
     }
 
     async function loadUserOfficialSchedules(uid) {
-      if (!window.fairnessService || !uid) return;
+      if (!window.fairnessService || !uid) return false;
+      state.historyStatus = "loading";
+      renderWeekSettings();
       try {
-        state.officialSchedules = await window.fairnessService.loadOfficialSchedulesDocs(uid);
+        const records = await window.fairnessService.loadOfficialSchedulesDocs(uid);
+        if (uid !== currentAuthUid) return false;
+        // Validate history even when preserving an existing manual or saved period.
+        periodService().propose({ historyStatus: "ready", officialSchedules: records, weekCount: 2 });
+        state.officialSchedules = records;
+        state.historyStatus = "ready";
       } catch (err) {
+        if (uid !== currentAuthUid) return false;
         console.warn("Could not load official schedules from Firestore:", err);
-        state.officialSchedules = [];
+        state.historyStatus = "error";
+        renderWeekSettings();
+        return false;
       }
+      if (!state.period) selectPeriod(automaticProposal());
+      renderWeekSettings();
       refreshFairnessMonthsOptions();
       renderFairnessTable();
       checkCurrentScheduleOfficialStatus();
+      return true;
     }
 
     function refreshFairnessMonthsOptions() {
@@ -4030,6 +4372,7 @@
     }
 
     async function handleSaveOfficialSchedule() {
+      if (!requireReadyPeriod() || !requireCurrentGrid()) return;
       if (!currentAuthUid || !window.fairnessService) {
         alert("יש להתחבר למערכת כדי לשמור סידור רשמי.");
         return;
@@ -4046,16 +4389,21 @@
         return;
       }
 
-      const startIso = isoDate(startDate);
-      const endIso = days[days.length - 1].iso;
+      // Refresh coverage immediately before the existing explicit replacement workflow.
+      const savingUid = currentAuthUid;
+      const savingPeriodKey = periodKey();
+      const savingSchedule = state.currentSchedule;
+      if (!await loadUserOfficialSchedules(currentAuthUid) || !requireReadyPeriod()) return;
+      if (savingUid !== currentAuthUid || savingPeriodKey !== periodKey() || savingSchedule !== state.currentSchedule) return;
+      const startIso = state.period.startDate;
+      const endIso = periodService().getWeeks(state.period).at(-1).end;
       const periodId = `${startIso}_${endIso}`;
 
-      // Check for partial overlaps with different period IDs
+      // Every overlap, including the same period ID, requires explicit replacement.
       const overlapping = window.fairnessService.findOverlappingOfficialSchedules(
         state.officialSchedules || [],
         startIso,
-        endIso,
-        periodId
+        endIso
       );
 
       if (overlapping.length > 0) {
@@ -4078,6 +4426,7 @@
         const assignments = window.fairnessService.snapshotAssignments(state.currentSchedule);
 
         const record = {
+          schedulePeriod: { ...state.period },
           id: periodId,
           startDate: startIso,
           endDate: endIso,
@@ -4090,13 +4439,16 @@
           manualOverrides: { ...state.manualOverrides }
         };
 
-        const saveRes = await window.fairnessService.saveOfficialScheduleDoc(currentAuthUid, record);
+        const saveRes = await window.fairnessService.saveOfficialScheduleDoc(savingUid, record);
         if (!saveRes || !saveRes.success) {
           throw new Error("פעולת השמירה נכשלה.");
         }
 
         // Reload official schedules from storage
-        state.officialSchedules = await window.fairnessService.loadOfficialSchedulesDocs(currentAuthUid);
+        const reloadedSchedules = await window.fairnessService.loadOfficialSchedulesDocs(savingUid);
+        if (savingUid !== currentAuthUid) return;
+        state.officialSchedules = reloadedSchedules;
+        if (savingPeriodKey !== periodKey() || savingSchedule !== state.currentSchedule) return;
         state.isCurrentScheduleOfficial = true;
         state.currentOfficialSchedule = record;
 
@@ -4107,6 +4459,8 @@
         if (statusBadgeEl) statusBadgeEl.textContent = "סידור רשמי נשמר בהצלחה";
       } catch (err) {
         console.error("Failed to save official schedule:", err);
+        state.historyStatus = "error";
+        renderWeekSettings();
         alert("שגיאה בשמירת הסידור הרשמי: " + (err.message || err));
         checkCurrentScheduleOfficialStatus();
         if (saveBtn && !state.isCurrentScheduleOfficial) {
@@ -4116,10 +4470,7 @@
       }
     }
 
-    function saveState(immediate = false) {
-      if (!currentAuthUid || !window.userDataService) {
-        return;
-      }
+    function captureDraftData() {
       const startDate = getBaseStartDate();
       const saveDateValue = value => {
         const date = parseUiDate(value, startDate?.getFullYear());
@@ -4147,9 +4498,34 @@
         }];
       }));
 
+      let unrendered = null;
+      let unreadableRuntimeSnapshotJson = null;
+      if (!state.currentSchedule && state.restoredRuntimeJson) {
+        try { unrendered = window.draftSnapshot.parse(state.restoredRuntimeJson); } catch {
+          unreadableRuntimeSnapshotJson = state.restoredRuntimeJson;
+        }
+      }
       const data = {
+        draftOrigin: state.draftOrigin,
+        unreadableRuntimeSnapshotJson,
+        runtimeSnapshotJson: window.draftSnapshot.stringify({
+          currentSchedule: state.currentSchedule || unrendered?.currentSchedule || null,
+          currentWorkers: state.currentSchedule ? state.currentWorkers : (unrendered?.currentWorkers || state.currentWorkers),
+          currentWarnings: state.currentSchedule ? state.currentWarnings : (unrendered?.currentWarnings || state.currentWarnings),
+          shuffleSeed: state.shuffleSeed,
+          rejectedGridSnapshotJson: state.rejectedGridSnapshotJson,
+          fields: { manualOffDate: manualOffDateEl.value, manualOffLabel: manualOffLabelEl.value,
+            newWorkerName: getEl("newWorkerName").value, calendarExportLink: calendarExportLinkEl.value }
+        }),
+        schedulePeriod: state.period,
+        constraintImport: state.constraintImport,
+        pendingExcelImport: state.pendingExcelImport,
+        constraintPeriod: state.constraintPeriod,
+        legacyImportReviewRequired: state.legacyImportReviewRequired,
+        legacyPeriodReviewRequired: state.legacyPeriodReviewRequired,
+        legacyPeriodData: state.legacyPeriodData,
         startDate: startDate ? isoDate(startDate) : "",
-        weekCount: weekCountEl ? weekCountEl.value : 2,
+        weekCount: state.period?.weekCount ?? 2,
         bulkExcelNotes: bulkExcelNotesEl ? bulkExcelNotesEl.value : "",
         oneTimeRules: oneTimeRulesEl ? oneTimeRulesEl.value : "",
         plainResult: plainResultEl ? plainResultEl.value : "",
@@ -4171,6 +4547,12 @@
         }))
       };
 
+      return JSON.parse(JSON.stringify(data));
+    }
+
+    function saveState(immediate = false) {
+      if (!currentAuthUid || !window.userDataService || state.workspaceLoadFailed || state.draftTransition) return;
+      const data = captureDraftData();
       if (autosaveStatusEl) {
         autosaveStatusEl.textContent = "שומר בענן...";
       }
@@ -4189,7 +4571,24 @@
         });
     }
 
+    getEl("proposePeriod")?.addEventListener("click", proposePeriod);
+    getEl("previewAutomaticPeriod")?.addEventListener("click", previewAutomaticPeriod);
+    getEl("cancelPeriodPreview")?.addEventListener("click", cancelPeriodPreview);
+    getEl("startNewSchedule")?.addEventListener("click", startNewSchedule);
+    getEl("refreshDraftBackups")?.addEventListener("click", refreshDraftBackups);
+    getEl("restoreDraftBackup")?.addEventListener("click", restoreDraftBackup);
+    getEl("retryPeriodHistory")?.addEventListener("click", () => loadUserOfficialSchedules(currentAuthUid));
+    getEl("cancelPendingExcel")?.addEventListener("click", () => {
+      if (!state.pendingExcelImport) return;
+      if (!window.confirm("לבטל את הייבוא הממתין ולחזור לאילוצים הקודמים? הטקסט המודבק יישמר לעיון.")) return;
+      state.pendingExcelImport = null;
+      bulkExcelStatusEl.textContent = "הייבוא הממתין בוטל. הטקסט המודבק נשמר לעיון; האילוצים הקודמים לא שונו.";
+      renderWeekSettings();
+      saveState();
+    });
+
     getEl("buildSchedule")?.addEventListener("click", async () => {
+      if (!requireReadyPeriod()) return;
       state.shuffleSeed = 34;
       syncOneTimeConstraintsNow("before buildSchedule");
       await renderSchedule();
@@ -4208,7 +4607,9 @@
       statusBadgeEl.textContent = "עריכות ידניות אופסו";
     });
     getEl("copyResult")?.addEventListener("click", async () => {
-      if (!plainResultEl?.value.trim()) await renderSchedule();
+      if (!requireReadyPeriod() || !requireCurrentGrid()) return;
+      if (!state.currentSchedule) await renderSchedule();
+      if (!state.currentSchedule || !requireCurrentGrid()) return;
       try {
         await navigator.clipboard.writeText(plainResultEl?.value || "");
         statusBadgeEl.textContent = "הועתק";
@@ -4229,20 +4630,15 @@
         saveState(true);
       }
     });
-    getEl("applyBulkExcelNotes")?.addEventListener("click", () => {
-      handleBulkExcelNotes();
+    getEl("applyBulkExcelNotes")?.addEventListener("click", async () => {
+      await handleBulkExcelNotes();
       saveState(true);
     });
     getEl("quickReset")?.addEventListener("click", () => {
       quickResetState();
       saveState(true);
     });
-    getEl("buildWeeks")?.addEventListener("click", async () => {
-      setDetectedWeeks([]);
-      renderWeekSettings();
-      await refreshCalendarDays();
-      saveState(true);
-    });
+    getEl("buildWeeks")?.addEventListener("click", applyManualPeriod);
     getEl("refreshDays")?.addEventListener("click", async () => {
       await refreshCalendarDays();
       saveState(true);
@@ -4378,6 +4774,13 @@
       saveState(true);
     });
 
+    getEl("constraintImportReview")?.addEventListener("click", async event => {
+      const container = event.target.closest("[data-import-issue]");
+      if (!container) return;
+      if (event.target.classList.contains("resolve-import")) await resolveImportIssue(container, false);
+      if (event.target.classList.contains("defer-import")) await resolveImportIssue(container, true);
+    });
+
     const dismissPanelsIfOutside = event => {
       if (event.target.closest(".alternatives-panel") || event.target.closest(".manual-edit-panel")) return;
       const hasOpen = outputEl?.querySelector(".alternatives-panel[open], .manual-edit-panel[open]");
@@ -4389,14 +4792,14 @@
     document.addEventListener("click", dismissPanelsIfOutside);
 
     document.addEventListener("input", async event => {
+      if (event.target === startDateEl || event.target === weekCountEl) { updateManualPeriod(); return; }
       const shouldAutoSave = event.target.closest(".worker")
         || event.target.closest(".week-row")
-        || event.target === startDateEl
-        || event.target === weekCountEl
         || event.target === bulkExcelNotesEl
         || event.target === oneTimeRulesEl;
 
       if (shouldAutoSave) {
+        if (event.target.closest(".worker") || event.target === oneTimeRulesEl) invalidatePeriodOutput();
         if (event.target.classList.contains("min-shifts") || event.target.classList.contains("max-shifts")) {
           syncWorkerShiftBounds(event.target.closest(".worker"), event.target);
         }
@@ -4414,16 +4817,14 @@
           updateOneTimeIndicators();
         }
         if (event.target.closest(".week-row")) await refreshCalendarDays();
-        if (event.target === startDateEl || event.target === weekCountEl) {
-          setDetectedWeeks([]);
-          renderWeekSettings();
-          await refreshCalendarDays();
-        }
+        if (!hasPeriodBoundInput()) state.constraintPeriod = periodKey();
+        renderWeekSettings();
         saveState();
       }
     });
 
     document.addEventListener("change", event => {
+      if (event.target === startDateEl || event.target === weekCountEl) { updateManualPeriod(); return; }
       if (!event.target.closest(".worker")) return;
       if (event.target.classList.contains("min-shifts") || event.target.classList.contains("max-shifts")) {
         syncWorkerShiftBounds(event.target.closest(".worker"), event.target);
@@ -4513,20 +4914,23 @@
       }
 
       // Local Isolated Dev Mode Handlers (Zero Production Access)
-      const isLocalHost = window.location.hostname === "localhost" ||
-                          window.location.hostname === "127.0.0.1" ||
-                          window.location.search.includes("dev=true");
+      const isLocalHost = window.runtimeEnvironment.isTestMode;
       const devIsolatedLoginBtn = getEl("devIsolatedLoginBtn");
       const devIsolatedBanner = getEl("devIsolatedBanner");
       const btnResetDevData = getEl("btnResetDevData");
+      if (window.runtimeEnvironment.isTestMode) {
+        document.title = "TEST MODE — סידור משמרות";
+        devIsolatedBanner.style.display = "flex";
+        googleLoginBtn.style.display = "none";
+        toggleRequestAccessBtn.style.display = "none";
+      }
 
       if (isLocalHost && devIsolatedLoginBtn) {
         devIsolatedLoginBtn.style.display = "inline-flex";
       }
 
       const enterDevIsolatedMode = async () => {
-        window.__ISOLATED_DEV_MODE__ = true;
-        localStorage.setItem("isolated_dev_active", "true");
+        if (!window.runtimeEnvironment.isTestMode) return;
         if (devIsolatedBanner) devIsolatedBanner.style.display = "flex";
 
         const mockUser = {
@@ -4720,6 +5124,7 @@
       }
 
       window._handleAuthStateChange = async (user, authMeta) => {
+        if (window.runtimeEnvironment.isTestMode && user && user.uid !== window.runtimeEnvironment.testUser.uid) return;
         if (user) {
           if (!window.__ISOLATED_DEV_MODE__ && window.authService.isAuthorizedUser && !window.authService.isAuthorizedUser(user)) {
             await window.authService.logoutAdmin();
@@ -4766,9 +5171,8 @@
             adminLogoutBtn.addEventListener("click", async () => {
               if (confirm("האם אתה בטוח שברצונך להתנתק מהמערכת?")) {
                 if (window.__ISOLATED_DEV_MODE__) {
-                  localStorage.removeItem("isolated_dev_active");
-                  window.__ISOLATED_DEV_MODE__ = false;
-                  if (devIsolatedBanner) devIsolatedBanner.style.display = "none";
+                  // Logout remains inside the immutable test environment.
+                  if (devIsolatedBanner) devIsolatedBanner.style.display = "flex";
                   if (window._handleAuthStateChange) await window._handleAuthStateChange(null);
                   return;
                 }
@@ -4840,9 +5244,7 @@
 
       window.authService.onAdminAuthStateChanged(window._handleAuthStateChange);
 
-      if (isLocalHost && localStorage.getItem("isolated_dev_active") === "true") {
-        enterDevIsolatedMode();
-      }
+      // In TEST MODE the auth adapter supplies only the isolated user at startup.
     };
 
     window.state = state;
@@ -4867,7 +5269,9 @@
     import {
       loadUserAppData,
       saveUserAppData,
-      cancelPendingSave
+      cancelPendingSave,
+      replaceDraftWithBackup,
+      loadDraftBackups
     } from "./src/userDataService.js";
     import {
       submitAccessRequest,
@@ -4894,7 +5298,9 @@
     window.userDataService = {
       loadUserAppData,
       saveUserAppData,
-      cancelPendingSave
+      cancelPendingSave,
+      replaceDraftWithBackup,
+      loadDraftBackups
     };
 
     window.fairnessService = {

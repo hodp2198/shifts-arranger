@@ -16,6 +16,10 @@ const EXPIRATION_DAYS = 14;
 let firestoreDb = null;
 
 function getDb() {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   if (!hasFirebaseConfig()) {
     throw new Error("Firebase לא מוגדר. יש להדביק את firebaseConfig בקובץ firebase-config.js.");
   }
@@ -58,6 +62,14 @@ export async function saveSchedulePayload(schedule, uid) {
     throw new Error("נדרש מזהה מנהל (UID) ליצירת קישור יומן ציבורי.");
   }
 
+  if (typeof window !== "undefined" && window.runtimeEnvironment?.isTestMode) {
+    const id = createShortDocumentId();
+    localStorage.setItem(`isolated_dev_publicSchedule_${id}`, JSON.stringify({
+      ownerUid: uid, expiresAt: Date.now() + EXPIRATION_DAYS * 86400000, schedule
+    }));
+    return { id };
+  }
+
   const db = getDb();
   const id = createShortDocumentId();
   const scheduleRef = doc(db, "publicSchedules", id);
@@ -91,6 +103,14 @@ export async function saveSchedulePayload(schedule, uid) {
  */
 export async function readSchedulePayload(id) {
   assertValidDocumentId(id);
+  if (typeof window !== "undefined" && window.runtimeEnvironment?.isTestMode) {
+    const raw = localStorage.getItem(`isolated_dev_publicSchedule_${id}`);
+    const data = raw ? JSON.parse(raw) : null;
+    if (!data?.schedule || data.expiresAt <= Date.now()) {
+      throw new Error("TEST MODE: קישור הבדיקה אינו קיים בדפדפן זה או שפג תוקפו. אין פנייה לייצור.");
+    }
+    return data.schedule;
+  }
   const db = getDb();
   const scheduleRef = doc(db, "publicSchedules", id);
 

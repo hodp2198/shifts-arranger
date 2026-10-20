@@ -138,6 +138,7 @@
 
     const result = await saveSchedulePayload(minimalSchedule, uid);
     url.search = `?id=${encodeURIComponent(result.id)}`;
+    if (window.runtimeEnvironment?.isTestMode) url.searchParams.set("dev", "true");
     url.hash = "";
     return url.href;
   }
@@ -147,6 +148,7 @@
    */
   async function createLegacyEmployeeExportLink(payload, pagePath) {
     const url = new URL(pagePath, window.location.href);
+    if (window.runtimeEnvironment?.isTestMode) url.searchParams.set("dev", "true");
     const compact = JSON.stringify(compactPayload(payload));
     const compressed = await compressText(compact);
     url.hash = compressed

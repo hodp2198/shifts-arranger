@@ -24,6 +24,10 @@ export function isAuthorizedAdmin(user) {
 }
 
 function getFirebaseAuth() {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   if (!hasFirebaseConfig()) {
     throw new Error("הגדרות Firebase אינן תקינות או חסרות ב-firebase-config.js");
   }
@@ -118,6 +122,10 @@ export async function logoutAdmin() {
 }
 
 export function onAdminAuthStateChanged(callback) {
+  if (typeof window !== "undefined" && window.runtimeEnvironment?.isTestMode) {
+    callback(window.runtimeEnvironment.testUser);
+    return () => {};
+  }
   try {
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, user => {

@@ -10,32 +10,37 @@
     "cleared-default-start-date-v1"
   ];
 
+  function storageKey(key) {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    return window.runtimeEnvironment.storageKey(key);
+  }
+
   function clearLegacyStorage() {
-    LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+    LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(storageKey(key)));
   }
 
   function readSavedData() {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(STORAGE_KEY));
     if (!raw) return null;
     try {
       const data = JSON.parse(raw);
       if (data?.schemaVersion !== STORAGE_SCHEMA_VERSION) {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(storageKey(STORAGE_KEY));
         return null;
       }
       return data;
     } catch (error) {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(storageKey(STORAGE_KEY));
       return null;
     }
   }
 
   function writeSavedData(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(storageKey(STORAGE_KEY), JSON.stringify(data));
   }
 
   function removeSavedData() {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey(STORAGE_KEY));
   }
 
   window.stateStorage = {

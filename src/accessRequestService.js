@@ -19,6 +19,10 @@ let firestoreDb = null;
 export const DEFAULT_GAS_BACKEND_URL = "https://script.google.com/macros/s/AKfycbxT1w9cSUVkRKNS7KeQEZJB9yUXXh3LWchwN5nrqwl4Z8fIeKcS4cUWX7sDX3l9bh0k/exec";
 
 function getDb() {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   if (!hasFirebaseConfig()) {
     throw new Error("Firebase אינו מוגדר בקובץ firebase-config.js.");
   }
@@ -30,14 +34,19 @@ function getDb() {
 }
 
 export function getGasBackendUrl() {
-  return localStorage.getItem("gasBackendUrl") || DEFAULT_GAS_BACKEND_URL;
+  return localStorage.getItem(backendStorageKey()) || (window.runtimeEnvironment.isTestMode ? "" : DEFAULT_GAS_BACKEND_URL);
+}
+
+function backendStorageKey() {
+  if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+  return window.runtimeEnvironment.storageKey("gasBackendUrl");
 }
 
 export function setGasBackendUrl(url) {
   if (url && typeof url === "string") {
-    localStorage.setItem("gasBackendUrl", url.trim());
+    localStorage.setItem(backendStorageKey(), url.trim());
   } else {
-    localStorage.removeItem("gasBackendUrl");
+    localStorage.removeItem(backendStorageKey());
   }
 }
 
@@ -84,6 +93,10 @@ export function validateAccessRequestInput(name, email) {
  * Submits a new access request to Firestore
  */
 export async function submitAccessRequest(name, email) {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   const validation = validateAccessRequestInput(name, email);
   if (!validation.valid) {
     return { success: false, message: validation.message };
@@ -173,6 +186,10 @@ export async function submitAccessRequest(name, email) {
  * Fetches all pending access requests for the Super Admin
  */
 export async function fetchPendingAccessRequests() {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   const db = getDb();
   const colRef = collection(db, "accessRequests");
   const q = query(colRef, where("status", "==", "pending"));
@@ -200,6 +217,10 @@ export async function fetchPendingAccessRequests() {
  * Admin approves an access request via secure GAS backend
  */
 export async function approveAccessRequest(requestDoc, adminUser) {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   if (!requestDoc || !requestDoc.id) {
     throw new Error("נתוני בקשה אינם תקינים.");
   }
@@ -245,6 +266,10 @@ export async function approveAccessRequest(requestDoc, adminUser) {
  * Admin rejects an access request via secure GAS backend
  */
 export async function rejectAccessRequest(requestDoc, adminUser, reason = "") {
+  if (typeof window !== "undefined") {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
+  }
   if (!requestDoc || !requestDoc.id) {
     throw new Error("נתוני בקשה אינם תקינים.");
   }

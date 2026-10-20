@@ -6,17 +6,22 @@
     return `${scheduleId}:${employeeId}:${date}:${role}`;
   }
 
+  function storageKey() {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    return window.runtimeEnvironment.storageKey(STORAGE_KEY);
+  }
+
   function readCreatedEvents() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      return JSON.parse(localStorage.getItem(storageKey()) || "{}");
     } catch (error) {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(storageKey());
       return {};
     }
   }
 
   function writeCreatedEvents(events) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(events || {}));
+    localStorage.setItem(storageKey(), JSON.stringify(events || {}));
   }
 
   function isValidEmail(email) {
@@ -148,6 +153,8 @@
   }
 
   async function googleCalendarRequest(accessToken, path, options = {}) {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
     const response = await fetch(`https://www.googleapis.com/calendar/v3${path}`, {
       ...options,
       headers: {
@@ -204,6 +211,8 @@
   }
 
   async function createGoogleCalendarEvents({ schedule, employeeId, accessToken }) {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
     if (!accessToken) {
       throw new Error("Google authorization failed. Please sign in again.");
     }
@@ -241,6 +250,8 @@
   }
 
   async function exportCalendarFile({ schedule, employeeId, calendarEmail }) {
+    if (!window.runtimeEnvironment) throw new Error("Data environment is not initialized.");
+    window.runtimeEnvironment.assertProductionAccess();
     if (!isValidEmail(calendarEmail)) {
       throw new Error("Invalid email address");
     }
