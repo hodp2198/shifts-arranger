@@ -101,7 +101,7 @@
           issue(matchId, "employee", rawName ? "שם העובד מתאים ליותר מעובד אחד או שאינו שם תקין." : "לעמודה יש אילוצים אך חסר שם עובד.", location);
           continue;
         }
-        if (!employees.has(workerName)) employees.set(workerName, { name: workerName, isNew: !workers.some(worker => worker.name === workerName), columns: [], hasInput: false });
+        if (!employees.has(workerName)) employees.set(workerName, { name: workerName, isNew: !workers.some(worker => worker.name === workerName), columns: [], hasInput: false, submittedBlockNumbers: [] });
         const employee = employees.get(workerName);
         employee.columns.push(column + 1); employee.hasInput ||= cells.some(Boolean);
         let blockNumber = 0, block = null, separated = false;
@@ -109,6 +109,7 @@
           blockNumber = number;
           block = { number, seen: new Set(), lastDay: -1, entries: 0 };
           coverage.add(number);
+          if (!employee.submittedBlockNumbers.includes(number)) employee.submittedBlockNumbers.push(number);
           return block;
         };
         for (let index = headerRow + 1; index < rows.length; index++) {
@@ -121,7 +122,7 @@
             const at = { id, sourceIndex, column: column + 1, row: index + 1, line: lineIndex + 1, workerName, raw: lines[lineIndex] };
             if (isHeader(text)) {
               if (block && !block.entries && block.labelOnly) { block.labelOnly = false; continue; }
-              if (block && !block.entries) {
+              if (block && !block.entries && !separated) {
                 const choice = resolutions[id + ":boundary"];
                 if (!Number.isInteger(Number(choice?.blockNumber)) || Number(choice.blockNumber) < 1 || Number(choice.blockNumber) > 8) {
                   issue(id + ":boundary", "block", "רצף כותרות ללא ימי שבוע: יש לבחור את מספר הבלוק הבא, בלי להסתמך על התאריכים.", at);
@@ -206,7 +207,7 @@
           issue(id, "note", "הערה חד פעמית דורשת עובד, תאריך ופירוש מפורשים.", { ...at, workerName });
           return;
         }
-        if (!employees.has(workerName)) employees.set(workerName, { name: workerName, isNew: false, columns: [], hasInput: true });
+        if (!employees.has(workerName)) employees.set(workerName, { name: workerName, isNew: false, columns: [], hasInput: true, submittedBlockNumbers: [] });
         if (meaning.note) notes.push({ ...at, workerName, date, text: meaning.note });
         addRecord(workerName, date, meaning.status, { ...at, id });
       }));

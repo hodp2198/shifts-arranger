@@ -681,6 +681,7 @@
       startDateEl.value = period?.startDate || "";
       weekCountEl.value = period?.weekCount ?? 2;
       if (!hasPeriodBoundInput()) state.constraintPeriod = periodKey();
+      syncParticipationControls();
       renderWeekSettings();
       refreshCalendarDays();
     }
@@ -737,7 +738,19 @@
     function requireCurrentGrid() {
       if (!state.currentSchedule) return true;
       const validation = periodService().validateScheduleDates(state.period, state.currentSchedule);
-      if (validation.valid) return true;
+      if (validation.valid) {
+        const participants = new Map(getWorkersData().map(worker => [worker.name, worker]));
+        for (const entry of Object.values(state.currentSchedule).flat()) {
+          if (entry.closed) continue;
+          for (const assigned of [entry.first, entry.second].filter(worker => worker?.name && worker.name !== "-")) {
+            if (!participants.get(assigned.name)?.participationDates.includes(entry.day.iso)) {
+              warningsEl.textContent = "הלוח השמור כולל עובד שאינו משתתף בשבוע זה. יש ליצור מחדש או להפעיל אותו ידנית לפני שמירה או ייצוא. הטיוטה והשיבוצים נשמרו ללא שינוי.";
+              return false;
+            }
+          }
+        }
+        return true;
+      }
       rejectStaleGrid(state.currentSchedule, validation.error);
       return false;
     }
@@ -809,7 +822,7 @@
       if (!window.confirm("לשמור עותק מלא לשחזור ולהתחיל סידור חדש? אילוצים, חריגים ושיבוצים מהטיוטה הנוכחית יישארו בעותק ולא יועברו לסידור החדש.")) return;
       const previous = captureDraftData();
       await switchDraft({ schedulePeriod: proposal, startDate: proposal.startDate, weekCount: proposal.weekCount,
-        constraintPeriod: periodKey(proposal), workers: previous.workers.map(worker => ({ ...worker, active: false, constraints: "" })),
+        constraintPeriod: periodKey(proposal), workers: previous.workers.map(worker => ({ ...worker, active: false, activationOverride: null, constraints: "" })),
         bulkExcelNotes: "", oneTimeRules: "", plainResult: "", special: {}, manualOverrides: {},
         detectedWeeks: [], weeks: [], pendingExcelImport: null, legacyImportReviewRequired: false,
         legacyPeriodReviewRequired: false, legacyPeriodData: null, runtimeSnapshotJson: null, draftOrigin: "new" }, { origin: "new" });
@@ -1003,6 +1016,7 @@
           + current.map(week => '<span class="summary-pill">' + displayDate(week.start) + '–' + displayDate(week.end) + '</span>').join("") + '</div></div>'
         : '<p class="helper">יש לבחור תקופה חוקית.</p>';
       renderPeriodPreview();
+      renderParticipationStatus();
     }
 
     function importYear() {
@@ -1234,6 +1248,7 @@
             </label>
             <button class="remove-worker" type="button" title="הסר עובד" aria-label="הסר את ${worker.name}">הסרה</button>
           </div>
+          <div class="participation-status intake-status" role="status"></div>
           <details class="worker-details">
             <summary>אילוצים והגדרות</summary>
             <div class="worker-body">
@@ -1309,6 +1324,7 @@
         syncWorkerShiftBounds(card);
         data[card.dataset.worker] = {
           active: card.querySelector(".active-worker").checked,
+          activationOverride: workerActivationOverride(card),
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
@@ -1324,6 +1340,7 @@
         if (!card) continue;
         const settings = normalizeWorkerSettings(saved, { min: 1, max: 2, onlyNight2: false });
         card.querySelector(".active-worker").checked = Boolean(saved.active);
+        card.dataset.activationOverride = saved.activationOverride ? JSON.stringify(saved.activationOverride) : "";
         card.querySelector(".night2-only").checked = Boolean(settings.onlyNight2);
         card.querySelector(".min-shifts").value = settings.min;
         card.querySelector(".max-shifts").value = settings.max;
@@ -1331,6 +1348,7 @@
         updateWorkerMeta(card);
       }
       updateOneTimeIndicators();
+      syncParticipationControls();
     }
 
     function syncWorkerShiftBounds(card, changedInput = null) {
@@ -1488,7 +1506,8 @@
       applyWorkerState(existingState);
 
       const card = document.querySelector(`.worker[data-worker="${CSS.escape(name)}"]`);
-      card.querySelector(".active-worker").checked = true;
+      setWorkerActivation(card, true);
+      renderParticipationStatus();
       input.value = "";
       saveState();
     }
@@ -1526,7 +1545,7 @@
       const matched = plan.employees.map(employee => employee.name + (employee.isNew ? " (חדש)" : "")).join(", ");
       bulkExcelStatusEl.textContent = (isSequenceImport(plan) ? "שיוך לפי סדר בלוקים בלבד: בלוק 1 לשבוע 1, בלוק 2 לשבוע 2. כותרות תאריכים הן מידע בלבד. " : "ייבוא ישן נשמר ללא שינוי — נדרש שיוך מחדש מאושר לפי סדר בלוקים. ")
         + "עובדים ששויכו: " + matched + ". הוחלו " + plan.applied.length
-        + " אילוצים; " + plan.skipped.length + " רשומות מעבר לתקופה נשמרו ללא שיבוץ; " + (plan.notes?.length || 0) + " הערות נשמרו; " + plan.issues.length + " נושאים לבדיקה. ימים שלא דווחו והערות ללא הגבלת זמינות נשארים פתוחים לפי הכלל הקיים.";
+        + " אילוצים; " + plan.skipped.length + " רשומות מעבר לתקופה נשמרו ללא שיבוץ; " + (plan.notes?.length || 0) + " הערות נשמרו; " + plan.issues.length + " נושאים לבדיקה. ימים ריקים בתוך בלוק שהוגש זמינים. ללא בלוק שהוגש אין השתתפות אוטומטית; ניתן להפעיל עובד ידנית.";
       panel.innerHTML = '<details><summary>פירוט אילוצים ורשומות מחוץ לתקופה</summary>'
         + plan.applied.map(entry => '<div>' + escape(entry.workerName + " — " + entry.date + ": " + (entry.status === "unavailable" ? "לא זמין" : entry.status === "preferred" ? "זמין ומעדיף" : "זמין")) + '</div>').join("")
         + plan.skipped.map(entry => '<div>' + escape(entry.workerName + " — " + entry.date + " — מחוץ לתקופה: " + entry.raw) + '</div>').join("")
@@ -1576,7 +1595,9 @@
         // A re-import of an unchanged legacy column replaces only its known old
         // import text. The full pre-import draft remains recoverable in backups.
         if (state.legacyImportReviewRequired && worker.constraints.trim() === columnSource) worker.constraints = "";
-        worker.active = plan.applied.some(entry => entry.workerName === employee.name) || !employee.hasInput || Boolean(worker.constraints.trim());
+        const override = worker.activationOverride?.periodKey === periodKey() ? worker.activationOverride : null;
+        worker.active = override ? override.active : (employee.submittedBlockNumbers || []).some(number => number <= state.period.weekCount)
+          || plan.applied.some(entry => entry.workerName === employee.name) || Boolean(worker.constraints.trim());
       }
       const next = { ...previous, workers: definitions, constraintImport: plan, pendingExcelImport: null,
         legacyImportReviewRequired: state.legacyImportReviewRequired && definitions.some(worker => worker.constraints.trim()),
@@ -2049,15 +2070,21 @@
         const manuallyActive = card.querySelector(".active-worker").checked;
         const oneTimeActive = hasActiveOneTimeNoteForWorker({ name });
         const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText);
+        const participation = workerParticipation(card, parsedConstraints);
+        const explicitBlocked = new Set(parsedConstraints.blocked);
+        for (const day of getScheduleDays()) if (!participation.dates.includes(day.iso)) parsedConstraints.blocked.add(day.iso);
         return {
           name,
-          active: manuallyActive || oneTimeActive,
+          active: participation.active,
           oneTimeOnly: oneTimeActive && !manuallyActive,
           onlyNight2: settings.onlyNight2,
           color: getWorkerColor(name, workerDefinition?.color),
           min: settings.min,
           max: settings.max,
           blocked: parsedConstraints.blocked,
+          explicitBlocked,
+          participationDates: participation.dates,
+          participationSource: participation.source,
           preferred: parsedConstraints.preferred,
           submitted: parsedConstraints.submitted,
           weekCounts: {},
@@ -2076,6 +2103,66 @@
 
     function getWorkersData() {
       return getAllWorkersData().filter(worker => worker.active);
+    }
+
+    function workerActivationOverride(card) {
+      try { return JSON.parse(card.dataset.activationOverride || "null"); } catch { return null; }
+    }
+
+    function setWorkerActivation(card, active) {
+      card.dataset.activationOverride = JSON.stringify({ periodKey: periodKey(), active });
+      card.querySelector(".active-worker").checked = active;
+    }
+
+    function workerParticipation(card, parsed = null) {
+      const name = card.dataset.worker;
+      const days = getScheduleDays();
+      const weeks = new Set();
+      let plan = state.constraintImport;
+      // Older version-3 drafts retain their exact sources; derive missing metadata
+      // without replacing their saved import or changing historical records.
+      if (isSequenceImport(plan) && plan.employees.some(employee => !Array.isArray(employee.submittedBlockNumbers))) {
+        plan = window.constraintImportService.interpret({ ...plan, workers: WORKERS, period: state.period }, periodService());
+      }
+      if (isSequenceImport(plan)) for (const number of plan.employees.find(employee => employee.name === name)?.submittedBlockNumbers || []) {
+        if (number >= 1 && number <= state.period.weekCount) weeks.add(number - 1);
+      }
+      parsed ||= parseConstraints(card.querySelector(".constraints").value, { workerName: name });
+      const datedInput = new Set([...parsed.submitted, ...parsed.blocked, ...importedWorkerRecords(name).map(entry => entry.date)]);
+      if (state.period) try {
+        periodService().getWeeks(state.period).forEach((week, index) => {
+          if ([...datedInput].some(date => date >= week.start && date <= week.end)) weeks.add(index);
+        });
+      } catch { /* Period validation blocks generation. */ }
+      const oneTimeDates = new Set();
+      for (const note of oneTimeNotesForWorker({ name })) {
+        const target = findOneTimeTargetDay(note, days).day;
+        if (target) oneTimeDates.add(target.iso);
+      }
+      const savedOverride = workerActivationOverride(card);
+      const override = savedOverride?.periodKey === periodKey() ? savedOverride : null;
+      const selected = override ? override.active : card.querySelector(".active-worker").checked;
+      const submitted = weeks.size > 0;
+      const manual = override?.active === true;
+      const active = (selected && (submitted || manual)) || (!override && oneTimeDates.size > 0);
+      const eligible = active ? days.filter(day => manual || weeks.has(day.week) || oneTimeDates.has(day.iso)).map(day => day.iso) : [];
+      return { active, dates: eligible, weeks: [...weeks].sort(), submitted, manual,
+        source: manual ? "manager" : submitted ? "submission" : oneTimeDates.size ? "manager-note" : "none" };
+    }
+
+    function renderParticipationStatus() {
+      for (const card of document.querySelectorAll(".worker")) {
+        const participation = workerParticipation(card);
+        const label = card.querySelector(".participation-status");
+        if (label) label.textContent = participation.manual ? "פעיל ידנית לכל התקופה"
+          : participation.submitted ? "הגיש לשבועות " + participation.weeks.map(week => week + 1).join(", ") + (participation.active ? " — פעיל בשבועות אלה" : " — לא פעיל")
+          : participation.active ? "פעיל לפי חריג מנהל" : "לא הוגש לתקופה — לא פעיל; ניתן לסמן ידנית";
+      }
+    }
+
+    function syncParticipationControls() {
+      for (const card of document.querySelectorAll(".worker")) card.querySelector(".active-worker").checked = workerParticipation(card).active;
+      renderParticipationStatus();
     }
 
     function workerScore(worker, day, slot) {
@@ -4490,6 +4577,7 @@
         }, base);
         return [name, {
           active: card.querySelector(".active-worker")?.checked ?? true,
+          activationOverride: workerActivationOverride(card),
           onlyNight2: settings.onlyNight2,
           min: settings.min,
           max: settings.max,
@@ -4793,6 +4881,7 @@
 
     document.addEventListener("input", async event => {
       if (event.target === startDateEl || event.target === weekCountEl) { updateManualPeriod(); return; }
+      if (event.target.classList.contains("active-worker")) setWorkerActivation(event.target.closest(".worker"), event.target.checked);
       const shouldAutoSave = event.target.closest(".worker")
         || event.target.closest(".week-row")
         || event.target === bulkExcelNotesEl
@@ -4826,9 +4915,14 @@
     document.addEventListener("change", event => {
       if (event.target === startDateEl || event.target === weekCountEl) { updateManualPeriod(); return; }
       if (!event.target.closest(".worker")) return;
+      if (event.target.classList.contains("active-worker")) {
+        setWorkerActivation(event.target.closest(".worker"), event.target.checked);
+        invalidatePeriodOutput();
+      }
       if (event.target.classList.contains("min-shifts") || event.target.classList.contains("max-shifts")) {
         syncWorkerShiftBounds(event.target.closest(".worker"), event.target);
       }
+      renderParticipationStatus();
       saveState();
     });
 

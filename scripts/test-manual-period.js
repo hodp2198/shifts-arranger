@@ -16,7 +16,10 @@ async function ready() {
   c.state = c.sandbox.window.state;
   c.run("currentAuthUid='manager'; state.historyStatus='ready'; WORKERS=['דנה','רון','גל','שי'].map(name=>({name,min:1,max:4,aliases:[]})); selectPeriod(window.schedulePeriodService.createPeriod({startDate:'2026-03-15',weekCount:2}))");
   c.run('WORKERS = ensureUniqueWorkerColors(WORKERS).workers');
-  for (const name of ['דנה', 'רון', 'גל', 'שי']) c.getWorkerCard(name).querySelector('.active-worker').checked = true;
+  for (const name of ['דנה', 'רון', 'גל', 'שי']) {
+    c.getWorkerCard(name);
+    c.run(`setWorkerActivation(document.querySelector('.worker[data-worker="${name}"]'), true)`);
+  }
   c.storage = storage;
   c.edit = async (date, count = '2', event = 'input') => {
     const target = c.getOrCreateMockEl('startDate');
@@ -152,7 +155,7 @@ async function run() {
     await c.edit('2026-03-22');
     assert(await c.apply());
     const after = c.draft();
-    assert.deepEqual(after.workers, before.workers);
+    assert.deepEqual(after.workers.map(({ active, ...worker }) => worker), before.workers.map(({ active, ...worker }) => worker));
     assert.deepEqual(after.special, before.special);
     assert.deepEqual(after.manualOverrides, before.manualOverrides);
     assert(c.run('periodReadiness()').includes('התקופה השתנתה'));

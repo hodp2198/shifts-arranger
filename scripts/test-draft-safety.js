@@ -45,7 +45,10 @@ async function ui() {
   c.sandbox.window.fairnessService = {
     ...(await import('../src/fairnessService.js')), loadOfficialSchedulesDocs: async () => []
   };
-  for (const name of ['דנה', 'רון', 'גל', 'שי']) c.getWorkerCard(name).querySelector('.active-worker').checked = true;
+  for (const name of ['דנה', 'רון', 'גל', 'שי']) {
+    c.getWorkerCard(name);
+    c.run(`setWorkerActivation(document.querySelector('.worker[data-worker="${name}"]'), true)`);
+  }
   return { ...c, storage, state: c.sandbox.window.state };
 }
 

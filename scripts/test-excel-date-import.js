@@ -206,6 +206,8 @@ async function runTests() {
   await test('Audited screenshot corrections reach engine inputs and permit all 24 audited assignments', async () => {
     const c = await ready();
     await importRows(c, screenshotRows());
+    assert.equal(c.run("getWorkersData().some(worker => worker.name === 'סיואר')"), false, 'blank column is no submission');
+    c.run("setWorkerActivation(document.querySelector('.worker[data-worker=\"סיואר\"]'), true)");
     const input = c.run('getAllWorkersData()');
     const worker = name => input.find(item => item.name === name);
     assert(worker('דניאל').blocked.has('2026-11-03'));
@@ -257,10 +259,11 @@ async function runTests() {
     assert(c.state.constraintImport.sources[0].rawText.includes('תאריך: טעות'));
     assert.equal((await c.storage.api.loadDraftBackups('manager')).length, 3);
   });
-  await test('An employee becomes active when their only unresolved entry is resolved', async () => {
+  await test('A submitted employee remains blocked from generation until their unresolved entry is resolved', async () => {
     const c = await ready();
     await importRows(c, [['דניאל'], ['25-31.10'], ["א' - אולי"]]);
-    assert.equal(c.getWorkerCard('דניאל').querySelector('.active-worker').checked, false);
+    assert.equal(c.getWorkerCard('דניאל').querySelector('.active-worker').checked, true);
+    assert.equal(c.run('requireReadyPeriod()'), false);
     const item = c.state.constraintImport.issues[0];
     c.sandbox.reviewContainer = issueContainer(item.id, { '.resolve-status': 'unavailable' });
     await c.run('resolveImportIssue(reviewContainer,false)');

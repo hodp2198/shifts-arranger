@@ -60,8 +60,9 @@ export function snapshotWorkerConstraints(workers) {
     const submittedDays = worker.submitted
       ? (worker.submitted instanceof Set ? [...worker.submitted] : Array.from(worker.submitted))
       : (Array.isArray(worker.submittedDays) ? worker.submittedDays : []);
-    const blockedDays = worker.blocked
-      ? (worker.blocked instanceof Set ? [...worker.blocked] : Array.from(worker.blocked))
+    const blockedSource = worker.explicitBlocked || worker.blocked;
+    const blockedDays = blockedSource
+      ? (blockedSource instanceof Set ? [...blockedSource] : Array.from(blockedSource))
       : (Array.isArray(worker.blockedDays) ? worker.blockedDays : []);
 
     snapshot[worker.name] = {
@@ -69,6 +70,12 @@ export function snapshotWorkerConstraints(workers) {
       submittedDays: Array.from(new Set(submittedDays)),
       blockedDays: Array.from(new Set(blockedDays))
     };
+    // Optional metadata applies only to new snapshots. Legacy official records
+    // keep their original period-wide participation and fairness counts.
+    if (Array.isArray(worker.participationDates)) {
+      snapshot[worker.name].participationDates = [...new Set(worker.participationDates)];
+      if (worker.participationSource) snapshot[worker.name].participationSource = worker.participationSource;
+    }
   }
   return snapshot;
 }
@@ -140,6 +147,7 @@ export function computePeriodFairness(days, workerConstraints, assignments) {
 
     for (const name of workerNames) {
       const constraints = workerConstraints[name] || { submittedDays: [], blockedDays: [] };
+      if (Array.isArray(constraints.participationDates) && !constraints.participationDates.includes(day.iso)) continue;
       const blkSet = new Set(constraints.blockedDays || []);
 
       const stats = resultByMonth[monthKey][name];
@@ -283,6 +291,7 @@ export function calculateAggregatedFairness(officialSchedules, periodFilter = "c
       }
 
       const workerC = constraintsSnapshot[name] || { submittedDays: [], blockedDays: [] };
+      if (Array.isArray(workerC.participationDates) && !workerC.participationDates.includes(iso)) continue;
       const blkSet = new Set(workerC.blockedDays || []);
 
       // Business Rule: Every eligible shift that is not explicitly blocked is open

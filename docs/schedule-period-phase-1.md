@@ -66,8 +66,35 @@ and contradictory availability require review. Unambiguous records apply
 immediately, but unresolved issues block generation, official saving and export.
 Managers can supply an explicit interpretation or explicitly retain a record
 outside this schedule. Decisions and original text remain visible. New contradictory
-evidence invalidates an older conflict decision. Existing blank/unreported days
-remain open under the existing scheduling rules; unresolved restrictions do not.
+evidence invalidates an older conflict decision. Blank/unreported days inside a
+submitted weekly block remain open; unresolved restrictions do not.
+
+## Submission and participation
+
+A name-only or empty employee column is not a submission. A detected weekly block,
+including a header-only block with no restrictions, is a submission for that week.
+Employees participate automatically only in their submitted weeks. A one-block
+submission in a two-week period does not participate in week 2. Imported block
+positions still follow canonical week-by-sequence mapping; date headers remain
+informational. Existing dated manual constraints can also establish participation
+in the weeks they actually cover. Explicit manager one-time rules retain their
+existing targeted behavior.
+
+Each worker has a visible participation label. The activation checkbox allows the
+manager to include a non-submitter for the entire selected period; explicit blocked
+days still apply. Manual activation/deactivation is stored separately with the
+canonical period key, survives reload and reimport, and does not carry into another
+period or a new schedule. A restored pre-rule grid remains preserved, but cannot
+be saved/exported with employees who no longer participate; regenerate or activate
+them explicitly. In the audited screenshot, Siwar's empty column now requires
+manual activation before Siwar can receive assignments.
+
+The scheduling adapter masks non-participating dates without changing the engine
+or holiday rules. New official constraint snapshots store optional
+`participationDates`; absent weeks contribute neither opened nor closed fairness
+days. Artificial scheduling exclusions are separate from explicit unavailability.
+Historical official records without this metadata retain their previous counting
+rules. No official record is migrated, rewritten or resaved automatically.
 
 The draft stores `constraintImport`: original sources, JSON-string matrices,
 original import metadata, dated records, notes, skipped entries, issues and manager decisions.
@@ -145,6 +172,7 @@ node scripts/check-syntax.js
 node --check src/schedulePeriodService.js
 node scripts/test-schedule-period.js
 node scripts/test-manual-period.js
+node scripts/test-participation.js
 node scripts/test-constraint-import.js
 node scripts/test-excel-date-import.js
 node scripts/test-draft-safety.js
@@ -194,6 +222,11 @@ mapping and it never blocks importing. Tests also exercise existing holiday/fair
    must block October 31 and November 7. Reorder columns
    and confirm identical dates. The period and original source must stay unchanged.
    Check the recoverable copy list, reload, and verify imports persist.
+   Verify Siwar's empty column is inactive. Manually check Siwar to include them,
+   wait for autosave, reload and verify the manual activation persists. Also test
+   a single submitted block: the employee must be eligible only in week 1 until
+   manually activated for the full period. Save only in TEST MODE and verify missing
+   weeks do not add fairness opened/closed days; historical counts must stay intact.
 7. Resolve genuinely unclear headers/wording in the review panel. Generation must
    remain blocked until every issue is resolved or explicitly deferred. Verify a
    blocked employee is not assigned on that date. Preview another period: active
