@@ -40,9 +40,16 @@
 
   <main class="shell" id="mainShell">
     <section class="topbar">
-      <div>
-        <h1>סידור משמרות</h1>
-        <p class="intro">ייבוא אילוצים, יצירת סידור, בדיקת בעיות והעתקת הודעת WhatsApp נקייה לעובדים.</p>
+      <div class="topbar-brand">
+        <button class="sidebar-toggle-btn" id="sidebarToggleBtn" type="button" aria-label="פתח תפריט ניווט" title="תפריט ניווט">
+          <svg style="width:20px;height:20px;fill:currentColor" viewBox="0 0 24 24">
+            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+          </svg>
+        </button>
+        <div>
+          <h1 id="pageMainHeading">סידור משמרות</h1>
+          <p class="intro" id="pageMainIntro">ייבוא אילוצים, יצירת סידור, בדיקת בעיות והעתקת הודעת WhatsApp נקייה לעובדים.</p>
+        </div>
       </div>
       <div class="admin-bar-actions">
         <span class="admin-badge" id="adminUserBadge">
@@ -55,6 +62,28 @@
         </button>
       </div>
     </section>
+
+    <!-- Hidden Sidebar Drawer -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+    <aside class="app-sidebar" id="appSidebar" aria-label="תפריט ראשי">
+      <div class="sidebar-header">
+        <span class="sidebar-title">תפריט ניווט</span>
+        <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="סגור תפריט">&times;</button>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="/" class="sidebar-nav-item active" id="navScheduleLink" data-route="/">
+          <span class="nav-icon">📅</span>
+          <span>סידור עבודה</span>
+        </a>
+        <a href="/fairness" class="sidebar-nav-item" id="navFairnessLink" data-route="/fairness">
+          <span class="nav-icon">⚖️</span>
+          <span>טבלת צדק</span>
+        </a>
+      </nav>
+    </aside>
+
+    <!-- Main Scheduling View -->
+    <div id="schedulingView">
 
     <section class="grid">
       <div class="panel">
@@ -139,16 +168,21 @@
           </details>
           <div class="actions result-actions">
             <button class="btn" id="buildSchedule" type="button">צור סידור</button>
+            <button class="btn secondary" id="saveOfficialSchedule" type="button" disabled title="שמור סידור זה כסידור רשמי שייספר בטבלת הצדק">שמור סידור רשמי</button>
             <button class="btn secondary" id="resetManualOverrides" type="button">איפוס עריכות ידניות</button>
+          </div>
+          <div id="officialScheduleBadge" class="official-schedule-badge" hidden>
+            <span>✓ <strong>סידור רשמי שמור</strong></span>
+            <span id="officialScheduleBadgeTime" class="official-badge-time"></span>
           </div>
           <div class="preview-title">תצוגת סידור</div>
           <div id="scheduleOutput" class="schedule-output"></div>
           <div id="scheduleWarnings"></div>
-          <div class="preview-title">הודעת WhatsApp</div>
-          <div class="intake-status">זה הטקסט הנקי שיישלח לעובדים, בלי צבעים ובלי סימונים של הממשק.</div>
-          <textarea id="plainResult" class="copy-area" readonly placeholder="כאן תופיע ההודעה הנקייה להעתקה"></textarea>
+          <textarea id="plainResult" hidden></textarea>
           <div class="actions preview-actions">
-            <button class="btn secondary" id="copyResult" type="button">העתק הודעה</button>
+            <button class="btn secondary" id="copyResult" type="button">
+              <span id="copyResultText">העתק הודעת WhatsApp</span>
+            </button>
             <span class="autosave-status" id="autosaveStatus">נשמר אוטומטית</span>
           </div>
           <div class="calendar-export-admin">
@@ -168,6 +202,65 @@
       </div>
       </aside>
     </section>
+    </div><!-- /#schedulingView -->
+
+    <!-- Dedicated Fairness View -->
+    <div id="fairnessView" class="fairness-view" hidden>
+      <div class="fairness-panel">
+        <div class="fairness-panel-header">
+          <div class="fairness-title-wrap">
+            <h2>טבלת צדק</h2>
+            <span class="badge">מעקב הגינות חודשי ומצטבר</span>
+          </div>
+          <div class="fairness-controls">
+            <label for="fairnessPeriodSelect">תקופת תצוגה:</label>
+            <select id="fairnessPeriodSelect" class="fairness-select">
+              <option value="cumulative">מצטבר (כל הסידורים הרשמיים)</option>
+            </select>
+            <button class="btn secondary" id="fairnessRefreshBtn" type="button">רענן נתונים</button>
+          </div>
+        </div>
+
+        <div class="fairness-summary-bar" id="fairnessSummaryBar">
+          <div class="fairness-stat-card">
+            <span class="fairness-stat-label">ימי שיבוץ בתקופה</span>
+            <span class="fairness-stat-val" id="statEligibleDays">0</span>
+          </div>
+          <div class="fairness-stat-card">
+            <span class="fairness-stat-label">עובדים בטבלה</span>
+            <span class="fairness-stat-val" id="statWorkersCount">0</span>
+          </div>
+          <div class="fairness-stat-card">
+            <span class="fairness-stat-label">סידורים רשמיים פעילים</span>
+            <span class="fairness-stat-val" id="statOfficialCount">0</span>
+          </div>
+        </div>
+
+        <div class="fairness-table-container">
+          <table class="fairness-table" id="fairnessTable">
+            <thead>
+              <tr>
+                <th class="worker-col">שם עובד</th>
+                <th class="status-col">סטטוס הגשה</th>
+                <th class="num-col">פתח (זמינות שהוגשה)</th>
+                <th class="num-col">סגר (אי־זמינות)</th>
+                <th class="num-col">קיבל (שובץ בפועל)</th>
+                <th class="num-col">אחוז שיבוץ</th>
+                <th class="num-col highlight-col">אחוז זמינות</th>
+              </tr>
+            </thead>
+            <tbody id="fairnessTableBody">
+              <tr>
+                <td colspan="7" class="fairness-empty-cell">
+                  טרם נשמרו סידורים רשמיים במערכת.<br>
+                  <span class="helper">לחצו על כפתור "שמור סידור רשמי" במסך הסידור כדי לקבוע את הסידור המוצג כסידור רשמי ראשון.</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /#fairnessView -->
   </main>
 
   <script src="vendor/hebcal-core.min.js"></script>
@@ -217,6 +310,10 @@
       shuffleSeed: 0,
       weekDetectionWarnings: [],
       workerColorsRepaired: false,
+      officialSchedules: [],
+      isCurrentScheduleOfficial: false,
+      currentOfficialSchedule: null,
+      currentRoute: "/",
       calendar: {
         warning: ""
       }
@@ -3576,6 +3673,17 @@
         console.warn("Could not load from Firestore, checking local storage fallback:", err);
       }
 
+      // Load official schedules for fairness tracking
+      if (window.fairnessService) {
+        try {
+          state.officialSchedules = await window.fairnessService.loadOfficialSchedulesDocs(uid);
+          updateOfficialScheduleControls();
+          renderFairnessPage();
+        } catch (err) {
+          console.warn("Could not load official schedules:", err);
+        }
+      }
+
       // If user has no data in Firestore yet, migrate existing local data if present
       if (!data && window.stateStorage) {
         const localData = window.stateStorage.readSavedData();
@@ -3638,6 +3746,278 @@
       }
 
       await refreshCalendarDays();
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function openSidebar() {
+      const sidebar = getEl("appSidebar");
+      const backdrop = getEl("sidebarBackdrop");
+      if (sidebar) sidebar.classList.add("open");
+      if (backdrop) backdrop.classList.add("open");
+    }
+
+    function closeSidebar() {
+      const sidebar = getEl("appSidebar");
+      const backdrop = getEl("sidebarBackdrop");
+      if (sidebar) sidebar.classList.remove("open");
+      if (backdrop) backdrop.classList.remove("open");
+    }
+
+    function navigateToRoute(route, pushState = true) {
+      const isFairness = route === "/fairness" || route === "#/fairness" || window.location.hash === "#/fairness" || window.location.pathname.endsWith("/fairness");
+
+      if (pushState) {
+        try {
+          const targetPath = isFairness ? "/fairness" : "/";
+          if (window.location.pathname !== targetPath) {
+            history.pushState(null, "", targetPath);
+          }
+        } catch (e) {
+          window.location.hash = isFairness ? "/fairness" : "";
+        }
+      }
+
+      state.currentRoute = isFairness ? "/fairness" : "/";
+
+      const schedulingView = getEl("schedulingView");
+      const fairnessView = getEl("fairnessView");
+      const navScheduleLink = getEl("navScheduleLink");
+      const navFairnessLink = getEl("navFairnessLink");
+      const pageHeading = getEl("pageMainHeading");
+      const pageIntro = getEl("pageMainIntro");
+
+      if (isFairness) {
+        if (schedulingView) schedulingView.hidden = true;
+        if (fairnessView) fairnessView.hidden = false;
+        if (navScheduleLink) navScheduleLink.classList.remove("active");
+        if (navFairnessLink) navFairnessLink.classList.add("active");
+        if (pageHeading) pageHeading.textContent = "טבלת צדק";
+        if (pageIntro) pageIntro.textContent = "מעקב הגינות שקוף, סטטיסטיקות זמינות ושיבוץ לפי עובדים.";
+        document.title = "טבלת צדק - סידור משמרות";
+        renderFairnessPage();
+      } else {
+        if (schedulingView) schedulingView.hidden = false;
+        if (fairnessView) fairnessView.hidden = true;
+        if (navScheduleLink) navScheduleLink.classList.add("active");
+        if (navFairnessLink) navFairnessLink.classList.remove("active");
+        if (pageHeading) pageHeading.textContent = "סידור משמרות";
+        if (pageIntro) pageIntro.textContent = "ייבוא אילוצים, יצירת סידור, בדיקת בעיות והעתקת הודעת WhatsApp נקייה לעובדים.";
+        document.title = "סידור משמרות";
+      }
+      closeSidebar();
+    }
+
+    function updateOfficialScheduleControls() {
+      const saveBtn = getEl("saveOfficialSchedule");
+      const badge = getEl("officialScheduleBadge");
+      const badgeTime = getEl("officialScheduleBadgeTime");
+
+      const days = getScheduleDays();
+      if (!days.length || !state.currentSchedule) {
+        if (saveBtn) saveBtn.disabled = true;
+        if (badge) badge.hidden = true;
+        return;
+      }
+
+      if (saveBtn) saveBtn.disabled = false;
+
+      const startIso = days[0]?.iso;
+      const endIso = days[days.length - 1]?.iso;
+      const periodId = `${startIso}_${endIso}`;
+
+      const existing = (state.officialSchedules || []).find(s => s.id === periodId && s.status !== "archived");
+      if (existing) {
+        if (badge) badge.hidden = false;
+        if (badgeTime && existing.savedAt) {
+          const dateObj = new Date(existing.savedAt);
+          const timeFormatted = dateObj.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+          badgeTime.textContent = `(נשמר ב-${timeFormatted})`;
+        }
+      } else {
+        if (badge) badge.hidden = true;
+      }
+    }
+
+    async function handleSaveOfficialSchedule() {
+      if (!currentAuthUid || !window.fairnessService) {
+        alert("יש להתחבר למערכת כדי לשמור סידור רשמי.");
+        return;
+      }
+      if (!state.currentSchedule) {
+        alert("אין סידור לשמירה. לחץ על 'צור סידור' תחילה.");
+        return;
+      }
+
+      const startDate = getBaseStartDate();
+      const days = getScheduleDays();
+      if (!startDate || !days.length) {
+        alert("חסרים תאריכים מוגדרים לתקופת הסידור.");
+        return;
+      }
+
+      const startIso = days[0].iso;
+      const endIso = days[days.length - 1].iso;
+      const periodId = `${startIso}_${endIso}`;
+
+      const existingOfficial = state.officialSchedules || [];
+      const overlapping = window.fairnessService.findOverlappingOfficialSchedules(
+        existingOfficial,
+        startIso,
+        endIso,
+        periodId
+      );
+
+      if (overlapping.length > 0) {
+        const overlapRanges = overlapping.map(s => `${s.startDate} - ${s.endDate}`).join(", ");
+        const approved = window.confirm(
+          `נמצא סידור רשמי קיים החופף לחלק מהתאריכים בתקופה זו (${overlapRanges}).\nהאם ברצונך לשמור את הסידור הנוכחי כסידור רשמי ולעדכן את נתוני השיבוץ בתאריכים החופפים?`
+        );
+        if (!approved) return;
+      }
+
+      const saveBtn = getEl("saveOfficialSchedule");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "שומר...";
+      }
+
+      try {
+        const daysSnapshot = window.fairnessService.extractPeriodDays(days);
+        const workersData = getAllWorkersData().map(w => {
+          const card = [...document.querySelectorAll(".worker")].find(c => c.querySelector(".worker-name")?.value.trim() === w.name);
+          const constraintsText = card ? card.querySelector(".constraints")?.value.trim() : "";
+          const hasInput = hasMeaningfulWorkerInput(constraintsText);
+          return {
+            ...w,
+            hasSubmitted: Boolean((w.active && !w.oneTimeOnly) && hasInput)
+          };
+        });
+
+        const workerConstraintsSnapshot = window.fairnessService.snapshotWorkerConstraints(workersData);
+        const assignments = window.fairnessService.snapshotAssignments(state.currentSchedule);
+
+        const record = {
+          id: periodId,
+          startDate: startIso,
+          endDate: endIso,
+          savedAt: new Date().toISOString(),
+          status: "active",
+          daysSnapshot,
+          workerConstraintsSnapshot,
+          assignments
+        };
+
+        const saveRes = await window.fairnessService.saveOfficialScheduleDoc(currentAuthUid, record);
+        if (!saveRes || !saveRes.success) {
+          throw new Error("פעולת השמירה נכשלה.");
+        }
+
+        state.officialSchedules = await window.fairnessService.loadOfficialSchedulesDocs(currentAuthUid);
+        state.isCurrentScheduleOfficial = true;
+        state.currentOfficialSchedule = record;
+
+        updateOfficialScheduleControls();
+        renderFairnessPage();
+
+        if (statusBadgeEl) statusBadgeEl.textContent = "סידור רשמי נשמר בהצלחה ✓";
+      } catch (err) {
+        console.error("Failed to save official schedule:", err);
+        alert("שגיאה בשמירת הסידור הרשמי: " + (err.message || err));
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "שמור סידור רשמי";
+        }
+      }
+    }
+
+    function renderFairnessPage() {
+      const fairnessTableBody = getEl("fairnessTableBody");
+      const fairnessPeriodSelect = getEl("fairnessPeriodSelect");
+      if (!fairnessTableBody || !window.fairnessService) return;
+
+      const schedules = state.officialSchedules || [];
+
+      // 1. Populate period selector
+      const availableMonths = window.fairnessService.getAvailableMonths(schedules);
+      const prevVal = fairnessPeriodSelect.value;
+      fairnessPeriodSelect.innerHTML = '<option value="cumulative">מצטבר (כל הסידורים הרשמיים)</option>';
+      for (const mKey of availableMonths) {
+        const opt = document.createElement("option");
+        opt.value = mKey;
+        opt.textContent = window.fairnessService.formatMonthLabel(mKey);
+        fairnessPeriodSelect.appendChild(opt);
+      }
+      if ([...fairnessPeriodSelect.options].some(o => o.value === prevVal)) {
+        fairnessPeriodSelect.value = prevVal;
+      }
+
+      const activePeriod = fairnessPeriodSelect.value || "cumulative";
+
+      // 2. Empty state if no schedules saved
+      if (!schedules.length) {
+        fairnessTableBody.innerHTML = `
+          <tr>
+            <td colspan="7" class="fairness-empty-cell">
+              טרם נשמרו סידורים רשמיים במערכת.<br>
+              <span class="helper">לחצו על כפתור "שמור סידור רשמי" במסך הסידור כדי לקבוע את הסידור המוצג כסידור רשמי ראשון.</span>
+            </td>
+          </tr>
+        `;
+        const statEligibleDays = getEl("statEligibleDays");
+        const statWorkersCount = getEl("statWorkersCount");
+        const statOfficialCount = getEl("statOfficialCount");
+        if (statEligibleDays) statEligibleDays.textContent = "0";
+        if (statWorkersCount) statWorkersCount.textContent = "0";
+        if (statOfficialCount) statOfficialCount.textContent = "0";
+        return;
+      }
+
+      // 3. Compute aggregated fairness
+      const result = window.fairnessService.calculateAggregatedFairness(schedules, activePeriod);
+
+      const statEligibleDays = getEl("statEligibleDays");
+      const statWorkersCount = getEl("statWorkersCount");
+      const statOfficialCount = getEl("statOfficialCount");
+      if (statEligibleDays) statEligibleDays.textContent = String(result.totalEligibleDays);
+      if (statWorkersCount) statWorkersCount.textContent = String(result.records.length);
+      if (statOfficialCount) statOfficialCount.textContent = String(schedules.filter(s => s.status !== "archived").length);
+
+      if (!result.records.length) {
+        fairnessTableBody.innerHTML = `
+          <tr>
+            <td colspan="7" class="fairness-empty-cell">
+              אין נתוני סידורים רשמיים עבור תקופה זו.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // 4. Render rows
+      fairnessTableBody.innerHTML = result.records.map(worker => {
+        const statusBadgeClass = worker.hasSubmitted ? "status-badge submitted" : "status-badge not-submitted";
+        const statusText = worker.hasSubmitted ? "הוגש" : "לא הוגש";
+        return `
+          <tr>
+            <td class="worker-name-cell">${escapeHtml(worker.name)}</td>
+            <td class="num-cell"><span class="${statusBadgeClass}">${statusText}</span></td>
+            <td class="num-cell">${worker.opened}</td>
+            <td class="num-cell">${worker.closed}</td>
+            <td class="num-cell"><strong>${worker.assigned}</strong></td>
+            <td class="num-cell">${worker.assignmentRateFormatted}</td>
+            <td class="num-cell highlight-cell">${worker.availabilityPercentageFormatted}</td>
+          </tr>
+        `;
+      }).join("");
     }
 
     function saveState(immediate = false) {
@@ -3717,6 +4097,7 @@
       state.shuffleSeed = 34;
       syncOneTimeConstraintsNow("before buildSchedule");
       await renderSchedule();
+      updateOfficialScheduleControls();
       saveState(true);
     });
     getEl("resetManualOverrides")?.addEventListener("click", async () => {
@@ -3729,11 +4110,53 @@
       if (!plainResultEl?.value.trim()) await renderSchedule();
       try {
         await navigator.clipboard.writeText(plainResultEl?.value || "");
-        statusBadgeEl.textContent = "הועתק";
+        const copyTextEl = getEl("copyResultText");
+        const originalText = copyTextEl ? copyTextEl.textContent : "העתק הודעת WhatsApp";
+        if (copyTextEl) copyTextEl.textContent = "הועתק ללוח! ✓";
+        setTimeout(() => {
+          if (copyTextEl) copyTextEl.textContent = originalText;
+        }, 1800);
+        if (statusBadgeEl) statusBadgeEl.textContent = "הודעת WhatsApp הועתקה ללוח";
       } catch (error) {
-        statusBadgeEl.textContent = "הדפדפן חסם העתקה";
+        if (statusBadgeEl) statusBadgeEl.textContent = "הדפדפן חסם העתקה";
       }
     });
+    getEl("saveOfficialSchedule")?.addEventListener("click", handleSaveOfficialSchedule);
+    getEl("sidebarToggleBtn")?.addEventListener("click", openSidebar);
+    getEl("sidebarCloseBtn")?.addEventListener("click", closeSidebar);
+    getEl("sidebarBackdrop")?.addEventListener("click", closeSidebar);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeSidebar();
+    });
+
+    getEl("navScheduleLink")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      navigateToRoute("/");
+    });
+    getEl("navFairnessLink")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      navigateToRoute("/fairness");
+    });
+    getEl("fairnessRefreshBtn")?.addEventListener("click", () => {
+      renderFairnessPage();
+    });
+    getEl("fairnessPeriodSelect")?.addEventListener("change", () => {
+      renderFairnessPage();
+    });
+
+    window.addEventListener("popstate", () => {
+      navigateToRoute(window.location.pathname, false);
+    });
+    window.addEventListener("hashchange", () => {
+      navigateToRoute(window.location.hash, false);
+    });
+
+    // Initial route determination
+    const initialRoute = (window.location.pathname.endsWith("/fairness") || window.location.hash === "#/fairness")
+      ? "/fairness"
+      : "/";
+    navigateToRoute(initialRoute, false);
+
     createCalendarExportLinkEl?.addEventListener("click", createCalendarExportLink);
     calendarExportLinkButtonEl?.addEventListener("click", copyCalendarExportLink);
     openCalendarExportLinkEl?.addEventListener("click", openCalendarExportLink);
@@ -4075,12 +4498,15 @@
       saveUserAppData,
       cancelPendingSave
     } from "./src/userDataService.js";
+    import * as fairnessService from "./src/fairnessService.js";
 
     window.userDataService = {
       loadUserAppData,
       saveUserAppData,
       cancelPendingSave
     };
+
+    window.fairnessService = fairnessService;
 
     window.authService = {
       loginWithGoogle,
