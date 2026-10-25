@@ -213,7 +213,6 @@
             <select id="fairnessPeriodSelect" class="fairness-select">
               <option value="cumulative">מצטבר (כל הסידורים הרשמיים)</option>
             </select>
-            <button class="btn secondary" id="fairnessRefreshBtn" type="button">רענן נתונים</button>
           </div>
         </div>
 
@@ -4137,9 +4136,6 @@
     getEl("navFairnessLink")?.addEventListener("click", (e) => {
       e.preventDefault();
       navigateToRoute("/fairness");
-    });
-    getEl("fairnessRefreshBtn")?.addEventListener("click", () => {
-      renderFairnessPage();
     });
     getEl("fairnessPeriodSelect")?.addEventListener("change", () => {
       renderFairnessPage();
