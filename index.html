@@ -181,10 +181,6 @@
             </button>
             <span class="autosave-status" id="autosaveStatus">נשמר אוטומטית</span>
           </div>
-          <div id="officialScheduleBadge" class="official-schedule-badge" hidden>
-            <span>✓ <strong>סידור רשמי שמור</strong></span>
-            <span id="officialScheduleBadgeTime" class="official-badge-time"></span>
-          </div>
           <div class="calendar-export-admin">
             <div class="preview-title">קישור יומן לעובדים</div>
             <div class="intake-status">יוצר קישור נפרד לסידור הסופי בלבד. העובדים יראו רק בחירת שם, תצוגה מקדימה והוספה ליומן.</div>
@@ -3820,18 +3816,19 @@
 
     function updateOfficialScheduleControls() {
       const saveBtn = getEl("saveOfficialSchedule");
-      const badge = getEl("officialScheduleBadge");
-      const badgeTime = getEl("officialScheduleBadgeTime");
+      if (!saveBtn) return;
 
       const days = getScheduleDays();
       if (!days.length || !state.currentSchedule) {
-        if (saveBtn) saveBtn.disabled = true;
-        if (badge) badge.hidden = true;
+        saveBtn.disabled = true;
+        saveBtn.classList.remove("btn-saved-official");
+        saveBtn.textContent = "שמור סידור רשמי";
+        saveBtn.title = "שמור סידור זה כסידור רשמי שייספר בטבלת הצדק";
         state.isCurrentScheduleOfficial = false;
         return;
       }
 
-      if (saveBtn) saveBtn.disabled = false;
+      saveBtn.disabled = false;
 
       const startIso = days[0]?.iso;
       const endIso = days[days.length - 1]?.iso;
@@ -3847,14 +3844,15 @@
       state.isCurrentScheduleOfficial = isMatch;
 
       if (isMatch) {
-        if (badge) badge.hidden = false;
-        if (badgeTime && existing.savedAt) {
-          const dateObj = new Date(existing.savedAt);
-          const timeFormatted = dateObj.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-          badgeTime.textContent = `(נשמר ב-${timeFormatted})`;
-        }
+        saveBtn.classList.add("btn-saved-official");
+        saveBtn.textContent = "✓ סידור רשמי נשמר";
+        saveBtn.title = existing.savedAt
+          ? `סידור רשמי נשמר ב-${new Date(existing.savedAt).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+          : "הסידור המוצג נשמר כסידור רשמי";
       } else {
-        if (badge) badge.hidden = true;
+        saveBtn.classList.remove("btn-saved-official");
+        saveBtn.textContent = "שמור סידור רשמי";
+        saveBtn.title = "שמור סידור זה כסידור רשמי שייספר בטבלת הצדק";
       }
     }
 
@@ -3934,10 +3932,10 @@
       } catch (err) {
         console.error("Failed to save official schedule:", err);
         alert("שגיאה בשמירת הסידור הרשמי: " + (err.message || err));
+        updateOfficialScheduleControls();
       } finally {
         if (saveBtn) {
           saveBtn.disabled = false;
-          saveBtn.textContent = "שמור סידור רשמי";
         }
       }
     }

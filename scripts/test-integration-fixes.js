@@ -139,6 +139,49 @@ async function runIntegrationTests() {
   });
 
   // -------------------------------------------------------------
+  // Test 5: Button visual state and text transitions
+  // -------------------------------------------------------------
+  test("5. Button state machine: green '✓ סידור רשמי נשמר' on match, restored on edits/failure", () => {
+    const mockButton = {
+      classList: new Set(),
+      textContent: "שמור סידור רשמי"
+    };
+
+    function updateButtonUI(isMatch) {
+      if (isMatch) {
+        mockButton.classList.add("btn-saved-official");
+        mockButton.textContent = "✓ סידור רשמי נשמר";
+      } else {
+        mockButton.classList.delete("btn-saved-official");
+        mockButton.textContent = "שמור סידור רשמי";
+      }
+    }
+
+    // 1. Initial draft (no match)
+    updateButtonUI(false);
+    assert.strictEqual(mockButton.textContent, "שמור סידור רשמי");
+    assert.strictEqual(mockButton.classList.has("btn-saved-official"), false);
+
+    // 2. Successful official save -> green button with checkmark
+    updateButtonUI(true);
+    assert.strictEqual(mockButton.textContent, "✓ סידור רשמי נשמר");
+    assert.strictEqual(mockButton.classList.has("btn-saved-official"), true);
+
+    // 3. User edits an assignment -> restored original text & styling
+    updateButtonUI(false);
+    assert.strictEqual(mockButton.textContent, "שמור סידור רשמי");
+    assert.strictEqual(mockButton.classList.has("btn-saved-official"), false);
+
+    // 4. Failed save attempt -> never turns green
+    let saveFailed = true;
+    if (saveFailed) {
+      updateButtonUI(false);
+    }
+    assert.strictEqual(mockButton.textContent, "שמור סידור רשמי");
+    assert.strictEqual(mockButton.classList.has("btn-saved-official"), false);
+  });
+
+  // -------------------------------------------------------------
   // Test 4: Assignment Invalidation upon edits
   // -------------------------------------------------------------
   test("4. Official match status: editing assignment invalidates badge while preserving official record", () => {

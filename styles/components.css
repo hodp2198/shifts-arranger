@@ -1419,23 +1419,15 @@
       border: 1px solid var(--line);
     }
 
-    /* Official schedule badge */
-    .official-schedule-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: #eaf8ef;
-      color: #245f39;
-      border: 1px solid #bee3cb;
-      padding: 8px 14px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-top: 10px;
+    /* Saved official schedule button state */
+    .btn.btn-saved-official {
+      background: var(--ok, #2e7d32);
+      color: #ffffff;
+      border: 1px solid var(--ok, #2e7d32);
+      box-shadow: 0 4px 14px rgba(46, 125, 50, 0.22);
     }
 
-    .official-badge-time {
-      font-weight: 400;
-      color: #3e7354;
-      font-size: 12px;
+    .btn.btn-saved-official:hover {
+      background: #256628;
+      border-color: #256628;
     }
