@@ -1642,6 +1642,7 @@
           blocked: parsedConstraints.blocked,
           preferred: parsedConstraints.preferred,
           submitted: parsedConstraints.submitted,
+          hasSubmitted: Boolean((manuallyActive && hasWorkerInput) || hasWorkerInput),
           weekCounts: {},
           total: 0,
           recentDays: [],
@@ -3544,6 +3545,7 @@
       outputEl.innerHTML = html;
       plainResultEl.value = plain.join("\n").trim();
       saveState();
+      updateOfficialScheduleControls();
     }
 
     function finalizedSchedulePayload() {
@@ -3772,7 +3774,8 @@
     }
 
     function navigateToRoute(route, pushState = true) {
-      const isFairness = route === "/fairness" || route === "#/fairness" || window.location.hash === "#/fairness" || window.location.pathname.endsWith("/fairness");
+      const targetRoute = (route !== undefined && route !== null) ? route : window.location.pathname;
+      const isFairness = targetRoute === "/fairness" || targetRoute === "#/fairness" || targetRoute.endsWith("/fairness");
 
       if (pushState) {
         try {
@@ -3824,6 +3827,7 @@
       if (!days.length || !state.currentSchedule) {
         if (saveBtn) saveBtn.disabled = true;
         if (badge) badge.hidden = true;
+        state.isCurrentScheduleOfficial = false;
         return;
       }
 
@@ -3834,7 +3838,15 @@
       const periodId = `${startIso}_${endIso}`;
 
       const existing = (state.officialSchedules || []).find(s => s.id === periodId && s.status !== "archived");
-      if (existing) {
+      const isMatch = Boolean(
+        existing &&
+        window.fairnessService &&
+        window.fairnessService.isScheduleMatchingOfficial(state.currentSchedule, existing)
+      );
+
+      state.isCurrentScheduleOfficial = isMatch;
+
+      if (isMatch) {
         if (badge) badge.hidden = false;
         if (badgeTime && existing.savedAt) {
           const dateObj = new Date(existing.savedAt);
@@ -3891,16 +3903,7 @@
 
       try {
         const daysSnapshot = window.fairnessService.extractPeriodDays(days);
-        const workersData = getAllWorkersData().map(w => {
-          const card = [...document.querySelectorAll(".worker")].find(c => c.querySelector(".worker-name")?.value.trim() === w.name);
-          const constraintsText = card ? card.querySelector(".constraints")?.value.trim() : "";
-          const hasInput = hasMeaningfulWorkerInput(constraintsText);
-          return {
-            ...w,
-            hasSubmitted: Boolean((w.active && !w.oneTimeOnly) && hasInput)
-          };
-        });
-
+        const workersData = getAllWorkersData();
         const workerConstraintsSnapshot = window.fairnessService.snapshotWorkerConstraints(workersData);
         const assignments = window.fairnessService.snapshotAssignments(state.currentSchedule);
 

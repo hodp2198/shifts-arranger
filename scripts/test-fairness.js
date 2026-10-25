@@ -291,6 +291,62 @@ async function runTests() {
     assert.strictEqual(nonOverlap.length, 0);
   });
 
+  // Test 6: Official schedule exact matching regression tests
+  test("6. isScheduleMatchingOfficial: exact assignment matching vs drafts and edits", () => {
+    const mockSchedule = {
+      0: [
+        { day: { iso: "2026-03-01" }, first: { name: "הוד" }, second: { name: "אשרקת" } },
+        { day: { iso: "2026-03-02" }, first: { name: "דני" }, second: { name: "-" } }
+      ]
+    };
+
+    const savedOfficialRecord = {
+      id: "2026-03-01_2026-03-02",
+      status: "active",
+      assignments: [
+        { iso: "2026-03-01", slot1: "הוד", slot2: "אשרקת" },
+        { iso: "2026-03-02", slot1: "דני", slot2: null }
+      ]
+    };
+
+    // Exact match -> true
+    assert.strictEqual(fairness.isScheduleMatchingOfficial(mockSchedule, savedOfficialRecord), true, "Identical schedule must match");
+
+    // Edit slot 1 -> false
+    const editedSchedule1 = {
+      0: [
+        { day: { iso: "2026-03-01" }, first: { name: "רוני" }, second: { name: "אשרקת" } },
+        { day: { iso: "2026-03-02" }, first: { name: "דני" }, second: { name: "-" } }
+      ]
+    };
+    assert.strictEqual(fairness.isScheduleMatchingOfficial(editedSchedule1, savedOfficialRecord), false, "Edited slot1 must not match");
+
+    // Edit slot 2 -> false
+    const editedSchedule2 = {
+      0: [
+        { day: { iso: "2026-03-01" }, first: { name: "הוד" }, second: { name: "רוני" } },
+        { day: { iso: "2026-03-02" }, first: { name: "דני" }, second: { name: "-" } }
+      ]
+    };
+    assert.strictEqual(fairness.isScheduleMatchingOfficial(editedSchedule2, savedOfficialRecord), false, "Edited slot2 must not match");
+
+    // Different draft schedule for same period -> false
+    const newDraftSchedule = {
+      0: [
+        { day: { iso: "2026-03-01" }, first: { name: "מיכל" }, second: { name: "דני" } },
+        { day: { iso: "2026-03-02" }, first: { name: "הוד" }, second: { name: "אשרקת" } }
+      ]
+    };
+    assert.strictEqual(fairness.isScheduleMatchingOfficial(newDraftSchedule, savedOfficialRecord), false, "New draft with different assignments must not match");
+
+    // Null or undefined schedule -> false
+    assert.strictEqual(fairness.isScheduleMatchingOfficial(null, savedOfficialRecord), false, "Null schedule must return false");
+
+    // Archived record -> false
+    const archivedRecord = { ...savedOfficialRecord, status: "archived" };
+    assert.strictEqual(fairness.isScheduleMatchingOfficial(mockSchedule, archivedRecord), false, "Archived record must return false");
+  });
+
   console.log("\n=================================================");
   console.log(`Test Results: ${passed} Passed, ${failed} Failed`);
   console.log("=================================================");

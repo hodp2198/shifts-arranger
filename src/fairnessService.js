@@ -118,6 +118,53 @@ export function snapshotAssignments(schedule) {
 }
 
 /**
+ * Checks whether a displayed schedule's assignments exactly match a saved official schedule record.
+ * Must match:
+ * 1. Both the schedule and officialRecord exist.
+ * 2. The officialRecord has active status and a valid assignments array.
+ * 3. Every eligible non-closed day in the schedule has exactly the same assigned workers
+ *    in slot1 and slot2 as recorded in the official schedule.
+ * 4. The total count of eligible assigned shifts matches.
+ */
+export function isScheduleMatchingOfficial(schedule, officialRecord) {
+  if (!schedule || typeof schedule !== "object") return false;
+  if (!officialRecord || officialRecord.status === "archived" || !Array.isArray(officialRecord.assignments)) {
+    return false;
+  }
+
+  const currentAssignments = snapshotAssignments(schedule);
+  const savedAssignments = officialRecord.assignments;
+
+  if (currentAssignments.length !== savedAssignments.length) {
+    return false;
+  }
+
+  const savedMap = new Map();
+  for (const a of savedAssignments) {
+    if (!a || !a.iso) continue;
+    savedMap.set(a.iso, {
+      slot1: a.slot1 && a.slot1 !== "-" ? a.slot1 : null,
+      slot2: a.slot2 && a.slot2 !== "-" ? a.slot2 : null
+    });
+  }
+
+  for (const curr of currentAssignments) {
+    if (!curr || !curr.iso) continue;
+    const saved = savedMap.get(curr.iso);
+    if (!saved) return false;
+
+    const currSlot1 = curr.slot1 && curr.slot1 !== "-" ? curr.slot1 : null;
+    const currSlot2 = curr.slot2 && curr.slot2 !== "-" ? curr.slot2 : null;
+
+    if (currSlot1 !== saved.slot1 || currSlot2 !== saved.slot2) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Finds any active official schedule that overlaps in date range with [startDate, endDate],
  * excluding the schedule with ignoreId.
  */
