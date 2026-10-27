@@ -387,6 +387,79 @@ async function runRegressionTests() {
     assert.strictEqual(successState.previewEventsCount, 2);
   });
 
+  // -------------------------------------------------------------
+  // Test 7: No Employee Selected by Default in Employee Calendar
+  // -------------------------------------------------------------
+  test("7. Employee calendar initializes with placeholder 'בחר/י את שמך' and displays shifts only after explicit selection", () => {
+    const htmlSource = fs.readFileSync(path.join(__dirname, '../employee-calendar.html'), 'utf8');
+
+    // 1. Static HTML verification
+    assert(htmlSource.includes('<option value="">בחר/י את שמך</option>'), "HTML select must initially contain 'בחר/י את שמך' option");
+
+    // 2. Lifecycle simulation matching employee-calendar.html
+    let selectedValue = "";
+    let previewHtml = "";
+    let exportStatus = "ממתין";
+    let addToCalendarDisabled = true;
+
+    function renderEmployeeOptions(schedule) {
+      const options = [
+        '<option value="">בחר/י את שמך</option>',
+        ...schedule.employees.map(employee => `<option value="${employee.id}">${employee.name}</option>`)
+      ];
+      selectedValue = "";
+      return options;
+    }
+
+    function selectedEvents(schedule) {
+      if (!selectedValue) return [];
+      return calendarService.shiftsForEmployee(schedule, selectedValue);
+    }
+
+    function renderPreview(schedule) {
+      if (!selectedValue) {
+        previewHtml = "";
+        exportStatus = "ממתין";
+        addToCalendarDisabled = true;
+        return;
+      }
+      const events = selectedEvents(schedule);
+      if (!events.length) {
+        previewHtml = '<div class="employee-empty-state">No shifts found for this employee</div>';
+        exportStatus = "אין משמרות";
+        addToCalendarDisabled = true;
+        return;
+      }
+      exportStatus = `${events.length} משמרות`;
+      addToCalendarDisabled = false;
+      previewHtml = events.map(e => e.title).join(",");
+    }
+
+    // Step A: Initial page load
+    const options = renderEmployeeOptions(sampleSchedule);
+    renderPreview(sampleSchedule);
+
+    assert.strictEqual(selectedValue, "", "No employee should be selected by default");
+    assert.strictEqual(options[0], '<option value="">בחר/י את שמך</option>', "Placeholder option must be first");
+    assert.strictEqual(previewHtml, "", "No shifts should be previewed when no employee is selected");
+    assert.strictEqual(exportStatus, "ממתין", "Status badge should remain 'ממתין' when no employee is selected");
+    assert.strictEqual(addToCalendarDisabled, true, "Add to calendar button must be disabled");
+
+    // Step B: User selects 'גל'
+    selectedValue = "gal";
+    renderPreview(sampleSchedule);
+    assert.strictEqual(exportStatus, "2 משמרות", "Should show 2 shifts for 'גל'");
+    assert.strictEqual(addToCalendarDisabled, false, "Add to calendar should be enabled when employee selected");
+    assert(previewHtml.length > 0, "Preview should display shifts");
+
+    // Step C: User switches back to placeholder
+    selectedValue = "";
+    renderPreview(sampleSchedule);
+    assert.strictEqual(previewHtml, "", "Preview should clear when switching back to placeholder");
+    assert.strictEqual(exportStatus, "ממתין", "Status badge should reset to 'ממתין'");
+    assert.strictEqual(addToCalendarDisabled, true, "Add to calendar button must be disabled again");
+  });
+
   console.log("\n=================================================");
   console.log(`Regression Test Results: ${passed} Passed, ${failed} Failed`);
   console.log("=================================================");

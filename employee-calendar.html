@@ -32,7 +32,9 @@
         <div class="employee-export-form">
           <div>
             <label for="employeeSelect">שם עובד</label>
-            <select id="employeeSelect"></select>
+            <select id="employeeSelect">
+              <option value="">בחר/י את שמך</option>
+            </select>
           </div>
         </div>
 
@@ -93,12 +95,15 @@
     }
 
     function renderEmployeeOptions() {
-      employeeSelectEl.innerHTML = finalizedSchedule.employees
-        .map(employee => `<option value="${employee.id}">${employee.name}</option>`)
-        .join("");
+      employeeSelectEl.innerHTML = [
+        '<option value="">בחר/י את שמך</option>',
+        ...finalizedSchedule.employees.map(employee => `<option value="${employee.id}">${employee.name}</option>`)
+      ].join("");
+      employeeSelectEl.value = "";
     }
 
     function selectedEvents() {
+      if (!employeeSelectEl.value) return [];
       return calendarService.shiftsForEmployee(finalizedSchedule, employeeSelectEl.value);
     }
 
@@ -120,8 +125,15 @@
     }
 
     function renderPreview() {
-      const events = selectedEvents();
       resetAddButton();
+      if (!employeeSelectEl.value) {
+        eventPreviewEl.innerHTML = "";
+        exportStatusEl.textContent = "ממתין";
+        addToCalendarEl.disabled = true;
+        return;
+      }
+
+      const events = selectedEvents();
       if (!events.length) {
         eventPreviewEl.innerHTML = `<div class="employee-empty-state">No shifts found for this employee</div>`;
         exportStatusEl.textContent = "אין משמרות";
@@ -166,6 +178,9 @@
     }
 
     async function handleAddToGoogleCalendar() {
+      if (!employeeSelectEl.value) {
+        return;
+      }
       if (allSelectedEventsCreated()) {
         setCreatedButton();
         calendarMessageEl.textContent = "המשמרות כבר נוספו ליומן.";
