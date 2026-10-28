@@ -118,6 +118,140 @@ export function snapshotAssignments(schedule) {
 }
 
 /**
+ * Reconstructs a full schedule structure from a saved official schedule record and calendar days.
+ * Pure function: does not modify inputs, does not perform any writes or network requests.
+ *
+ * @param {Object} officialRecord - Saved official schedule document
+ * @param {Array} days - Period days list (e.g. from getScheduleDays())
+ * @param {Array} existingWorkers - Optional worker definitions for styling/metadata
+ * @returns {{ schedule: Object, workers: Array }}
+ */
+export function reconstructScheduleFromOfficial(officialRecord, days, existingWorkers = []) {
+  if (!officialRecord || !Array.isArray(days) || !days.length) {
+    return { schedule: {}, workers: Array.isArray(existingWorkers) ? [...existingWorkers] : [] };
+  }
+
+  const workersByName = new Map();
+  const workers = [];
+
+  if (Array.isArray(existingWorkers)) {
+    for (const w of existingWorkers) {
+      if (w && w.name) {
+        const copy = {
+          ...w,
+          weekCounts: {},
+          total: 0,
+          recentDays: [],
+          saturdayWeeks: [],
+          dayCounts: {},
+          slotCounts: { 1: 0, 2: 0 }
+        };
+        workersByName.set(w.name, copy);
+        workers.push(copy);
+      }
+    }
+  }
+
+  function getOrCreateWorker(name) {
+    if (!name || name === "-" || name === "לא שובץ" || name === "חסר") return null;
+    let worker = workersByName.get(name);
+    if (!worker) {
+      worker = {
+        name,
+        active: true,
+        min: 0,
+        max: 10,
+        color: null,
+        weekCounts: {},
+        total: 0,
+        recentDays: [],
+        saturdayWeeks: [],
+        dayCounts: {},
+        slotCounts: { 1: 0, 2: 0 }
+      };
+      workersByName.set(name, worker);
+      workers.push(worker);
+    }
+    return worker;
+  }
+
+  const assignmentMap = new Map();
+  if (Array.isArray(officialRecord.assignments)) {
+    for (const a of officialRecord.assignments) {
+      if (a && a.iso) {
+        assignmentMap.set(a.iso, a);
+      }
+    }
+  }
+
+  const savedDaysMap = new Map();
+  if (Array.isArray(officialRecord.daysSnapshot)) {
+    for (const d of officialRecord.daysSnapshot) {
+      if (d && d.iso) {
+        savedDaysMap.set(d.iso, d);
+      }
+    }
+  }
+
+  const schedule = {};
+
+  for (const day of days) {
+    const week = typeof day.week === "number" ? day.week : 0;
+    if (!schedule[week]) {
+      schedule[week] = [];
+    }
+
+    const savedDay = savedDaysMap.get(day.iso);
+    const isExplicitlyClosed = savedDay ? Boolean(savedDay.closed) : Boolean(day.closed);
+
+    // If day was closed and has no assignments, keep it closed
+    if (isExplicitlyClosed && !assignmentMap.has(day.iso)) {
+      schedule[week].push({
+        day: { ...day, closed: true },
+        closed: true
+      });
+      continue;
+    }
+
+    // If not in assignmentMap, it had no assignments in official schedule
+    if (!assignmentMap.has(day.iso)) {
+      schedule[week].push({
+        day: { ...day, closed: true },
+        closed: true
+      });
+      continue;
+    }
+
+    const assignment = assignmentMap.get(day.iso);
+    const slot1Name = assignment?.slot1 && assignment.slot1 !== "-" && assignment.slot1 !== "לא שובץ" && assignment.slot1 !== "חסר"
+      ? assignment.slot1
+      : null;
+    const slot2Name = assignment?.slot2 && assignment.slot2 !== "-" && assignment.slot2 !== "לא שובץ" && assignment.slot2 !== "חסר"
+      ? assignment.slot2
+      : null;
+
+    const first = getOrCreateWorker(slot1Name);
+    const second = getOrCreateWorker(slot2Name);
+
+    schedule[week].push({
+      day: { ...day, closed: false },
+      first,
+      second,
+      closed: false
+    });
+  }
+
+  for (const weekEntries of Object.values(schedule)) {
+    weekEntries.sort((a, b) => (a.day?.dayIndex ?? 0) - (b.day?.dayIndex ?? 0));
+  }
+
+  return {
+    schedule,
+    workers
+  };
+}
+
+/**
  * Checks whether a displayed schedule's assignments exactly match a saved official schedule record.
  * Must match:
  * 1. Both the schedule and officialRecord exist.
@@ -364,24 +498,43 @@ export function calculateAggregatedFairness(officialSchedules, periodFilter = "c
 }
 
 // -------------------------------------------------------------
-// Firestore Persistence Integration (User Scoped)
+// Firestore Persistence Integration (User Scoped) with Emulator & Fail-Closed Isolation
 // -------------------------------------------------------------
 
 let firestoreInstance = null;
+let isEmulatorConnected = false;
 
 async function getFirestoreDb(customDb = null) {
   if (customDb) return customDb;
   if (firestoreInstance) return firestoreInstance;
 
   const { getApps, initializeApp, getApp } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js");
-  const { getFirestore } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js");
-  const { firebaseConfig, hasFirebaseConfig } = await import("../firebase-config.js");
+  const { getFirestore, connectFirestoreEmulator } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js");
+  const { firebaseConfig, hasFirebaseConfig, isLocalEnvironment, EMULATOR_CONFIG, probeEmulator } = await import("../firebase-config.js");
 
   if (!hasFirebaseConfig()) {
     throw new Error("Firebase אינו מוגדר כראוי.");
   }
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   firestoreInstance = getFirestore(app);
+
+  if (isLocalEnvironment()) {
+    const emulatorActive = await probeEmulator();
+    if (emulatorActive && !isEmulatorConnected) {
+      try {
+        connectFirestoreEmulator(firestoreInstance, EMULATOR_CONFIG.firestore.host, EMULATOR_CONFIG.firestore.port);
+        isEmulatorConnected = true;
+        console.info(`[Firestore] Connected to local emulator at ${EMULATOR_CONFIG.firestore.host}:${EMULATOR_CONFIG.firestore.port}`);
+      } catch (e) {
+        console.warn("[Firestore] Emulator connection warning:", e);
+      }
+    } else if (!emulatorActive) {
+      if (typeof window !== "undefined") {
+        window.__ISOLATED_DEV_MODE__ = true;
+      }
+    }
+  }
+
   return firestoreInstance;
 }
 
@@ -397,11 +550,22 @@ export async function saveOfficialScheduleDoc(uid, scheduleRecord, customDb = nu
     throw new Error("נתוני הסידור הרשמי אינם תקינים לשמירה.");
   }
 
-  // Isolated test/dev mode in localStorage if set
-  if (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__) {
+  const { isLocalEnvironment, probeEmulator } = await import("../firebase-config.js");
+  const isLocal = isLocalEnvironment();
+  const emulatorActive = isLocal ? await probeEmulator() : false;
+
+  // FAIL-CLOSED SAFEGUARD:
+  // If running locally and emulators are inactive or isolated mode is flagged,
+  // save strictly to client-side isolated storage. NEVER write to production!
+  if (isLocal && (!emulatorActive || (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__))) {
     const storageKey = `isolated_dev_official_${uid}`;
-    const raw = localStorage.getItem(storageKey);
-    let list = raw ? JSON.parse(raw) : [];
+    let list = [];
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(storageKey);
+      list = raw ? JSON.parse(raw) : [];
+    } else if (typeof window !== "undefined" && window.__mockStorage) {
+      list = window.__mockStorage[storageKey] || [];
+    }
     const payload = {
       ...scheduleRecord,
       savedAt: scheduleRecord.savedAt || new Date().toISOString()
@@ -412,11 +576,20 @@ export async function saveOfficialScheduleDoc(uid, scheduleRecord, customDb = nu
     } else {
       list.push(payload);
     }
-    localStorage.setItem(storageKey, JSON.stringify(list));
-    return { success: true, id: scheduleRecord.id };
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(storageKey, JSON.stringify(list));
+    } else if (typeof window !== "undefined" && window.__mockStorage) {
+      window.__mockStorage[storageKey] = list;
+    }
+    return { success: true, id: scheduleRecord.id, isolated: true };
   }
 
   const db = await getFirestoreDb(customDb);
+
+  // Hard assertion: if local and attempting write without emulator connection, FAIL-CLOSED!
+  if (isLocal && !isEmulatorConnected && !customDb) {
+    throw new Error("FAIL-CLOSED: כתיבה לשרת הייצור חסומה מסביבת פיתוח מקומית ללא אימולטור.");
+  }
   const { doc, setDoc, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js");
 
   const docRef = doc(db, "users", uid, "officialSchedules", scheduleRecord.id);
@@ -439,10 +612,19 @@ export async function loadOfficialSchedulesDocs(uid, customDb = null) {
     throw new Error("מזהה משתמש (UID) אינו תקין.");
   }
 
-  if (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__) {
+  const { isLocalEnvironment, probeEmulator } = await import("../firebase-config.js");
+  const isLocal = isLocalEnvironment();
+  const emulatorActive = isLocal ? await probeEmulator() : false;
+
+  if (isLocal && (!emulatorActive || (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__))) {
     const storageKey = `isolated_dev_official_${uid}`;
-    const raw = localStorage.getItem(storageKey);
-    const list = raw ? JSON.parse(raw) : [];
+    let list = [];
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(storageKey);
+      list = raw ? JSON.parse(raw) : [];
+    } else if (typeof window !== "undefined" && window.__mockStorage) {
+      list = window.__mockStorage[storageKey] || [];
+    }
     list.sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
     return list;
   }
@@ -471,16 +653,26 @@ export async function loadOfficialSchedulesDocs(uid, customDb = null) {
 export async function deleteOfficialScheduleDoc(uid, periodId, customDb = null) {
   if (!uid || !periodId) return;
 
-  if (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__) {
+  const { isLocalEnvironment, probeEmulator } = await import("../firebase-config.js");
+  const isLocal = isLocalEnvironment();
+  const emulatorActive = isLocal ? await probeEmulator() : false;
+
+  if (isLocal && (!emulatorActive || (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__))) {
     const storageKey = `isolated_dev_official_${uid}`;
-    const raw = localStorage.getItem(storageKey);
-    let list = raw ? JSON.parse(raw) : [];
-    list = list.filter(item => item.id !== periodId);
-    localStorage.setItem(storageKey, JSON.stringify(list));
-    return { success: true };
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(storageKey);
+      let list = raw ? JSON.parse(raw) : [];
+      list = list.filter(item => item.id !== periodId);
+      localStorage.setItem(storageKey, JSON.stringify(list));
+    }
+    return { success: true, isolated: true };
   }
 
   const db = await getFirestoreDb(customDb);
+
+  if (isLocal && !isEmulatorConnected && !customDb) {
+    throw new Error("FAIL-CLOSED: מחיקה משרת הייצור חסומה מסביבת פיתוח מקומית ללא אימולטור.");
+  }
   const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js");
 
   const docRef = doc(db, "users", uid, "officialSchedules", periodId);

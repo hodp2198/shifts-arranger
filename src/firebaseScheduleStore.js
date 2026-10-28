@@ -1,12 +1,11 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 import {
-  doc,
-  getDoc,
-  getFirestore,
-  runTransaction,
-  serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
-import { firebaseConfig, firestoreCollectionName, hasFirebaseConfig } from "../firebase-config.js";
+  firebaseConfig,
+  firestoreCollectionName,
+  hasFirebaseConfig,
+  isLocalEnvironment,
+  EMULATOR_CONFIG,
+  probeEmulator
+} from "../firebase-config.js";
 
 const ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const ID_LENGTH = 10;
@@ -14,6 +13,7 @@ const MAX_PAYLOAD_LENGTH = 200000;
 const MAX_CREATE_ATTEMPTS = 8;
 
 let firestoreDb = null;
+let isEmulatorConnected = false;
 
 class IdCollisionError extends Error {
   constructor() {
@@ -22,12 +22,31 @@ class IdCollisionError extends Error {
   }
 }
 
-function getDb() {
+async function getDb() {
   if (!hasFirebaseConfig()) {
     throw new Error("Firebase לא מוגדר. יש להדביק את firebaseConfig בקובץ firebase-config.js.");
   }
   if (!firestoreDb) {
-    firestoreDb = getFirestore(initializeApp(firebaseConfig));
+    const { getApps, initializeApp, getApp } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js");
+    const { getFirestore, connectFirestoreEmulator } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js");
+
+    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+    firestoreDb = getFirestore(app);
+
+    if (isLocalEnvironment()) {
+      const emulatorActive = await probeEmulator();
+      if (emulatorActive && !isEmulatorConnected) {
+        try {
+          connectFirestoreEmulator(firestoreDb, EMULATOR_CONFIG.firestore.host, EMULATOR_CONFIG.firestore.port);
+          isEmulatorConnected = true;
+          console.info(`[ScheduleStore] Connected to local emulator at ${EMULATOR_CONFIG.firestore.host}:${EMULATOR_CONFIG.firestore.port}`);
+        } catch (e) {}
+      } else if (!emulatorActive) {
+        if (typeof window !== "undefined") {
+          window.__ISOLATED_DEV_MODE__ = true;
+        }
+      }
+    }
   }
   return firestoreDb;
 }
@@ -59,7 +78,30 @@ function assertValidDocumentId(id) {
 
 export async function saveSchedulePayload(payload, uid = null) {
   assertValidPayload(payload);
-  const db = getDb();
+
+  const isLocal = isLocalEnvironment();
+  const emulatorActive = isLocal ? await probeEmulator() : false;
+
+  // FAIL-CLOSED SAFEGUARD:
+  if (isLocal && (!emulatorActive || (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__))) {
+    const id = createDocumentId();
+    const storageKey = `isolated_dev_emp_${id}`;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(storageKey, JSON.stringify({
+        payload,
+        ownerUid: uid,
+        createdAt: new Date().toISOString()
+      }));
+    }
+    return { id, uid };
+  }
+
+  const db = await getDb();
+  if (isLocal && !isEmulatorConnected) {
+    throw new Error("FAIL-CLOSED: שמירת לוח עובדים לייצור חסומה מסביבת פיתוח מקומית ללא אימולטור.");
+  }
+
+  const { doc, runTransaction, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js");
 
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt += 1) {
     const id = createDocumentId();
@@ -81,20 +123,43 @@ export async function saveSchedulePayload(payload, uid = null) {
       });
       return { id, uid };
     } catch (error) {
-      if (error instanceof IdCollisionError) continue;
+      if (error instanceof IdCollisionError && attempt < MAX_CREATE_ATTEMPTS - 1) {
+        continue;
+      }
       throw error;
     }
   }
 
-  throw new Error("לא ניתן היה ליצור מזהה ייחודי לסידור. נסו שוב.");
+  throw new Error("נכשלה יצירת מזהה ייחודי לסידור. אנא נסה שוב.");
 }
 
-export async function readSchedulePayload(id, uid = null) {
+export async function loadSchedulePayload(id, uid = null) {
   assertValidDocumentId(id);
+
+  const isLocal = isLocalEnvironment();
+  const emulatorActive = isLocal ? await probeEmulator() : false;
+
+  // FAIL-CLOSED SAFEGUARD:
+  if (isLocal && (!emulatorActive || (typeof window !== "undefined" && window.__ISOLATED_DEV_MODE__))) {
+    const storageKey = `isolated_dev_emp_${id}`;
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        try {
+          return JSON.parse(raw).payload;
+        } catch (e) {}
+      }
+    }
+    throw new Error("לא נמצא סידור עבור הקישור הזה.");
+  }
+
+  const db = await getDb();
+  const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js");
   const scheduleRef = uid
-    ? doc(getDb(), "users", uid, "employeeSchedules", id)
-    : doc(getDb(), firestoreCollectionName, id);
+    ? doc(db, "users", uid, "employeeSchedules", id)
+    : doc(db, firestoreCollectionName, id);
   const snapshot = await getDoc(scheduleRef);
+
   if (!snapshot.exists()) {
     throw new Error("לא נמצא סידור עבור הקישור הזה.");
   }
@@ -105,3 +170,6 @@ export async function readSchedulePayload(id, uid = null) {
   }
   return data.payload;
 }
+
+export const readSchedulePayload = loadSchedulePayload;
+
