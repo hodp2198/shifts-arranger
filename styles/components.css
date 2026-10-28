@@ -732,6 +732,10 @@
       vertical-align: middle;
     }
 
+    .badge[hidden] {
+      display: none !important;
+    }
+
     .worker-summary {
       display: grid;
       gap: 8px;
