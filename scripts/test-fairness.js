@@ -347,6 +347,74 @@ async function runTests() {
     assert.strictEqual(fairness.isScheduleMatchingOfficial(mockSchedule, archivedRecord), false, "Archived record must return false");
   });
 
+  // Test 7: reconstructScheduleFromOfficial - pure schedule reconstruction & exact official match
+  test("7. reconstructScheduleFromOfficial: accurately rebuilds full schedule matching official record", () => {
+    const days = [
+      { iso: "2026-03-01", dayIndex: 0, dayName: "ראשון", week: 0, closed: false },
+      { iso: "2026-03-02", dayIndex: 1, dayName: "שני", week: 0, closed: false },
+      { iso: "2026-03-03", dayIndex: 2, dayName: "שלישי", week: 0, closed: true, label: "פורים" },
+      { iso: "2026-03-04", dayIndex: 3, dayName: "רביעי", week: 0, closed: false }
+    ];
+
+    const officialRecord = {
+      id: "2026-03-01_2026-03-04",
+      startDate: "2026-03-01",
+      endDate: "2026-03-04",
+      savedAt: "2026-03-01T12:00:00Z",
+      status: "active",
+      daysSnapshot: days,
+      assignments: [
+        { iso: "2026-03-01", monthKey: "2026-03", slot1: "הוד", slot2: "רוני" },
+        { iso: "2026-03-02", monthKey: "2026-03", slot1: "דני", slot2: null },
+        { iso: "2026-03-04", monthKey: "2026-03", slot1: "עובד_חדש", slot2: "הוד" }
+      ]
+    };
+
+    const existingWorkers = [
+      { name: "הוד", active: true, color: "#111111" },
+      { name: "רוני", active: true, color: "#222222" },
+      { name: "דני", active: true, color: "#333333" }
+    ];
+
+    const { schedule, workers } = fairness.reconstructScheduleFromOfficial(officialRecord, days, existingWorkers);
+
+    // 1. Structure check: week 0 exists and has 4 entries
+    assert.strictEqual(Array.isArray(schedule[0]), true, "Schedule week 0 must be an array");
+    assert.strictEqual(schedule[0].length, 4, "Week 0 must contain all 4 days");
+
+    // 2. Day 1: open with הוד and רוני
+    const entry1 = schedule[0].find(e => e.day.iso === "2026-03-01");
+    assert.strictEqual(entry1.closed, false);
+    assert.strictEqual(entry1.first?.name, "הוד");
+    assert.strictEqual(entry1.second?.name, "רוני");
+
+    // 3. Day 2: open with דני and null
+    const entry2 = schedule[0].find(e => e.day.iso === "2026-03-02");
+    assert.strictEqual(entry2.closed, false);
+    assert.strictEqual(entry2.first?.name, "דני");
+    assert.strictEqual(entry2.second, null);
+
+    // 4. Day 3: holiday closed
+    const entry3 = schedule[0].find(e => e.day.iso === "2026-03-03");
+    assert.strictEqual(entry3.closed, true);
+
+    // 5. Day 4: unknown worker 'עובד_חדש' was cleanly created with worker stats
+    const entry4 = schedule[0].find(e => e.day.iso === "2026-03-04");
+    assert.strictEqual(entry4.closed, false);
+    assert.strictEqual(entry4.first?.name, "עובד_חדש");
+    assert.strictEqual(entry4.second?.name, "הוד");
+    const newWorker = workers.find(w => w.name === "עובד_חדש");
+    assert.ok(newWorker, "New worker should be present in returned workers");
+    assert.strictEqual(typeof newWorker.weekCounts, "object");
+
+    // 6. Roundtrip verification: reconstructed schedule MUST match officialRecord exactly!
+    assert.strictEqual(fairness.isScheduleMatchingOfficial(schedule, officialRecord), true, "Reconstructed schedule must match official record");
+
+    // 7. Safety / Read-only check: officialRecord was not mutated
+    assert.strictEqual(officialRecord.status, "active");
+    assert.strictEqual(officialRecord.assignments.length, 3);
+  });
+
   console.log("\n=================================================");
   console.log(`Test Results: ${passed} Passed, ${failed} Failed`);
   console.log("=================================================");
