@@ -59,7 +59,7 @@
         </div>
       </div>
       <div class="admin-bar-actions">
-        <span class="badge" id="devModeBadge" style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;font-weight:600;padding:4px 10px;border-radius:12px;font-size:12px;margin-inline-end:8px;" hidden>🔒 מצב פיתוח מבודד</span>
+        <span class="badge" id="devModeBadge" style="display:none;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;font-weight:600;padding:4px 10px;border-radius:12px;font-size:12px;margin-inline-end:8px;" hidden>🔒 מצב פיתוח מבודד</span>
         <span class="admin-badge" id="adminUserBadge">
           <span class="admin-badge-dot"></span>
           <span id="adminUserEmail">מנהל מחובר</span>
@@ -4537,8 +4537,10 @@
           }
 
           const devBadge = getEl("devModeBadge");
-          if (devBadge && (typeof window.isLocalEnvironment === "function" ? window.isLocalEnvironment() : true)) {
-            devBadge.hidden = false;
+          if (devBadge) {
+            const isLocal = typeof window.isLocalEnvironment === "function" ? window.isLocalEnvironment() : false;
+            devBadge.style.display = isLocal ? "inline-flex" : "none";
+            devBadge.hidden = !isLocal;
           }
 
           const adminUserEmailEl = getEl("adminUserEmail");
@@ -4667,10 +4669,12 @@
       const authDevNotice = document.getElementById("authDevNotice");
       if (devBadge) {
         devBadge.hidden = false;
+        devBadge.style.display = "inline-flex";
         devBadge.textContent = "🔒 מצב פיתוח מבודד (נתונים מקומיים בלבד)";
       }
       if (authDevNotice) {
         authDevNotice.hidden = false;
+        authDevNotice.style.display = "block";
       }
       if (window.updateLoginButtonLabel) {
         window.updateLoginButtonLabel();
@@ -4691,6 +4695,17 @@
           }
         }
       });
+    } else {
+      const devBadge = getEl("devModeBadge");
+      const authDevNotice = document.getElementById("authDevNotice");
+      if (devBadge) {
+        devBadge.hidden = true;
+        devBadge.style.display = "none";
+      }
+      if (authDevNotice) {
+        authDevNotice.hidden = true;
+        authDevNotice.style.display = "none";
+      }
     }
 
     if (window.initAuthLifecycle) {
