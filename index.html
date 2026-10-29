@@ -273,6 +273,7 @@
   <script src="src/calendarLinkUi.js"></script>
   <script src="src/scheduleExport.js"></script>
   <script src="src/calendarService.js"></script>
+  <script src="src/constraintParser.js"></script>
   <script>
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
@@ -683,6 +684,13 @@
     }
 
     function parseWeekLabelToRange(text, rowContext = null) {
+      if (window.ConstraintParser?.parseWeekLabelToRange) {
+        return window.ConstraintParser.parseWeekLabelToRange(text, {
+          rowContext,
+          baseStart: getBaseStartDate(),
+          fallbackYear: importYear()
+        });
+      }
       const line = normalizeWeekHeaderText(text);
       if (!line) return null;
 
@@ -1232,6 +1240,10 @@
       if (inactiveWorkers.length) {
         issues.push(`עובדים שלא הופיעו בייבוא החדש סומנו כלא פעילים לסידור הזה: ${inactiveWorkers.join(", ")}.`);
       }
+      getAllWorkersData().forEach(w => {
+        if (w.criticalErrors?.length) issues.push(...w.criticalErrors);
+        if (w.warnings?.length) issues.push(...w.warnings);
+      });
       renderImportSummary({ imported, importedWeeks, issues });
       updateOneTimeIndicators();
       syncOneTimeConstraintsNow("after import");
@@ -1403,6 +1415,9 @@
     }
 
     function normalizeDayName(text) {
+      if (window.ConstraintParser?.normalizeDayName) {
+        return window.ConstraintParser.normalizeDayName(text);
+      }
       const clean = text.replace(/['׳״"]/g, "").trim();
       if (clean.startsWith("ש")) return "שבת";
       return clean[0] || "";
@@ -1465,7 +1480,14 @@
       return true;
     }
 
-    function parseConstraints(text) {
+    function parseConstraints(text, workerName = "עובד") {
+      if (window.ConstraintParser?.parseWorkerConstraints) {
+        return window.ConstraintParser.parseWorkerConstraints(text, {
+          weekConfigs: getWeekConfigs(),
+          baseStart: getBaseStartDate(),
+          workerName
+        });
+      }
       const blocked = new Set();
       const preferred = new Set();
       const submitted = new Set();
@@ -1518,10 +1540,16 @@
     }
 
     function isUnavailableText(text) {
+      if (window.ConstraintParser?.isUnavailableText) {
+        return window.ConstraintParser.isUnavailableText(text);
+      }
       return /לא\s*יכול|לא\s*יכולה|לא\s*יוכלה|לא\s*פנוי|לא\s*פנויה|לא\s*זמין|חסום|אין/i.test(text);
     }
 
     function isPreferredText(text) {
+      if (window.ConstraintParser?.isPreferredText) {
+        return window.ConstraintParser.isPreferredText(text);
+      }
       return /רוצה|מעדיף|מעדיפה|עדיפות/i.test(text);
     }
 
@@ -1548,6 +1576,9 @@
     }
 
     function isConstraintDayLine(line) {
+      if (window.ConstraintParser?.isConstraintDayLine) {
+        return window.ConstraintParser.isConstraintDayLine(line);
+      }
       const match = String(line || "").trim().match(/^([א-ת'׳״"]+)\s*[-:]/);
       if (!match) return false;
       const day = normalizeDayName(match[1]);
@@ -1577,18 +1608,20 @@
     function countImportedConstraints() {
       let blocked = 0;
       let preferred = 0;
+      let avoid = 0;
       let activeWorkers = 0;
 
       document.querySelectorAll(".worker").forEach(card => {
         const text = card.querySelector(".constraints").value.trim();
         if (!text) return;
-        const parsed = parseConstraints(text);
+        const parsed = parseConstraints(text, card.dataset.worker);
         blocked += parsed.blocked.size;
         preferred += parsed.preferred.size;
+        if (parsed.avoid) avoid += parsed.avoid.size;
         if (hasMeaningfulWorkerInput(text)) activeWorkers += 1;
       });
 
-      return { blocked, preferred, activeWorkers };
+      return { blocked, preferred, avoid, activeWorkers };
     }
 
     function renderImportSummary({ imported, importedWeeks, issues = [] }) {
@@ -1599,7 +1632,8 @@
         `✓ זוהו ${imported} עובדים`,
         `✓ זוהו ${importedWeeks || getWeekConfigs().length || 0} שבועות`,
         `✓ זוהו ${counts.blocked} חסימות`,
-        `✓ זוהו ${counts.preferred} ימים מועדפים`
+        `✓ זוהו ${counts.preferred} ימים מועדפים`,
+        ...(counts.avoid ? [`✓ זוהו ${counts.avoid} העדפות שליליות (הימנעות)`] : [])
       ];
       if (!counts.activeWorkers) issues.push("לא נמצאו אילוצים פעילים לעובדים.");
       if (!importedWeeks && !getDetectedWeekConfigs().length) issues.push("לא זוהו שבועות מתוך האקסל.");
@@ -1622,7 +1656,7 @@
           onlyNight2: card.querySelector(".night2-only").checked
         });
         const workerDefinition = WORKERS.find(worker => worker.name === name);
-        const parsedConstraints = parseConstraints(constraintsText);
+        const parsedConstraints = parseConstraints(constraintsText, name);
         console.log(
           "[parsed-one-time-constraints]",
           name,
@@ -1644,8 +1678,11 @@
           min: settings.min,
           max: settings.max,
           blocked: parsedConstraints.blocked,
+          avoid: parsedConstraints.avoid || new Set(),
           preferred: parsedConstraints.preferred,
           submitted: parsedConstraints.submitted,
+          criticalErrors: parsedConstraints.criticalErrors || [],
+          warnings: parsedConstraints.warnings || [],
           hasSubmitted: Boolean((manuallyActive && hasWorkerInput) || hasWorkerInput),
           weekCounts: {},
           total: 0,
@@ -1697,6 +1734,7 @@
       }
       score += worker.total * 10;
       if (worker.preferred?.has(day.iso)) score -= 950;
+      if (worker.avoid?.has(day.iso)) score += 950;
       const lastIso = worker.recentDays[worker.recentDays.length - 1];
       const lastDistance = lastIso ? Math.abs((new Date(`${day.iso}T12:00:00`) - new Date(`${lastIso}T12:00:00`)) / 86400000) : null;
       if (worker.recentDays.includes(day.iso)) score += 80;
@@ -2206,6 +2244,9 @@
     }
 
     function dayIndexFromText(text) {
+      if (window.ConstraintParser?.dayIndexFromText) {
+        return window.ConstraintParser.dayIndexFromText(text);
+      }
       if (/שבת/.test(text)) return 6;
       if (/ראשון/.test(text) || hasStandaloneDayLetter(text, "א")) return 0;
       if (/שני/.test(text) || hasStandaloneDayLetter(text, "ב")) return 1;
@@ -2928,6 +2969,12 @@
       }
       warnings.push(...applyOneTimeNotesToWorkerConstraints(days));
       const workers = getWorkersData();
+      const criticalParsingErrors = workers.flatMap(w => w.criticalErrors || []);
+      if (criticalParsingErrors.length) {
+        warnings.push(...criticalParsingErrors);
+        warnings.push("נמצאו שגיאות אילוצים קריטיות (אי-התאמה בין יום לתאריך או אילוץ לא מזוהה). הסידור לא נוצר כדי למנוע שיבוץ שגוי.");
+        return { schedule: null, warnings, workers };
+      }
       warnings.push(...state.weekDetectionWarnings);
       if (state.calendar.warning) {
         warnings.push(state.calendar.warning);
@@ -3167,6 +3214,12 @@
       const result = existing || generateSchedule();
       const { schedule, workers } = result;
       let warnings = result.warnings || [];
+      if (!schedule) {
+        statusBadgeEl.textContent = "שגיאה באילוצים";
+        outputEl.innerHTML = `<div class="error-banner" style="background:#fff3f3; color:#b00; padding:16px; border-radius:8px; border:1px solid #fcc; margin:16px 0; font-weight:bold;">לא ניתן ליצור סידור בשל שגיאות אילוצים קריטיות. יש לתקן את השגיאות המופיעות באזהרות ולנסה שוב.</div>`;
+        warningsEl.innerHTML = warnings.map(w => `<div class="warning-item" style="color:#b00; padding:4px 0;">⚠ ${escapeHtml(w)}</div>`).join("");
+        return;
+      }
       const appliedManualOverrides = applyManualOverrides(schedule, workers);
       if (appliedManualOverrides) {
         warnings = [
