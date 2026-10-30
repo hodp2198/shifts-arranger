@@ -274,6 +274,7 @@
   <script src="src/scheduleExport.js"></script>
   <script src="src/calendarService.js"></script>
   <script src="src/constraintParser.js"></script>
+  <script src="src/workerAvailability.js"></script>
   <script>
     const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "שבת"];
     const SCHEDULE_DAYS = [0, 1, 2, 3, 4, 6];
@@ -453,6 +454,14 @@
       return `${date.getDate()}.${date.getMonth() + 1}`;
     }
 
+    function formatRangeDisplay(startDate, endDate) {
+      if (!startDate || !endDate) return "";
+      const start = startDate instanceof Date ? startDate : parseUiDate(startDate);
+      const end = endDate instanceof Date ? endDate : parseUiDate(endDate);
+      if (!start || !end) return "";
+      return `<bdi dir="ltr">${displayDate(start)}–${displayDate(end)}</bdi>`;
+    }
+
     function calendarRulesHelper() {
       return window.calendarRules || {
         calendarStatusLabel(status) {
@@ -621,15 +630,16 @@
       }
       const current = detectedWeeks.length ? detectedWeeks : getWeekConfigs();
       const title = detectedWeeks.length ? "שבועות שזוהו" : "שבועות ידניים";
-      const weekItems = current.map(week => `<span class="summary-pill">${displayDate(week.start)}–${displayDate(week.end)}</span>`).join("");
+      const weekItems = current.map(week => `<span class="summary-pill">${formatRangeDisplay(week.start, week.end)}</span>`).join("");
       weekSettingsEl.innerHTML = `
         <div class="week-summary">
           <div class="summary-group">
             <div class="summary-label">${title}: ${current.length}</div>
-            <div class="summary-list">${weekItems}</div>
+            <div class="summary-list" dir="ltr">${weekItems}</div>
           </div>
         </div>
       `;
+      renderAllWorkersAvailability();
     }
 
     function importYear() {
@@ -883,15 +893,247 @@
       const week = getWeekConfigs()[weekIndex];
       if (!week) return `שבוע ${weekIndex + 1}`;
       const range = orderedDateRange(week.start, week.end);
-      return `שבוע ${displayDate(range.start)}-${displayDate(range.end)}`;
+      return `שבוע ${formatRangeDisplay(range.start, range.end)}`;
     }
 
     function weekCopyLabel(weekIndex) {
-      return weekResultTitle(weekIndex);
+      const week = getWeekConfigs()[weekIndex];
+      if (!week) return `שבוע ${weekIndex + 1}`;
+      const range = orderedDateRange(week.start, week.end);
+      return `שבוע \u200E${displayDate(range.start)}–${displayDate(range.end)}\u200E`;
     }
 
     function scheduleDayLabel(dayName) {
       return dayName === "שבת" ? "שבת" : `${dayName}'`;
+    }
+
+    const workerAvailabilityStore = new Map();
+
+    function getWorkerAvailability(workerName) {
+      if (!workerAvailabilityStore.has(workerName)) {
+        workerAvailabilityStore.set(
+          workerName,
+          window.WorkerAvailability
+            ? window.WorkerAvailability.createWorkerAvailability({ workerName })
+            : {
+                workerName,
+                blocked: new Set(),
+                avoid: new Set(),
+                preferred: new Set(),
+                submitted: new Set(),
+                hasSubmitted: false,
+                rawConstraints: "",
+                manualEdits: new Set(),
+                warnings: [],
+                criticalErrors: []
+              }
+        );
+      }
+      return workerAvailabilityStore.get(workerName);
+    }
+
+    function setWorkerAvailability(workerName, availability) {
+      workerAvailabilityStore.set(workerName, availability);
+    }
+
+    function showWorkerParticipationActivated(card) {
+      if (statusBadgeEl) {
+        statusBadgeEl.textContent = "העובד הופעל להשתתפות בסידור";
+      }
+      if (card) {
+        let note = card.querySelector(".worker-activated-notice");
+        if (!note) {
+          note = document.createElement("span");
+          note.className = "worker-activated-notice";
+          const head = card.querySelector(".worker-head");
+          if (head) head.appendChild(note);
+        }
+        note.textContent = "העובד הופעל להשתתפות בסידור";
+        note.classList.add("is-visible");
+        clearTimeout(note._hideTimer);
+        note._hideTimer = setTimeout(() => {
+          note.classList.remove("is-visible");
+          setTimeout(() => note.remove(), 400);
+        }, 3000);
+      }
+    }
+
+    function renderAllWorkersAvailability() {
+      document.querySelectorAll(".worker").forEach(card => renderWorkerAvailability(card));
+    }
+
+    function renderWorkerAvailability(card) {
+      if (!card) return;
+      const workerName = card.dataset.worker;
+      const container = card.querySelector(".worker-availability");
+      if (!container) return;
+
+      const availability = getWorkerAvailability(workerName);
+      const weekConfigs = getWeekConfigs();
+      const scheduleDays = getScheduleDays();
+
+      if (!weekConfigs.length || !scheduleDays.length) {
+        container.innerHTML = `<div class="availability-no-weeks">הגדר תאריך התחלה או שבועות כדי להציג את ימי הסידור.</div>`;
+        return;
+      }
+
+      let html = "";
+
+      const isUnsubmitted = !availability.hasSubmitted;
+      const isManual = Boolean(availability.hasSubmitted && availability.source === "manual");
+
+      if (isUnsubmitted) {
+        html += `
+          <div class="availability-unsubmitted-box">
+            <div class="unsubmitted-header">
+              <span class="unsubmitted-title">לא הוגשו אילוצים לתקופה זו</span>
+              <span class="unsubmitted-subtitle">העובד אינו משובץ אוטומטית</span>
+            </div>
+            <button type="button" class="btn secondary btn-manual-availability" data-worker="${escapeHtml(workerName)}">
+              הזנת זמינות ידנית
+            </button>
+          </div>
+        `;
+      } else if (isManual) {
+        html += `
+          <div class="availability-manual-banner">
+            <span class="manual-badge">הזנה ידנית</span>
+            <span class="manual-instruction">פתח/י את הימים שבהם העובד זמין</span>
+          </div>
+        `;
+      }
+
+      const isParticipationChecked = Boolean(card.querySelector(".active-worker")?.checked);
+      if (!isUnsubmitted && !isParticipationChecked) {
+        html += `
+          <div class="availability-excluded-notice" role="alert">
+            <span class="excluded-icon" aria-hidden="true">⚠️</span>
+            <div class="excluded-text">
+              <span class="excluded-title">העובד מסומן כלא משתתף בסידור</span>
+              <span class="excluded-desc">תיבת הסימון בראש הכרטיס אינה מסומנת, ולכן העובד לא ישובץ אוטומטית. סמן/י את תיבת ההשתתפות כדי לכלול אותו בשיבוץ.</span>
+            </div>
+          </div>
+        `;
+      }
+
+      if (availability.rawConstraints && availability.rawConstraints.trim()) {
+        html += `
+          <details class="availability-raw-reference">
+            <summary>צפה בטקסט אילוצים מקורי</summary>
+            <div class="availability-raw-content">${escapeHtml(availability.rawConstraints)}</div>
+          </details>
+        `;
+      }
+
+      for (let w = 0; w < weekConfigs.length; w++) {
+        const week = weekConfigs[w];
+        const weekDays = scheduleDays.filter(d => d.week === w);
+        if (!weekDays.length) continue;
+
+        const weekStatus = window.WorkerAvailability
+          ? window.WorkerAvailability.getWeekAvailabilityStatus(availability, weekDays)
+          : (isUnsubmitted ? "UNSUBMITTED" : "OPEN");
+
+        const isWeekUnsubmitted = (weekStatus === "UNSUBMITTED");
+        const masterDisabledAttr = isWeekUnsubmitted ? 'disabled aria-disabled="true"' : "";
+        const masterDisabledClass = isWeekUnsubmitted ? "is-disabled" : "";
+        const masterAriaChecked = isWeekUnsubmitted ? "false" : (weekStatus === "OPEN" ? "true" : (weekStatus === "CLOSED" ? "false" : "mixed"));
+        const masterLabelText = isWeekUnsubmitted ? "לא הוגשו אילוצים" : (weekStatus === "OPEN" ? "פתוח" : (weekStatus === "CLOSED" ? "סגור" : "חלקי"));
+        let masterBadgeHtml = "";
+        if (weekStatus === "PARTIAL") {
+          masterBadgeHtml = `<span class="master-partial-badge">חלקי</span>`;
+        } else if (isWeekUnsubmitted) {
+          masterBadgeHtml = `<span class="master-unsubmitted-badge">לא הוגשו אילוצים</span>`;
+        }
+
+        html += `
+          <div class="worker-week-group ${isWeekUnsubmitted ? "is-unsubmitted-group" : ""}" data-week="${w}">
+            <div class="worker-week-header">
+              <div class="worker-week-title">
+                <span class="week-name">שבוע ${w + 1}</span>
+                <span class="week-dates">(${formatRangeDisplay(week.start, week.end)})</span>
+              </div>
+              <div class="worker-week-master">
+                <span class="master-label">כל השבוע</span>
+                <button type="button"
+                        class="shift-toggle master-toggle ${masterDisabledClass}"
+                        data-worker="${escapeHtml(workerName)}"
+                        data-week="${w}"
+                        role="switch"
+                        aria-checked="${masterAriaChecked}"
+                        aria-label="שינוי זמינות לכל השבוע ${w + 1} עבור ${escapeHtml(workerName)}: ${masterLabelText}"
+                        ${masterDisabledAttr}>
+                  <span class="toggle-thumb"></span>
+                </button>
+                ${masterBadgeHtml}
+              </div>
+            </div>
+            <div class="worker-days-list">
+        `;
+
+        for (const day of weekDays) {
+          const dayState = window.WorkerAvailability?.getDayAvailabilityState
+            ? window.WorkerAvailability.getDayAvailabilityState(availability, day.iso)
+            : (isUnsubmitted ? "UNSUBMITTED" : (!availability.blocked.has(day.iso) ? "OPEN" : "CLOSED"));
+
+          const isDayUnsub = (dayState === "UNSUBMITTED");
+          const isOpen = (dayState === "OPEN" || dayState === "AVOID" || dayState === "PREFERRED");
+          const dayDisabledAttr = isDayUnsub ? 'disabled aria-disabled="true"' : "";
+          const dayDisabledClass = isDayUnsub ? "is-disabled" : "";
+          const dayAriaChecked = isDayUnsub ? "false" : (isOpen ? "true" : "false");
+          const dayStatusText = isDayUnsub ? "לא הוגשו אילוצים" : (isOpen ? "זמין" : "חסום");
+          const dayStatusClass = isDayUnsub ? "is-unsubmitted" : (isOpen ? "is-open" : "is-closed");
+
+          let holidayBadge = "";
+          if (day.closed) {
+            holidayBadge = `<span class="day-tag holiday-tag" title="יום ללא משמרות בסידור">${escapeHtml(day.label || "יום שבתון")}</span>`;
+          }
+
+          let prefBadge = "";
+          if (!isDayUnsub) {
+            if (availability.avoid?.has(day.iso)) {
+              prefBadge = `<span class="pref-badge pref-avoid" title="העדפה רכה: מעדיף שלא לעבוד (ניתן לשיבוץ בעת הצורך)">מעדיף שלא</span>`;
+            } else if (availability.preferred?.has(day.iso)) {
+              prefBadge = `<span class="pref-badge pref-positive" title="העדפה חיובית: מעוניין במשמרת">מעדיף</span>`;
+            }
+          }
+
+          const dayTitle = scheduleDayLabel(day.dayName);
+          const dayDateStr = displayDate(day.date);
+
+          html += `
+            <div class="worker-day-item ${day.closed ? "is-global-closed" : ""} ${isDayUnsub ? "is-unsubmitted-item" : ""}" data-iso="${day.iso}" data-week="${w}">
+              <div class="day-info">
+                <span class="day-name">${dayTitle}</span>
+                <span class="day-date">${dayDateStr}</span>
+                ${holidayBadge}
+                ${prefBadge}
+              </div>
+              <div class="day-toggle-wrapper">
+                <button type="button"
+                        class="shift-toggle day-toggle ${dayDisabledClass}"
+                        data-worker="${escapeHtml(workerName)}"
+                        data-iso="${day.iso}"
+                        data-week="${w}"
+                        role="switch"
+                        aria-checked="${dayAriaChecked}"
+                        aria-label="זמינות ${dayTitle} ${dayDateStr} עבור ${escapeHtml(workerName)}: ${dayStatusText}"
+                        ${dayDisabledAttr}>
+                  <span class="toggle-thumb"></span>
+                </button>
+                <span class="day-status-label ${dayStatusClass}">${dayStatusText}</span>
+              </div>
+            </div>
+          `;
+        }
+
+        html += `
+            </div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
     }
 
     function renderWorkers() {
@@ -924,12 +1166,14 @@
                   <select class="max-shifts">${shiftOptions(worker.max)}</select>
                 </div>
               </div>
-              <textarea class="constraints" placeholder="אילוצים לעובד הזה"></textarea>
+              <div class="worker-availability" data-worker="${escapeHtml(worker.name)}"></div>
+              <textarea class="constraints" style="display:none;" aria-hidden="true"></textarea>
             </div>
           </details>
       </article>
       `;
       }).join("");
+      renderAllWorkersAvailability();
     }
 
     function normalizeWorkerName(name) {
@@ -983,12 +1227,16 @@
       const data = {};
       document.querySelectorAll(".worker").forEach(card => {
         syncWorkerShiftBounds(card);
-        data[card.dataset.worker] = {
+        const name = card.dataset.worker;
+        const availability = getWorkerAvailability(name);
+        data[name] = {
           active: card.querySelector(".active-worker").checked,
           onlyNight2: card.querySelector(".night2-only").checked,
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
-          constraints: card.querySelector(".constraints").value
+          constraints: availability.rawConstraints || card.querySelector(".constraints")?.value || "",
+          availability: window.WorkerAvailability ? window.WorkerAvailability.serializeAvailability(availability) : null,
+          hasSubmitted: Boolean(availability.hasSubmitted)
         };
       });
       return data;
@@ -1003,7 +1251,22 @@
         card.querySelector(".night2-only").checked = Boolean(settings.onlyNight2);
         card.querySelector(".min-shifts").value = settings.min;
         card.querySelector(".max-shifts").value = settings.max;
-        card.querySelector(".constraints").value = saved.constraints || "";
+        const textarea = card.querySelector(".constraints");
+        if (textarea) textarea.value = saved.constraints || "";
+
+        const availability = getWorkerAvailability(name);
+        if (saved.availability && window.WorkerAvailability) {
+          const restored = window.WorkerAvailability.deserializeAvailability(saved.availability, getScheduleDays());
+          setWorkerAvailability(name, restored);
+        } else if (saved.constraints && saved.constraints.trim() && window.WorkerAvailability) {
+          const parsed = parseConstraints(saved.constraints, name);
+          window.WorkerAvailability.populateAvailabilityFromParsed(availability, parsed, getScheduleDays());
+        } else if (saved.hasSubmitted) {
+          availability.hasSubmitted = true;
+        } else {
+          availability.hasSubmitted = false;
+        }
+        renderWorkerAvailability(card);
         updateWorkerMeta(card);
       }
       updateOneTimeIndicators();
@@ -1211,7 +1474,9 @@
           max: existingWorkerState.max ?? worker.max ?? 2,
           onlyNight2: existingWorkerState.onlyNight2 ?? worker.onlyNight2 ?? false,
           active: false,
-          constraints: ""
+          constraints: "",
+          availability: null,
+          hasSubmitted: false
         };
       });
       applyWorkerState(importState);
@@ -1231,8 +1496,28 @@
 
         const card = document.querySelector(`.worker[data-worker="${CSS.escape(worker.name)}"]`);
         if (!card) return;
-        card.querySelector(".constraints").value = text;
-        card.querySelector(".active-worker").checked = hasMeaningfulWorkerInput(text);
+        const textarea = card.querySelector(".constraints");
+        if (textarea) textarea.value = text;
+
+        const hasInput = hasMeaningfulWorkerInput(text);
+        card.querySelector(".active-worker").checked = hasInput;
+
+        const availability = getWorkerAvailability(worker.name);
+        if (hasInput) {
+          const parsed = parseConstraints(text, worker.name);
+          if (window.WorkerAvailability) {
+            window.WorkerAvailability.populateAvailabilityFromParsed(availability, parsed, getScheduleDays());
+          }
+        } else {
+          if (window.WorkerAvailability) {
+            setWorkerAvailability(worker.name, window.WorkerAvailability.createWorkerAvailability({
+              workerName: worker.name,
+              hasSubmitted: false,
+              source: "unsubmitted"
+            }));
+          }
+        }
+        renderWorkerAvailability(card);
         imported += 1;
       });
 
@@ -1304,6 +1589,7 @@
       state.weekDetectionWarnings = [];
       state.calendar.warning = "";
 
+      workerAvailabilityStore.clear();
       WORKERS = preservedWorkers;
       renderWorkers();
       applyWorkerState(preservedWorkerState);
@@ -1412,6 +1698,7 @@
 
     function refreshCalendarDays() {
       renderSpecialDays();
+      renderAllWorkersAvailability();
     }
 
     function normalizeDayName(text) {
@@ -1612,13 +1899,13 @@
       let activeWorkers = 0;
 
       document.querySelectorAll(".worker").forEach(card => {
-        const text = card.querySelector(".constraints").value.trim();
-        if (!text) return;
-        const parsed = parseConstraints(text, card.dataset.worker);
-        blocked += parsed.blocked.size;
-        preferred += parsed.preferred.size;
-        if (parsed.avoid) avoid += parsed.avoid.size;
-        if (hasMeaningfulWorkerInput(text)) activeWorkers += 1;
+        const name = card.dataset.worker;
+        const availability = getWorkerAvailability(name);
+        if (!availability || !availability.hasSubmitted) return;
+        blocked += availability.blocked.size;
+        preferred += availability.preferred.size;
+        avoid += availability.avoid.size;
+        activeWorkers += 1;
       });
 
       return { blocked, preferred, avoid, activeWorkers };
@@ -1649,26 +1936,19 @@
     function buildWorkerDataFromCard(card) {
         syncWorkerShiftBounds(card);
         const name = card.dataset.worker;
-        const constraintsText = card.querySelector(".constraints").value.trim();
         const settings = normalizeWorkerSettings({
           min: card.querySelector(".min-shifts").value,
           max: card.querySelector(".max-shifts").value,
           onlyNight2: card.querySelector(".night2-only").checked
         });
         const workerDefinition = WORKERS.find(worker => worker.name === name);
-        const parsedConstraints = parseConstraints(constraintsText, name);
-        console.log(
-          "[parsed-one-time-constraints]",
-          name,
-          {
-            submitted: [...parsedConstraints.submitted],
-            blocked: [...parsedConstraints.blocked],
-            preferred: [...parsedConstraints.preferred]
-          }
-        );
+        const availability = getWorkerAvailability(name);
+
         const manuallyActive = card.querySelector(".active-worker").checked;
         const oneTimeActive = hasActiveOneTimeNoteForWorker({ name });
-        const hasWorkerInput = hasMeaningfulWorkerInput(constraintsText);
+        const hasWorkerInput = Boolean(availability.hasSubmitted);
+
+
         return {
           name,
           active: (manuallyActive && hasWorkerInput) || oneTimeActive,
@@ -1677,12 +1957,12 @@
           color: getWorkerColor(name, workerDefinition?.color),
           min: settings.min,
           max: settings.max,
-          blocked: parsedConstraints.blocked,
-          avoid: parsedConstraints.avoid || new Set(),
-          preferred: parsedConstraints.preferred,
-          submitted: parsedConstraints.submitted,
-          criticalErrors: parsedConstraints.criticalErrors || [],
-          warnings: parsedConstraints.warnings || [],
+          blocked: new Set(availability.blocked),
+          avoid: new Set(availability.avoid),
+          preferred: new Set(availability.preferred),
+          submitted: new Set(availability.submitted),
+          criticalErrors: availability.criticalErrors || [],
+          warnings: availability.warnings || [],
           hasSubmitted: Boolean((manuallyActive && hasWorkerInput) || hasWorkerInput),
           weekCounts: {},
           total: 0,
@@ -2457,6 +2737,12 @@
           console.log("[generated constraints]", generatedConstraints);
           textarea.value = [baseText, block].filter(Boolean).join("\n\n");
           card.querySelector(".active-worker").checked = true;
+          const parsed = parseConstraints(textarea.value, worker.name);
+          const availability = getWorkerAvailability(worker.name);
+          if (window.WorkerAvailability) {
+            window.WorkerAvailability.populateAvailabilityFromParsed(availability, parsed, days);
+          }
+          renderWorkerAvailability(card);
           console.log("[employee final constraints]", {
             employee: worker.name,
             constraints: textarea.value
@@ -4207,13 +4493,16 @@
           max: card.querySelector(".max-shifts")?.value,
           color: base.color
         }, base);
+        const availability = getWorkerAvailability(name);
         return [name, {
           active: card.querySelector(".active-worker")?.checked ?? true,
           onlyNight2: settings.onlyNight2,
           min: settings.min,
           max: settings.max,
           color: settings.color || getWorkerColor(name, base.color),
-          constraints: card.querySelector(".constraints")?.value || ""
+          constraints: availability.rawConstraints || card.querySelector(".constraints")?.value || "",
+          availability: window.WorkerAvailability ? window.WorkerAvailability.serializeAvailability(availability) : null,
+          hasSubmitted: Boolean(availability.hasSubmitted)
         }];
       }));
 
@@ -4376,10 +4665,101 @@
     });
 
     workersEl?.addEventListener("click", event => {
-      if (!event.target.classList.contains("remove-worker")) return;
-      const card = event.target.closest(".worker");
-      removeWorker(card.dataset.worker);
-      saveState(true);
+      const removeBtn = event.target.closest(".remove-worker");
+      if (removeBtn) {
+        const card = removeBtn.closest(".worker");
+        removeWorker(card.dataset.worker);
+        saveState(true);
+        return;
+      }
+
+      const manualBtn = event.target.closest(".btn-manual-availability");
+      if (manualBtn) {
+        const workerName = manualBtn.dataset.worker;
+        const card = manualBtn.closest(".worker");
+        if (!workerName || !card) return;
+
+        const availability = getWorkerAvailability(workerName);
+        if (window.WorkerAvailability) {
+          window.WorkerAvailability.startManualAvailability(availability, getScheduleDays());
+        }
+
+        const textarea = card.querySelector(".constraints");
+        if (textarea) textarea.value = "";
+
+        renderWorkerAvailability(card);
+        saveState(true);
+        return;
+      }
+
+      const dayToggleBtn = event.target.closest(".day-toggle");
+      if (dayToggleBtn) {
+        if (dayToggleBtn.disabled || dayToggleBtn.classList.contains("is-disabled")) return;
+        const workerName = dayToggleBtn.dataset.worker;
+        const iso = dayToggleBtn.dataset.iso;
+        const card = dayToggleBtn.closest(".worker");
+        if (!workerName || !iso || !card) return;
+
+        const availability = getWorkerAvailability(workerName);
+        let wasOpened = false;
+        if (window.WorkerAvailability) {
+          wasOpened = window.WorkerAvailability.toggleDayAvailability(availability, iso);
+        }
+
+        // When explicitly opening a day: automatically enable participation
+        if (wasOpened) {
+          const activeCheckbox = card.querySelector(".active-worker");
+          if (activeCheckbox && !activeCheckbox.checked) {
+            activeCheckbox.checked = true;
+            showWorkerParticipationActivated(card);
+          }
+        }
+
+        renderWorkerAvailability(card);
+        saveState(true);
+        return;
+      }
+
+      const masterToggleBtn = event.target.closest(".master-toggle");
+      if (masterToggleBtn) {
+        if (masterToggleBtn.disabled || masterToggleBtn.classList.contains("is-disabled")) return;
+        const workerName = masterToggleBtn.dataset.worker;
+        const weekIndex = Number(masterToggleBtn.dataset.week);
+        const card = masterToggleBtn.closest(".worker");
+        if (!workerName || !Number.isInteger(weekIndex) || !card) return;
+
+        const availability = getWorkerAvailability(workerName);
+        const scheduleDays = getScheduleDays();
+        const weekDays = scheduleDays.filter(d => d.week === weekIndex);
+
+        let nextStatus = "OPEN";
+        if (window.WorkerAvailability) {
+          nextStatus = window.WorkerAvailability.handleMasterToggleClick(availability, weekDays);
+        }
+
+        // When explicitly opening a week through master toggle: automatically enable participation
+        if (nextStatus === "OPEN") {
+          const activeCheckbox = card.querySelector(".active-worker");
+          if (activeCheckbox && !activeCheckbox.checked) {
+            activeCheckbox.checked = true;
+            showWorkerParticipationActivated(card);
+          }
+        }
+
+        renderWorkerAvailability(card);
+        saveState(true);
+        return;
+      }
+    });
+
+    workersEl?.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        const toggleBtn = event.target.closest(".shift-toggle");
+        if (toggleBtn) {
+          event.preventDefault();
+          toggleBtn.click();
+        }
+      }
     });
 
     outputEl?.addEventListener("click", async event => {
@@ -4518,9 +4898,13 @@
     });
 
     document.addEventListener("change", event => {
-      if (!event.target.closest(".worker")) return;
+      const card = event.target.closest(".worker");
+      if (!card) return;
       if (event.target.classList.contains("min-shifts") || event.target.classList.contains("max-shifts")) {
-        syncWorkerShiftBounds(event.target.closest(".worker"), event.target);
+        syncWorkerShiftBounds(card, event.target);
+      }
+      if (event.target.classList.contains("active-worker")) {
+        renderWorkerAvailability(card);
       }
       saveState();
     });

@@ -447,6 +447,7 @@
     const avoid = new Set();
     const preferred = new Set();
     const submitted = new Set();
+    const submittedWeeks = new Set();
     const warnings = [];
     const criticalErrors = [];
 
@@ -466,6 +467,9 @@
         }
         weekOffset = nextOffset;
         sawDate = true;
+        if (nextOffset !== null) {
+          submittedWeeks.add(nextOffset);
+        }
         continue;
       }
 
@@ -480,6 +484,9 @@
         continue;
       }
 
+      if (weekOffset !== null) {
+        submittedWeeks.add(weekOffset);
+      }
       const { dayToken, dayIndex, valueText } = dayParsed;
 
       // Check Friday (index 5)
@@ -575,6 +582,7 @@
       avoid,
       preferred,
       submitted,
+      submittedWeeks: Array.from(submittedWeeks),
       warnings,
       criticalErrors,
       hasCriticalErrors: criticalErrors.length > 0
