@@ -42,7 +42,7 @@
         <div id="eventPreview" class="employee-event-preview"></div>
 
         <div class="actions preview-actions">
-          <button class="btn secondary" id="authorizeGoogle" type="button">התחבר עם Google</button>
+          <button class="btn secondary" id="authorizeGoogle" type="button" disabled>התחבר עם Google</button>
           <span class="autosave-status" id="authStatus">לא מחובר</span>
         </div>
         <div class="actions preview-actions">
@@ -50,16 +50,30 @@
         </div>
         <div class="helper">הכפתור הראשי מוסיף את המשמרות ישירות ליומן Google אחרי אישור הרשאה.</div>
         <div class="intake-status" id="calendarMessage"></div>
+        <div class="intake-status" id="calendarIsolationNotice" role="status" hidden></div>
       </div>
     </section>
   </main>
 
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="src/googleConfig.js"></script>
   <script src="src/auth/googleOAuthService.js"></script>
   <script src="src/scheduleExport.js"></script>
   <script src="src/calendarService.js"></script>
-  <script>
+  <script type="module">
+    import { isCalendarExportBlocked, CALENDAR_ISOLATION_NOTICE } from "./src/calendarIsolation.js";
+
+    function showIsolationNotice() {
+      if (!isCalendarExportBlocked()) return false;
+      const notice = document.getElementById("calendarIsolationNotice");
+      notice.hidden = false;
+      notice.textContent = CALENDAR_ISOLATION_NOTICE;
+      document.getElementById("authorizeGoogle").disabled = true;
+      document.getElementById("addToCalendar").disabled = true;
+      document.getElementById("authStatus").textContent = "מצב פיתוח מבודד";
+      return true;
+    }
+
+    showIsolationNotice();
     const employeeSelectEl = document.getElementById("employeeSelect");
     const eventPreviewEl = document.getElementById("eventPreview");
     const authorizeGoogleEl = document.getElementById("authorizeGoogle");
@@ -145,7 +159,7 @@
       if (allSelectedEventsCreated(events)) {
         setCreatedButton();
       } else {
-        addToCalendarEl.disabled = !oauthConfigured || !googleOAuthService.isAuthorized();
+        addToCalendarEl.disabled = isCalendarExportBlocked() || !oauthConfigured || !googleOAuthService.isAuthorized();
       }
       eventPreviewEl.innerHTML = events.map(event => `
         <div class="employee-event-row">
@@ -159,6 +173,7 @@
     }
 
     async function handleAuthorizeGoogle() {
+      if (showIsolationNotice()) return;
       if (!oauthConfigured) {
         calendarMessageEl.textContent = "הגדרת מנהל נדרשת: יש להגדיר Google OAuth Client ID בקובץ src/googleConfig.js.";
         return;
@@ -178,6 +193,7 @@
     }
 
     async function handleAddToGoogleCalendar() {
+      if (showIsolationNotice()) return;
       if (!employeeSelectEl.value) {
         return;
       }
@@ -211,7 +227,7 @@
       } catch (error) {
         calendarMessageEl.textContent = error.message || "Google Calendar authorization failed. Please retry.";
       } finally {
-        authorizeGoogleEl.disabled = false;
+        authorizeGoogleEl.disabled = isCalendarExportBlocked();
         if (!completed) {
           renderPreview();
         }
@@ -233,7 +249,9 @@
         addToCalendarEl.addEventListener("click", handleAddToGoogleCalendar);
         oauthConfigured = googleOAuthService.hasConfiguredClient();
         authorizeGoogleEl.disabled = !oauthConfigured;
-        if (!oauthConfigured) {
+        if (showIsolationNotice()) {
+          calendarMessageEl.textContent = CALENDAR_ISOLATION_NOTICE;
+        } else if (!oauthConfigured) {
           authStatusEl.textContent = "Google OAuth לא מוגדר";
           authorizeGoogleEl.disabled = true;
           addToCalendarEl.disabled = true;

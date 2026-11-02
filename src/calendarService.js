@@ -148,6 +148,8 @@
   }
 
   async function googleCalendarRequest(accessToken, path, options = {}) {
+    const { assertCalendarExportAllowed } = await import("./calendarIsolation.js");
+    assertCalendarExportAllowed();
     const response = await fetch(`https://www.googleapis.com/calendar/v3${path}`, {
       ...options,
       headers: {
@@ -204,6 +206,8 @@
   }
 
   async function createGoogleCalendarEvents({ schedule, employeeId, accessToken }) {
+    const { assertCalendarExportAllowed } = await import("./calendarIsolation.js");
+    assertCalendarExportAllowed();
     if (!accessToken) {
       throw new Error("Google authorization failed. Please sign in again.");
     }

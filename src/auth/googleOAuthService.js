@@ -29,8 +29,16 @@
   }
 
   async function initialize() {
+    const { assertCalendarExportAllowed } = await import("../calendarIsolation.js");
+    assertCalendarExportAllowed();
     if (!hasConfiguredClient()) {
       throw new Error("Google OAuth לא מוגדר. יש להגדיר Client ID בקובץ src/googleConfig.js.");
+    }
+    if (!document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      document.head.appendChild(script);
     }
     await waitForGoogleIdentity();
     if (tokenClient) return;
@@ -43,6 +51,8 @@
 
   async function signIn() {
     await initialize();
+    const { assertCalendarExportAllowed } = await import("../calendarIsolation.js");
+    assertCalendarExportAllowed();
     return new Promise((resolve, reject) => {
       tokenClient.callback = response => {
         if (response?.error) {
