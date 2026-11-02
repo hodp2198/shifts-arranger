@@ -6,11 +6,13 @@ const vm = require('vm');
 /**
  * Baseline Test Suite for Shift Arranger Constraint & Week Parser
  *
- * This test suite loads the EXACT legacy parser functions directly from index.html
+ * This test suite loads the legacy fallback parser functions directly from index.html
  * and runs baseline verification:
  * 1. Confirms all currently supported formats pass.
  * 2. Confirms all identified edge cases and bugs fail under the legacy parser (documenting baseline behavior).
  * 3. Operates 100% offline with zero Firebase dependencies.
+ * The production page loads ConstraintParser first; test-constraint-parser.js verifies
+ * its corrected behavior. Here it is deliberately absent to exercise the fallback.
  */
 
 // 1. Load and extract legacy parser code from index.html into a sandboxed VM context
@@ -40,6 +42,9 @@ const sandbox = {
   weekCountEl: { value: "1" }
 };
 
+// Browser globals still exist when the optional parser module is absent.
+// Do not load ConstraintParser here: the bug assertions characterize the fallback.
+sandbox.window = sandbox;
 vm.createContext(sandbox);
 
 // Helper to extract a function declaration from index.html by name

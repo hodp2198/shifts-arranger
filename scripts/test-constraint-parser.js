@@ -90,6 +90,13 @@ test("1.7 '01.11 - 07.11' dot format parsed as week range", () => {
   assert.strictEqual(ConstraintParser.toIsoDate(range.end), "2026-11-07");
 });
 
+test("1.8 'ה: לא יכול' preserves colon-delimited Thursday constraints", () => {
+  const res = ConstraintParser.parseWorkerConstraints("ה: לא יכול", { weekConfigs: sampleWeekConfigs });
+  assert.strictEqual(res.blocked.has("2026-11-05"), true);
+  assert.strictEqual(res.submitted.has("2026-11-05"), false);
+  assert.strictEqual(res.hasCriticalErrors, false);
+});
+
 // -----------------------------------------------------------------------------
 // Test Group 2: The 15 Confirmed Bug Fixes
 // -----------------------------------------------------------------------------
@@ -186,6 +193,13 @@ test("2.14 FIX BUG: Cross-month boundary '28/10 - 03/11' and '28 - 03/11' correc
   const range2 = ConstraintParser.parseWeekLabelToRange("28 - 03/11", { fallbackYear: 2026 });
   assert.strictEqual(ConstraintParser.toIsoDate(range2.start), "2026-10-28");
   assert.strictEqual(ConstraintParser.toIsoDate(range2.end), "2026-11-03");
+
+  // A monthless range must use explicit row context, never the system-clock month.
+  const rowContext = { start: range1.start, end: range1.end };
+  const contextualRange = ConstraintParser.parseWeekLabelToRange("28 - 03", { rowContext });
+  assert.strictEqual(ConstraintParser.toIsoDate(contextualRange.start), "2026-10-28");
+  assert.strictEqual(ConstraintParser.toIsoDate(contextualRange.end), "2026-11-03");
+  assert.strictEqual(ConstraintParser.parseWeekLabelToRange("28 - 03", { fallbackYear: 2026 }), null);
 });
 
 test("2.15 FIX BUG: Year boundary December to January assigns 2027 to January", () => {
