@@ -51,14 +51,20 @@ async function main() {
       };
       return clientInstance;
     } };
-    const elements = {};
-    const element = id => ({ disabled: false, hidden: true, value: '', textContent: '',
+    const createNode = (tagName = '') => ({
+      tagName, disabled: false, hidden: true, value: '', textContent: '', className: '', dir: '', children: [],
       innerHTML: '', classList: { add() {}, remove() {} },
+      appendChild(child) { this.children.push(child); return child; },
+      replaceChildren(...children) { this.children = children; },
+      remove() { pendingScript = null; }
+    });
+    const elements = {};
+    const element = id => ({ ...createNode(), id,
       addEventListener: (event, callback) => pageEvents.set(`${id}:${event}`, callback) });
     const document = {
       addEventListener: (event, callback) => pageEvents.set(event, callback),
       getElementById: id => elements[id] ||= element(id),
-      createElement: () => ({ remove() { pendingScript = null; } }),
+      createElement: tag => createNode(tag),
       head: { appendChild(script) { calls.scripts++; pendingScript = script; } }
     };
     document.getElementById('calendarIsolationNotice');

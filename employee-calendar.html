@@ -110,11 +110,24 @@
       employeeSelectEl.disabled = true;
       authorizeGoogleEl.disabled = true;
       addToCalendarEl.disabled = true;
-      eventPreviewEl.innerHTML = "";
+      eventPreviewEl.replaceChildren();
+    }
+
+    function safeText(value) {
+      if (typeof value === "string") return value;
+      if (typeof value === "number" || typeof value === "boolean") return String(value);
+      return "";
+    }
+
+    function createOptionElement(value, label) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      return option;
     }
 
     function displayDate(value) {
-      const date = new Date(`${value}T12:00:00`);
+      const date = new Date(`${safeText(value)}T12:00:00`);
       return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
     }
 
@@ -123,15 +136,20 @@
       calendarMessageEl.textContent = message;
       employeeSelectEl.disabled = true;
       authorizeGoogleEl.disabled = true;
-      eventPreviewEl.innerHTML = "";
+      eventPreviewEl.replaceChildren();
       addToCalendarEl.disabled = true;
     }
 
     function renderEmployeeOptions() {
-      employeeSelectEl.innerHTML = [
-        '<option value="">בחר/י את שמך</option>',
-        ...finalizedSchedule.employees.map(employee => `<option value="${employee.id}">${employee.name}</option>`)
-      ].join("");
+      const options = [createOptionElement("", "בחר/י את שמך")];
+      for (const employee of finalizedSchedule.employees) {
+        if (!employee || typeof employee !== "object") continue;
+        const id = safeText(employee.id);
+        const name = safeText(employee.name);
+        if (!id && !name) continue;
+        options.push(createOptionElement(id, name));
+      }
+      employeeSelectEl.replaceChildren(...options);
       employeeSelectEl.value = "";
     }
 
@@ -162,7 +180,7 @@
       try {
         renderShiftPreview();
       } catch {
-        eventPreviewEl.innerHTML = "";
+        eventPreviewEl.replaceChildren();
         addToCalendarEl.disabled = true;
         exportStatusEl.textContent = "שגיאה בתצוגה";
         previewMessageEl.textContent = "לא ניתן להציג את המשמרות. נסו לבחור את השם מחדש.";
@@ -172,7 +190,7 @@
     function renderShiftPreview() {
       resetAddButton();
       if (!employeeSelectEl.value) {
-        eventPreviewEl.innerHTML = "";
+        eventPreviewEl.replaceChildren();
         exportStatusEl.textContent = "ממתין";
         addToCalendarEl.disabled = true;
         return;
@@ -180,7 +198,10 @@
 
       const events = selectedEvents();
       if (!events.length) {
-        eventPreviewEl.innerHTML = `<div class="employee-empty-state">No shifts found for this employee</div>`;
+        const emptyState = document.createElement("div");
+        emptyState.className = "employee-empty-state";
+        emptyState.textContent = "No shifts found for this employee";
+        eventPreviewEl.replaceChildren(emptyState);
         exportStatusEl.textContent = "אין משמרות";
         addToCalendarEl.disabled = true;
         return;
@@ -192,15 +213,27 @@
       } else {
         addToCalendarEl.disabled = isCalendarExportBlocked() || !oauthConfigured || !googleOAuthService.isAuthorized();
       }
-      eventPreviewEl.innerHTML = events.map(event => `
-        <div class="employee-event-row">
-          <div>
-            <strong>${event.title}</strong>
-            <span>${displayDate(event.date)} · ${event.dayName}</span>
-          </div>
-          <div dir="ltr">${event.startTime}–${event.endTime}</div>
-        </div>
-      `).join("");
+      const rows = events.map(event => {
+        const row = document.createElement("div");
+        row.className = "employee-event-row";
+
+        const details = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = safeText(event?.title);
+        const meta = document.createElement("span");
+        meta.textContent = `${displayDate(event?.date)} · ${safeText(event?.dayName)}`;
+        details.appendChild(title);
+        details.appendChild(meta);
+
+        const time = document.createElement("div");
+        time.dir = "ltr";
+        time.textContent = `${safeText(event?.startTime)}–${safeText(event?.endTime)}`;
+
+        row.appendChild(details);
+        row.appendChild(time);
+        return row;
+      });
+      eventPreviewEl.replaceChildren(...rows);
     }
 
     async function prepareGoogleAuthorization() {
