@@ -40,6 +40,7 @@
 
         <div class="preview-title">תצוגה מקדימה</div>
         <div id="eventPreview" class="employee-event-preview"></div>
+        <div class="intake-status" id="previewMessage" role="status"></div>
 
         <div class="actions preview-actions">
           <button class="btn secondary" id="authorizeGoogle" type="button" disabled>התחבר עם Google</button>
@@ -76,6 +77,7 @@
     showIsolationNotice();
     const employeeSelectEl = document.getElementById("employeeSelect");
     const eventPreviewEl = document.getElementById("eventPreview");
+    const previewMessageEl = document.getElementById("previewMessage");
     const authorizeGoogleEl = document.getElementById("authorizeGoogle");
     const authStatusEl = document.getElementById("authStatus");
     const addToCalendarEl = document.getElementById("addToCalendar");
@@ -155,6 +157,18 @@
     }
 
     function renderPreview() {
+      previewMessageEl.textContent = "";
+      try {
+        renderShiftPreview();
+      } catch {
+        eventPreviewEl.innerHTML = "";
+        addToCalendarEl.disabled = true;
+        exportStatusEl.textContent = "שגיאה בתצוגה";
+        previewMessageEl.textContent = "לא ניתן להציג את המשמרות. נסו לבחור את השם מחדש.";
+      }
+    }
+
+    function renderShiftPreview() {
       resetAddButton();
       if (!employeeSelectEl.value) {
         eventPreviewEl.innerHTML = "";
@@ -222,17 +236,18 @@
       try {
         const { expiresAt } = await googleOAuthService.signIn();
         authorizationExpiresAt = expiresAt;
-        authStatusEl.textContent = "מחובר";
-        calendarMessageEl.textContent = "ההרשאה התקבלה. בדקו את התצוגה המקדימה ואשרו הוספה ליומן.";
-        refreshAuthorizationStatus();
-        renderPreview();
       } catch (error) {
         authStatusEl.textContent = "לא מחובר";
         addToCalendarEl.disabled = true;
         calendarMessageEl.textContent = error.message || "לא ניתן להתחבר ליומן Google. אפשר לנסות שוב.";
+        return;
       } finally {
         authorizeGoogleEl.disabled = isCalendarExportBlocked();
       }
+      authStatusEl.textContent = "מחובר";
+      calendarMessageEl.textContent = "ההרשאה התקבלה. בדקו את התצוגה המקדימה ואשרו הוספה ליומן.";
+      refreshAuthorizationStatus();
+      renderPreview();
     }
 
     async function handleAddToGoogleCalendar() {

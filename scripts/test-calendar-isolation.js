@@ -166,7 +166,6 @@ async function main() {
       assert.equal(calls.auth, 0, 'Preloading must not open the popup');
 
       for (const [respond, expected] of [
-        [options => options.error_callback({ type: 'popup_closed' }), /חלון ההתחברות נסגר/],
         [options => options.error_callback({ type: 'popup_failed_to_open' }), /חלונות קופצים/],
         [options => options.error_callback({ type: 'unknown' }), /לא ניתן להתחבר/],
         [options => options.callback({ error: 'access_denied' }), /לא ניתנה הרשאה/],
@@ -185,6 +184,36 @@ async function main() {
         assert.equal(timers.size, 0);
       }
 
+      respondToTokenRequest = options => options.error_callback({ type: 'popup_closed' });
+      const closing = click();
+      assert.equal(elements.authStatus.textContent, 'מתחבר...');
+      assert.equal(elements.authorizeGoogle.disabled, true);
+      tokenAttempt.callback(granted);
+      await closing;
+      assert.equal(elements.authStatus.textContent, 'מחובר');
+      assert.equal(oauth.isAuthorized(), true);
+      assert.deepEqual([...timers.values()].map(timer => timer.delay), [3600000]);
+
+      const cancelled = click();
+      const cancelledAttempt = tokenAttempt;
+      const graceTimer = [...timers.values()].find(timer => timer.delay === 1000);
+      cancelledAttempt.error_callback({ type: 'popup_closed' });
+      assert.equal([...timers.values()].find(timer => timer.delay === 1000), graceTimer);
+      runTimeout(1000);
+      await cancelled;
+      assert.equal(elements.authStatus.textContent, 'לא מחובר');
+      assert.match(elements.calendarMessage.textContent, /חלון ההתחברות נסגר/);
+      assert.equal(elements.authorizeGoogle.disabled, false);
+      assert.equal(timers.size, 0);
+
+      const missingScope = click();
+      tokenAttempt.callback({ ...granted, scope: `${scope}.readonly` });
+      await missingScope;
+      assert.equal(elements.authStatus.textContent, 'לא מחובר');
+      assert.match(elements.calendarMessage.textContent, /לא ניתנה הרשאה/);
+      assert.equal(oauth.getAccessToken(), '');
+      assert.equal(timers.size, 0);
+
       respondToTokenRequest = () => {};
       const stalled = click();
       const lateAttempt = tokenAttempt;
@@ -197,10 +226,13 @@ async function main() {
       assert.equal(elements.authorizeGoogle.disabled, false);
 
       const retry = click();
+      cancelledAttempt.callback(granted);
+      cancelledAttempt.error_callback({ type: 'popup_closed' });
       lateAttempt.callback(granted);
       assert.equal(oauth.isAuthorized(), false);
       assert.equal(elements.authStatus.textContent, 'מתחבר...');
       tokenAttempt.callback(granted);
+      tokenAttempt.error_callback({ type: 'popup_closed' });
       await retry;
       assert.equal(elements.authStatus.textContent, 'מחובר');
       assert.equal(elements.authorizeGoogle.disabled, false);
@@ -215,10 +247,21 @@ async function main() {
       assert.equal(elements.addToCalendar.disabled, true);
       assert.equal(timers.size, 0);
 
-      // A backgrounded mobile tab may resume before its expiry timer runs.
+      const shiftsForEmployee = calendar.shiftsForEmployee;
+      calendar.shiftsForEmployee = () => { throw new Error('mock preview failure'); };
       respondToTokenRequest = options => options.callback(granted);
       await click();
       assert.equal(elements.authStatus.textContent, 'מחובר');
+      assert.equal(oauth.isAuthorized(), true);
+      assert.equal(elements.addToCalendar.disabled, true);
+      assert.match(elements.calendarMessage.textContent, /ההרשאה התקבלה/);
+      assert.match(elements.previewMessage.textContent, /לא ניתן להציג את המשמרות/);
+      calendar.shiftsForEmployee = shiftsForEmployee;
+      vm.runInContext('renderPreview()', context);
+      assert.equal(elements.previewMessage.textContent, '');
+      assert.equal(elements.authStatus.textContent, 'מחובר');
+
+      // A backgrounded mobile tab may resume before its expiry timer runs.
       now += 3600000;
       pageEvents.get('visibilitychange')();
       assert.equal(elements.authStatus.textContent, 'לא מחובר');

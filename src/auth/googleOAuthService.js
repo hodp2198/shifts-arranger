@@ -1,5 +1,6 @@
 (function () {
   const AUTH_TIMEOUT_MS = 120000;
+  const POPUP_CLOSE_GRACE_MS = 1000;
   const AUTH_ERROR = "לא ניתן להתחבר ליומן Google. אפשר לנסות שוב.";
   const PERMISSION_ERROR = "לא ניתנה הרשאה ליומן Google. אפשר להתחבר שוב ולאשר גישה.";
   let checkExportAllowed;
@@ -64,10 +65,12 @@
     accessToken = "";
     pendingSignIn = new Promise((resolve, reject) => {
       let finished = false;
+      let popupCloseTimer;
       const finish = (message, response, lifetimeSeconds) => {
         if (finished) return;
         finished = true;
         clearTimeout(timer);
+        clearTimeout(popupCloseTimer);
         if (message) {
           reject(new Error(message));
         } else {
@@ -97,8 +100,12 @@
             }
           },
           error_callback: error => {
+            if (finished) return;
             if (error?.type === "popup_closed") {
-              finish("חלון ההתחברות נסגר לפני קבלת ההרשאה. אפשר לנסות שוב.");
+              // The token callback can arrive just after the popup closes.
+              popupCloseTimer ??= setTimeout(() => {
+                finish("חלון ההתחברות נסגר לפני קבלת ההרשאה. אפשר לנסות שוב.");
+              }, POPUP_CLOSE_GRACE_MS);
             } else if (error?.type === "popup_failed_to_open") {
               finish("לא ניתן לפתוח את חלון ההתחברות. יש לאפשר חלונות קופצים ולנסות שוב.");
             } else {
