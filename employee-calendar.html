@@ -49,7 +49,7 @@
           <button class="btn" id="addToCalendar" type="button" disabled>הוסף ליומן Google</button>
         </div>
         <div class="helper">הכפתור הראשי מוסיף את המשמרות ישירות ליומן Google אחרי אישור הרשאה.</div>
-        <div class="intake-status" id="calendarMessage"></div>
+        <div class="intake-status" id="calendarMessage" role="status"></div>
         <div class="intake-status" id="calendarIsolationNotice" role="status" hidden></div>
       </div>
     </section>
@@ -84,6 +84,22 @@
 
     let finalizedSchedule = null;
     let oauthConfigured = false;
+    let oauthReady = false;
+    let authorizationExpiresAt = 0;
+    let authorizationExpiryTimer;
+
+    function refreshAuthorizationStatus() {
+      if (!authorizationExpiresAt) return;
+      clearTimeout(authorizationExpiryTimer);
+      if (googleOAuthService.isAuthorized()) {
+        authorizationExpiryTimer = setTimeout(refreshAuthorizationStatus, authorizationExpiresAt - Date.now());
+        return;
+      }
+      authorizationExpiresAt = 0;
+      authStatusEl.textContent = "לא מחובר";
+      addToCalendarEl.disabled = true;
+      calendarMessageEl.textContent = "פג תוקף ההרשאה ליומן Google. יש להתחבר מחדש.";
+    }
 
     function renderLoading() {
       exportStatusEl.textContent = "טוען...";
@@ -172,23 +188,50 @@
       `).join("");
     }
 
+    async function prepareGoogleAuthorization() {
+      authorizeGoogleEl.disabled = true;
+      authStatusEl.textContent = "טוען את ההתחברות ל-Google...";
+      try {
+        await googleOAuthService.initialize();
+        oauthReady = true;
+        calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
+      } catch {
+        calendarMessageEl.textContent = "טעינת ההתחברות ל-Google נכשלה. לחצו על כפתור ההתחברות כדי לנסות שוב.";
+      } finally {
+        authStatusEl.textContent = "לא מחובר";
+        authorizeGoogleEl.disabled = isCalendarExportBlocked();
+      }
+    }
+
     async function handleAuthorizeGoogle() {
       if (showIsolationNotice()) return;
       if (!oauthConfigured) {
         calendarMessageEl.textContent = "הגדרת מנהל נדרשת: יש להגדיר Google OAuth Client ID בקובץ src/googleConfig.js.";
         return;
       }
+      if (!oauthReady) {
+        await prepareGoogleAuthorization();
+        return;
+      }
+      authorizeGoogleEl.disabled = true;
+      addToCalendarEl.disabled = true;
+      clearTimeout(authorizationExpiryTimer);
+      authorizationExpiresAt = 0;
       calendarMessageEl.textContent = "";
       authStatusEl.textContent = "מתחבר...";
       try {
-        await googleOAuthService.signIn();
+        const { expiresAt } = await googleOAuthService.signIn();
+        authorizationExpiresAt = expiresAt;
         authStatusEl.textContent = "מחובר";
         calendarMessageEl.textContent = "ההרשאה התקבלה. בדקו את התצוגה המקדימה ואשרו הוספה ליומן.";
+        refreshAuthorizationStatus();
         renderPreview();
       } catch (error) {
         authStatusEl.textContent = "לא מחובר";
         addToCalendarEl.disabled = true;
-        calendarMessageEl.textContent = error.message || "Authorization failed. Please retry.";
+        calendarMessageEl.textContent = error.message || "לא ניתן להתחבר ליומן Google. אפשר לנסות שוב.";
+      } finally {
+        authorizeGoogleEl.disabled = isCalendarExportBlocked();
       }
     }
 
@@ -202,7 +245,9 @@
         calendarMessageEl.textContent = "המשמרות כבר נוספו ליומן.";
         return;
       }
-      if (!googleOAuthService.isAuthorized()) {
+      const accessToken = googleOAuthService.getAccessToken();
+      if (!accessToken) {
+        refreshAuthorizationStatus();
         addToCalendarEl.disabled = true;
         calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
         return;
@@ -217,7 +262,7 @@
         const result = await calendarService.createGoogleCalendarEvents({
           schedule: finalizedSchedule,
           employeeId: employeeSelectEl.value,
-          accessToken: googleOAuthService.getAccessToken()
+          accessToken
         });
         completed = true;
         setCreatedButton();
@@ -247,6 +292,8 @@
         employeeSelectEl.addEventListener("change", renderPreview);
         authorizeGoogleEl.addEventListener("click", handleAuthorizeGoogle);
         addToCalendarEl.addEventListener("click", handleAddToGoogleCalendar);
+        document.addEventListener("visibilitychange", refreshAuthorizationStatus);
+        window.addEventListener("pageshow", refreshAuthorizationStatus);
         oauthConfigured = googleOAuthService.hasConfiguredClient();
         authorizeGoogleEl.disabled = !oauthConfigured;
         if (showIsolationNotice()) {
@@ -257,9 +304,8 @@
           addToCalendarEl.disabled = true;
           calendarMessageEl.textContent = "הגדרת מנהל נדרשת: יש להגדיר Google OAuth Client ID בקובץ src/googleConfig.js לפני הוספה ישירה ליומן.";
         } else {
-          authStatusEl.textContent = "לא מחובר";
           addToCalendarEl.disabled = true;
-          calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
+          await prepareGoogleAuthorization();
         }
       } catch (error) {
         renderError(error.message || "לא ניתן לטעון את הסידור מהקישור.");
