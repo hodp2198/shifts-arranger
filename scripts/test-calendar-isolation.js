@@ -32,6 +32,7 @@ async function main() {
     let now = Date.now();
     let activeGesture = false;
     let tokenAttempt;
+    let copiedReport;
     let respondToTokenRequest = () => {};
     let pendingScript;
     const oauth2 = { initTokenClient(options) {
@@ -44,11 +45,12 @@ async function main() {
       } };
     } };
     const elements = {};
-    const element = () => ({ disabled: false, hidden: true, value: '', textContent: '',
-      innerHTML: '', classList: { add() {}, remove() {} }, addEventListener() {} });
+    const element = id => ({ disabled: false, hidden: true, value: '', textContent: '',
+      innerHTML: '', classList: { add() {}, remove() {} },
+      addEventListener: (event, callback) => pageEvents.set(`${id}:${event}`, callback) });
     const document = {
       addEventListener: (event, callback) => pageEvents.set(event, callback),
-      getElementById: id => elements[id] ||= element(),
+      getElementById: id => elements[id] ||= element(id),
       createElement: () => ({ remove() { pendingScript = null; } }),
       head: { appendChild(script) { calls.scripts++; pendingScript = script; } }
     };
@@ -58,6 +60,7 @@ async function main() {
       location: { ...mode, protocol: 'http:' }, document,
       __ISOLATED_DEV_MODE__: mode.blocked && !mode.emulator,
       googleCalendarConfig: { clientId: 'mock-client', scope },
+      navigator: { clipboard: { async writeText(value) { copiedReport = value; } } },
       addEventListener: (event, callback) => pageEvents.set(event, callback),
       localStorage: {
         getItem: k => storage.get(k) || null,
@@ -69,7 +72,10 @@ async function main() {
         return id;
       },
       clearTimeout: id => timers.delete(id),
-      Date: class extends Date { static now() { return now; } },
+      Date: class extends Date {
+        constructor(...args) { super(...(args.length ? args : [now])); }
+        static now() { return now; }
+      },
       URLSearchParams,
       fetch: async (url, options) => {
         calls.requests.push({ url, method: options.method || 'GET' });
@@ -164,11 +170,29 @@ async function main() {
       assert.equal(elements.authorizeGoogle.disabled, false);
       assert.equal(elements.calendarIsolationNotice.hidden, true);
       assert.equal(calls.auth, 0, 'Preloading must not open the popup');
+      const diagnostics = elements.oauthDiagnosticsReport;
+      const toggleDiagnostics = enabled => {
+        elements.oauthDiagnosticsEnabled.checked = enabled;
+        pageEvents.get('oauthDiagnosticsEnabled:change')();
+      };
+      const copyDiagnostics = pageEvents.get('copyOAuthDiagnostics:click');
+      assert.equal(elements.oauthDiagnosticsEnabled.checked, false);
+      assert.equal(elements.oauthDiagnosticsPanel.hidden, true);
+      respondToTokenRequest = options => options.callback(granted);
+      await click();
+      assert.equal(diagnostics.value, '');
+      await copyDiagnostics();
+      assert.equal(copiedReport, undefined);
+      const storageBeforeDiagnostics = [...storage];
+      const requestsBeforeDiagnostics = calls.requests.length;
+      toggleDiagnostics(true);
+      assert.equal(elements.oauthDiagnosticsPanel.hidden, false);
 
       for (const [respond, expected] of [
         [options => options.error_callback({ type: 'popup_failed_to_open' }), /חלונות קופצים/],
         [options => options.error_callback({ type: 'unknown' }), /לא ניתן להתחבר/],
         [options => options.callback({ error: 'access_denied' }), /לא ניתנה הרשאה/],
+        [options => options.callback({ error: 'private-account@example.invalid', error_description: 'https://private.example.invalid/' }), /לא ניתן להתחבר/],
         [options => options.callback({ ...granted, scope: `${scope}.readonly` }), /לא ניתנה הרשאה/],
         [options => options.callback({ ...granted, scope: undefined }), /לא ניתנה הרשאה/],
         [options => options.callback({}), /לא ניתן להתחבר/],
@@ -267,6 +291,45 @@ async function main() {
       assert.equal(elements.authStatus.textContent, 'לא מחובר');
       assert.equal(elements.addToCalendar.disabled, true);
       assert.equal(timers.size, 0);
+
+      const entries = diagnostics.value.split('\n').map(line => {
+        const [timestamp, event, ...details] = line.split(' ');
+        assert.ok(Number.isFinite(Date.parse(timestamp)));
+        return { event, details: details.length ? JSON.parse(details.join(' ')) : {} };
+      });
+      const namesFor = attempt => entries.filter(entry => entry.details.attempt === attempt).map(entry => entry.event);
+      const acceptedAfterClose = entries.find(entry => entry.event === 'token_accepted' &&
+        namesFor(entry.details.attempt).indexOf('popup_closed') < namesFor(entry.details.attempt).indexOf('token_accepted') &&
+        namesFor(entry.details.attempt).includes('popup_closed'));
+      assert.ok(acceptedAfterClose);
+      assert.deepEqual(namesFor(acceptedAfterClose.details.attempt), [
+        'connection_pending', 'popup_requested', 'popup_closed', 'token_callback', 'token_accepted', 'connection_connected'
+      ]);
+      assert.ok(entries.some(entry => entry.event === 'token_callback' && entry.details.tokenReceived &&
+        entry.details.requiredScopeGranted && entry.details.lifetimeValid));
+      assert.ok(entries.some(entry => entry.event === 'token_callback' && entry.details.tokenReceived &&
+        entry.details.requiredScopeGranted === false));
+      assert.ok(entries.some(entry => entry.details.oauthError === 'access_denied' && entry.details.tokenReceived === false));
+      assert.ok(entries.some(entry => entry.details.oauthError === 'other'));
+      assert.ok(entries.some(entry => entry.event === 'token_callback' && entry.details.attemptFinished));
+      for (const event of ['popup_close_grace_elapsed', 'timeout', 'connection_failed', 'preview_failed', 'connection_expired']) {
+        assert.ok(entries.some(entry => entry.event === event), `Missing diagnostic ${event}`);
+      }
+      assert.doesNotMatch(diagnostics.value, /mock-token|mock-client|private-account|https?:|mock preview failure/);
+      assert.deepEqual([...storage], storageBeforeDiagnostics);
+      assert.equal(calls.requests.length, requestsBeforeDiagnostics);
+      await copyDiagnostics();
+      assert.equal(copiedReport, diagnostics.value);
+
+      respondToTokenRequest = () => {};
+      const outstanding = click();
+      toggleDiagnostics(false);
+      assert.equal(diagnostics.value, '');
+      assert.equal(elements.oauthDiagnosticsPanel.hidden, true);
+      toggleDiagnostics(true);
+      tokenAttempt.callback(granted);
+      await outstanding;
+      assert.doesNotMatch(diagnostics.value, /token_callback|token_accepted|connection_connected/);
     }
     console.log(`[PASS] ${mode.hostname}${mode.emulator ? ' (emulator)' : ''}: ${mode.blocked ? 'zero Google requests, authentication and writes blocked; Hebrew notice visible' : 'mock OAuth success, errors, timeouts, retry, expiry and Calendar export'}`);
   }

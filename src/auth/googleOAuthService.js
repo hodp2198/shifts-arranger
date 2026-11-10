@@ -3,6 +3,11 @@
   const POPUP_CLOSE_GRACE_MS = 1000;
   const AUTH_ERROR = "לא ניתן להתחבר ליומן Google. אפשר לנסות שוב.";
   const PERMISSION_ERROR = "לא ניתנה הרשאה ליומן Google. אפשר להתחבר שוב ולאשר גישה.";
+  const OAUTH_ERROR_CATEGORIES = new Set([
+    "access_denied", "invalid_request", "invalid_client", "invalid_scope",
+    "unauthorized_client", "interaction_required", "login_required",
+    "consent_required", "server_error", "temporarily_unavailable"
+  ]);
   let checkExportAllowed;
   let pendingSignIn;
   let accessToken = "";
@@ -52,7 +57,7 @@
     checkExportAllowed = assertCalendarExportAllowed;
   }
 
-  async function signIn() {
+  async function signIn(onDiagnostic) {
     if (!checkExportAllowed) {
       const { assertCalendarExportAllowed } = await import("../calendarIsolation.js");
       assertCalendarExportAllowed();
@@ -61,6 +66,13 @@
     checkExportAllowed();
     if (pendingSignIn) return pendingSignIn;
 
+    const report = (event, details) => {
+      try {
+        onDiagnostic?.(event, details);
+      } catch {
+        // Diagnostics must never change the outcome of authorization.
+      }
+    };
     const prompt = isAuthorized() ? "" : "consent";
     accessToken = "";
     pendingSignIn = new Promise((resolve, reject) => {
@@ -72,14 +84,19 @@
         clearTimeout(timer);
         clearTimeout(popupCloseTimer);
         if (message) {
+          report("authorization_rejected");
           reject(new Error(message));
         } else {
           accessToken = response.access_token;
           expiresAt = Date.now() + lifetimeSeconds * 1000;
+          report("token_accepted");
           resolve({ accessToken, expiresAt });
         }
       };
-      const timer = setTimeout(() => finish("תם הזמן להתחברות ל-Google. אפשר לנסות שוב."), AUTH_TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        report("timeout");
+        finish("תם הזמן להתחברות ל-Google. אפשר לנסות שוב.");
+      }, AUTH_TIMEOUT_MS);
 
       try {
         // Each attempt owns its callbacks so a late response cannot affect a retry.
@@ -89,32 +106,52 @@
           scope,
           callback: response => {
             const lifetimeSeconds = Number(response?.expires_in);
+            const tokenReceived = Boolean(response?.access_token);
+            const lifetimeValid = Number.isFinite(lifetimeSeconds) && lifetimeSeconds > 0;
+            const requiredScopeGranted = typeof response?.scope === "string" && response.scope.split(/\s+/).includes(scope);
+            if (onDiagnostic) {
+              const error = response?.error;
+              report("token_callback", {
+                tokenReceived,
+                requiredScopeGranted,
+                lifetimeValid,
+                oauthError: OAUTH_ERROR_CATEGORIES.has(error) ? error : error ? "other" : "none",
+                attemptFinished: finished
+              });
+            }
             if (response?.error === "access_denied") {
               finish(PERMISSION_ERROR);
-            } else if (response?.error || !response?.access_token || !Number.isFinite(lifetimeSeconds) || lifetimeSeconds <= 0) {
+            } else if (response?.error || !tokenReceived || !lifetimeValid) {
               finish(AUTH_ERROR);
-            } else if (typeof response.scope !== "string" || !response.scope.split(/\s+/).includes(scope)) {
+            } else if (!requiredScopeGranted) {
               finish(PERMISSION_ERROR);
             } else {
               finish("", response, lifetimeSeconds);
             }
           },
           error_callback: error => {
+            const type = error?.type;
+            report(type === "popup_closed" || type === "popup_failed_to_open" ? type : "popup_error_unknown", {
+              attemptFinished: finished
+            });
             if (finished) return;
-            if (error?.type === "popup_closed") {
+            if (type === "popup_closed") {
               // The token callback can arrive just after the popup closes.
               popupCloseTimer ??= setTimeout(() => {
+                report("popup_close_grace_elapsed");
                 finish("חלון ההתחברות נסגר לפני קבלת ההרשאה. אפשר לנסות שוב.");
               }, POPUP_CLOSE_GRACE_MS);
-            } else if (error?.type === "popup_failed_to_open") {
+            } else if (type === "popup_failed_to_open") {
               finish("לא ניתן לפתוח את חלון ההתחברות. יש לאפשר חלונות קופצים ולנסות שוב.");
             } else {
               finish(AUTH_ERROR);
             }
           }
         });
+        report("popup_requested");
         tokenClient.requestAccessToken({ prompt });
       } catch {
+        report("oauth_client_exception");
         finish(AUTH_ERROR);
       }
     });
