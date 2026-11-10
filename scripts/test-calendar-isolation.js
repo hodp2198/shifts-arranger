@@ -189,7 +189,7 @@ async function main() {
         client.callback(granted);
       };
       await click();
-      assert.equal(lastRequestPrompt, 'consent');
+      assert.equal(lastRequestPrompt, '');
       assert.equal(elements.authStatus.textContent, 'מחובר');
       assert.equal(oauth.isAuthorized(), true);
       assert.equal(calls.init, 1);

@@ -77,7 +77,7 @@
     }
     checkExportAllowed();
 
-    const prompt = isAuthorized() ? "" : "consent";
+    const prompt = "";
     accessToken = "";
     expiresAt = 0;
 
