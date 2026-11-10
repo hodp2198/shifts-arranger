@@ -52,15 +52,6 @@
         <div class="helper">הכפתור הראשי מוסיף את המשמרות ישירות ליומן Google אחרי אישור הרשאה.</div>
         <div class="intake-status" id="calendarMessage" role="status"></div>
         <div class="intake-status" id="calendarIsolationNotice" role="status" hidden></div>
-        <div>
-          <label><input type="checkbox" id="oauthDiagnosticsEnabled" autocomplete="off"> הפעלת אבחון חיבור ליומן Google</label>
-          <div id="oauthDiagnosticsPanel" hidden>
-            <label for="oauthDiagnosticsReport">דוח אבחון זמני</label>
-            <textarea id="oauthDiagnosticsReport" rows="8" dir="ltr" style="direction: ltr" readonly></textarea>
-            <button class="btn secondary" id="copyOAuthDiagnostics" type="button">העתקת דוח האבחון</button>
-            <div class="intake-status" id="oauthDiagnosticsStatus" role="status"></div>
-          </div>
-        </div>
       </div>
     </section>
   </main>
@@ -92,50 +83,11 @@
     const addToCalendarEl = document.getElementById("addToCalendar");
     const calendarMessageEl = document.getElementById("calendarMessage");
     const exportStatusEl = document.getElementById("exportStatus");
-    const diagnosticsEnabledEl = document.getElementById("oauthDiagnosticsEnabled");
-    const diagnosticsPanelEl = document.getElementById("oauthDiagnosticsPanel");
-    const diagnosticsReportEl = document.getElementById("oauthDiagnosticsReport");
-    const diagnosticsStatusEl = document.getElementById("oauthDiagnosticsStatus");
-    let diagnosticLines = null;
-    let diagnosticSession = 0;
-    let diagnosticAttempt = 0;
-
-    function recordDiagnostic(event, details) {
-      if (!diagnosticLines) return;
-      if (diagnosticLines.length === 200) {
-        diagnosticLines.push("Diagnostic limit reached. Turn diagnostics off and on to start a new report.");
-      } else if (diagnosticLines.length < 200) {
-        const timestamp = new Date().toISOString();
-        diagnosticLines.push(`${timestamp} ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
-      }
-      diagnosticsReportEl.value = diagnosticLines.join("\n");
-    }
-
-    diagnosticsEnabledEl.checked = false;
-    diagnosticsEnabledEl.addEventListener("change", () => {
-      const enabled = diagnosticsEnabledEl.checked;
-      diagnosticSession++;
-      diagnosticLines = enabled ? [] : null;
-      diagnosticAttempt = 0;
-      diagnosticsPanelEl.hidden = !enabled;
-      diagnosticsReportEl.value = "";
-      diagnosticsStatusEl.textContent = "";
-      recordDiagnostic("diagnostics_enabled", { connected: googleOAuthService.isAuthorized() });
-    });
-    document.getElementById("copyOAuthDiagnostics").addEventListener("click", async () => {
-      if (!diagnosticLines) return;
-      const session = diagnosticSession;
-      try {
-        await navigator.clipboard.writeText(diagnosticsReportEl.value);
-        if (diagnosticSession === session) diagnosticsStatusEl.textContent = "דוח האבחון הועתק.";
-      } catch {
-        if (diagnosticSession === session) diagnosticsStatusEl.textContent = "לא ניתן להעתיק אוטומטית. אפשר להעתיק את הטקסט ידנית.";
-      }
-    });
 
     let finalizedSchedule = null;
     let oauthConfigured = false;
     let oauthReady = false;
+    let activeAuthAttempt = 0;
     let authorizationExpiresAt = 0;
     let authorizationExpiryTimer;
 
@@ -148,7 +100,6 @@
       }
       authorizationExpiresAt = 0;
       authStatusEl.textContent = "לא מחובר";
-      recordDiagnostic("connection_expired");
       addToCalendarEl.disabled = true;
       calendarMessageEl.textContent = "פג תוקף ההרשאה ליומן Google. יש להתחבר מחדש.";
     }
@@ -212,7 +163,6 @@
         renderShiftPreview();
       } catch {
         eventPreviewEl.innerHTML = "";
-        recordDiagnostic("preview_failed");
         addToCalendarEl.disabled = true;
         exportStatusEl.textContent = "שגיאה בתצוגה";
         previewMessageEl.textContent = "לא ניתן להציג את המשמרות. נסו לבחור את השם מחדש.";
@@ -254,16 +204,13 @@
     }
 
     async function prepareGoogleAuthorization() {
-      recordDiagnostic("identity_loading");
       authorizeGoogleEl.disabled = true;
       authStatusEl.textContent = "טוען את ההתחברות ל-Google...";
       try {
         await googleOAuthService.initialize();
         oauthReady = true;
-        recordDiagnostic("identity_ready");
         calendarMessageEl.textContent = "יש להתחבר עם Google לפני הוספה ליומן.";
       } catch {
-        recordDiagnostic("identity_load_failed");
         calendarMessageEl.textContent = "טעינת ההתחברות ל-Google נכשלה. לחצו על כפתור ההתחברות כדי לנסות שוב.";
       } finally {
         authStatusEl.textContent = "לא מחובר";
@@ -281,32 +228,24 @@
         await prepareGoogleAuthorization();
         return;
       }
-      authorizeGoogleEl.disabled = true;
+      const attempt = ++activeAuthAttempt;
       addToCalendarEl.disabled = true;
       clearTimeout(authorizationExpiryTimer);
       authorizationExpiresAt = 0;
       calendarMessageEl.textContent = "";
       authStatusEl.textContent = "מתחבר...";
-      const session = diagnosticSession;
-      const attempt = diagnosticLines ? ++diagnosticAttempt : 0;
-      const report = attempt ? (event, details) => {
-        if (diagnosticSession === session) recordDiagnostic(event, { attempt, ...details });
-      } : undefined;
-      report?.("connection_pending");
       try {
-        const { expiresAt } = await googleOAuthService.signIn(report);
+        const { expiresAt } = await googleOAuthService.signIn();
+        if (attempt !== activeAuthAttempt) return;
         authorizationExpiresAt = expiresAt;
       } catch (error) {
+        if (attempt !== activeAuthAttempt) return;
         authStatusEl.textContent = "לא מחובר";
-        report?.("connection_failed");
         addToCalendarEl.disabled = true;
         calendarMessageEl.textContent = error.message || "לא ניתן להתחבר ליומן Google. אפשר לנסות שוב.";
         return;
-      } finally {
-        authorizeGoogleEl.disabled = isCalendarExportBlocked();
       }
       authStatusEl.textContent = "מחובר";
-      report?.("connection_connected");
       calendarMessageEl.textContent = "ההרשאה התקבלה. בדקו את התצוגה המקדימה ואשרו הוספה ליומן.";
       refreshAuthorizationStatus();
       renderPreview();

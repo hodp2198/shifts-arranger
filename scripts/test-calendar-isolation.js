@@ -9,7 +9,10 @@ const root = path.resolve(__dirname, '..');
 async function main() {
   const isolation = await import('../src/calendarIsolation.js');
   const html = fs.readFileSync(path.join(root, 'employee-calendar.html'), 'utf8');
+  const oauthSource = fs.readFileSync(path.join(root, 'src/auth/googleOAuthService.js'), 'utf8');
   assert(!/<script[^>]+src="https:\/\/accounts\.google\.com/.test(html));
+  assert(!/oauthDiagnostics|recordDiagnostic/.test(html), 'Temporary public OAuth diagnostics UI must be removed');
+  assert(!/onDiagnostic|error_callback|POPUP_CLOSE_GRACE_MS/.test(oauthSource), 'Diagnostics hooks and GIS error_callback polling must not be present');
   const schedule = {
     scheduleId: 'isolated-test', employees: [{ id: 'worker', name: 'Worker' }],
     entries: [{ date: '2026-11-01', dayName: 'ראשון', assignments: [
@@ -26,23 +29,27 @@ async function main() {
   for (const mode of modes) {
     const scope = 'https://www.googleapis.com/auth/calendar.events';
     const granted = { access_token: 'mock-token', expires_in: 3600, scope: `openid ${scope}` };
-    const calls = { scripts: 0, auth: 0, requests: [] };
+    const calls = { scripts: 0, init: 0, auth: 0, requests: [] };
     const timers = new Map();
     const pageEvents = new Map();
     let now = Date.now();
     let activeGesture = false;
-    let tokenAttempt;
-    let copiedReport;
+    let initOptions;
+    let clientInstance;
     let respondToTokenRequest = () => {};
     let pendingScript;
     const oauth2 = { initTokenClient(options) {
-      calls.auth++;
-      tokenAttempt = options;
-      return { requestAccessToken() {
-        assert.equal(activeGesture, true, 'The popup must open during the click');
-        calls.auth++;
-        respondToTokenRequest(options);
-      } };
+      calls.init++;
+      initOptions = options;
+      clientInstance = {
+        callback: options.callback,
+        requestAccessToken(requestOptions) {
+          assert.equal(activeGesture, true, 'The popup must open during the click');
+          calls.auth++;
+          respondToTokenRequest(clientInstance, requestOptions);
+        }
+      };
+      return clientInstance;
     } };
     const elements = {};
     const element = id => ({ disabled: false, hidden: true, value: '', textContent: '',
@@ -60,7 +67,6 @@ async function main() {
       location: { ...mode, protocol: 'http:' }, document,
       __ISOLATED_DEV_MODE__: mode.blocked && !mode.emulator,
       googleCalendarConfig: { clientId: 'mock-client', scope },
-      navigator: { clipboard: { async writeText(value) { copiedReport = value; } } },
       addEventListener: (event, callback) => pageEvents.set(event, callback),
       localStorage: {
         getItem: k => storage.get(k) || null,
@@ -137,7 +143,7 @@ async function main() {
       assert.equal(elements.addToCalendar.disabled, true);
       assert.equal(elements.calendarIsolationNotice.hidden, false);
       assert.match(elements.calendarIsolationNotice.textContent, /ייצוא ליומן Google אינו זמין/);
-      assert.deepEqual(calls, { scripts: 0, auth: 0, requests: [] });
+      assert.deepEqual(calls, { scripts: 0, init: 0, auth: 0, requests: [] });
     } else {
       const click = () => {
         activeGesture = true;
@@ -169,33 +175,43 @@ async function main() {
       await prepare;
       assert.equal(elements.authorizeGoogle.disabled, false);
       assert.equal(elements.calendarIsolationNotice.hidden, true);
+      assert.equal(calls.init, 1, 'Eager initialization must create the cached TokenClient once');
       assert.equal(calls.auth, 0, 'Preloading must not open the popup');
-      const diagnostics = elements.oauthDiagnosticsReport;
-      const toggleDiagnostics = enabled => {
-        elements.oauthDiagnosticsEnabled.checked = enabled;
-        pageEvents.get('oauthDiagnosticsEnabled:change')();
+      assert.equal(initOptions.client_id, 'mock-client');
+      assert.equal(initOptions.scope, scope);
+      assert.equal('error_callback' in initOptions, false, 'Must not enable GIS popup_closed polling');
+      assert.equal(elements.oauthDiagnosticsEnabled, undefined);
+      assert.equal(elements.oauthDiagnosticsPanel, undefined);
+
+      let lastRequestPrompt;
+      respondToTokenRequest = (client, reqOptions) => {
+        lastRequestPrompt = reqOptions.prompt;
+        client.callback(granted);
       };
-      const copyDiagnostics = pageEvents.get('copyOAuthDiagnostics:click');
-      assert.equal(elements.oauthDiagnosticsEnabled.checked, false);
-      assert.equal(elements.oauthDiagnosticsPanel.hidden, true);
-      respondToTokenRequest = options => options.callback(granted);
       await click();
-      assert.equal(diagnostics.value, '');
-      await copyDiagnostics();
-      assert.equal(copiedReport, undefined);
-      const storageBeforeDiagnostics = [...storage];
-      const requestsBeforeDiagnostics = calls.requests.length;
-      toggleDiagnostics(true);
-      assert.equal(elements.oauthDiagnosticsPanel.hidden, false);
+      assert.equal(lastRequestPrompt, 'consent');
+      assert.equal(elements.authStatus.textContent, 'מחובר');
+      assert.equal(oauth.isAuthorized(), true);
+      assert.equal(calls.init, 1);
+
+      // Subsequent sign-in while already authorized omits forced consent and still reuses the cached TokenClient.
+      await click();
+      assert.equal(lastRequestPrompt, '');
+      assert.equal(elements.authStatus.textContent, 'מחובר');
+      assert.equal(calls.init, 1);
+      // Expire existing token to start subsequent error tests unauthorized.
+      now += 3600000;
+      pageEvents.get('visibilitychange')();
+      assert.equal(oauth.isAuthorized(), false);
 
       for (const [respond, expected] of [
-        [options => options.error_callback({ type: 'popup_failed_to_open' }), /חלונות קופצים/],
-        [options => options.error_callback({ type: 'unknown' }), /לא ניתן להתחבר/],
-        [options => options.callback({ error: 'access_denied' }), /לא ניתנה הרשאה/],
-        [options => options.callback({ error: 'private-account@example.invalid', error_description: 'https://private.example.invalid/' }), /לא ניתן להתחבר/],
-        [options => options.callback({ ...granted, scope: `${scope}.readonly` }), /לא ניתנה הרשאה/],
-        [options => options.callback({ ...granted, scope: undefined }), /לא ניתנה הרשאה/],
-        [options => options.callback({}), /לא ניתן להתחבר/],
+        [client => client.callback({ error: 'access_denied' }), /לא ניתנה הרשאה/],
+        [client => client.callback({ error: 'private-account@example.invalid', error_description: 'https://private.example.invalid/' }), /לא ניתן להתחבר/],
+        [client => client.callback({ ...granted, scope: `${scope}.readonly` }), /לא ניתנה הרשאה/],
+        [client => client.callback({ ...granted, scope: undefined }), /לא ניתנה הרשאה/],
+        [client => client.callback({ access_token: 'mock-token', expires_in: 0, scope }), /לא ניתן להתחבר/],
+        [client => client.callback({ access_token: 'mock-token', expires_in: 'NaN', scope }), /לא ניתן להתחבר/],
+        [client => client.callback({}), /לא ניתן להתחבר/],
         [() => { throw new Error('mock exception'); }, /לא ניתן להתחבר/]
       ]) {
         respondToTokenRequest = respond;
@@ -208,60 +224,52 @@ async function main() {
         assert.equal(timers.size, 0);
       }
 
-      respondToTokenRequest = options => options.error_callback({ type: 'popup_closed' });
-      const closing = click();
+      // Consent callback arriving after >1s popup close without premature popup_closed rejection.
+      respondToTokenRequest = () => {};
+      const slowCallback = click();
       assert.equal(elements.authStatus.textContent, 'מתחבר...');
-      assert.equal(elements.authorizeGoogle.disabled, true);
-      tokenAttempt.callback(granted);
-      await closing;
+      assert.equal(elements.authorizeGoogle.disabled, false);
+      assert.equal([...timers.values()].filter(timer => timer.delay === 1000).length, 0);
+      clientInstance.callback(granted);
+      await slowCallback;
       assert.equal(elements.authStatus.textContent, 'מחובר');
       assert.equal(oauth.isAuthorized(), true);
       assert.deepEqual([...timers.values()].map(timer => timer.delay), [3600000]);
 
-      const cancelled = click();
-      const cancelledAttempt = tokenAttempt;
-      const graceTimer = [...timers.values()].find(timer => timer.delay === 1000);
-      cancelledAttempt.error_callback({ type: 'popup_closed' });
-      assert.equal([...timers.values()].find(timer => timer.delay === 1000), graceTimer);
-      runTimeout(1000);
-      await cancelled;
-      assert.equal(elements.authStatus.textContent, 'לא מחובר');
-      assert.match(elements.calendarMessage.textContent, /חלון ההתחברות נסגר/);
-      assert.equal(elements.authorizeGoogle.disabled, false);
+      now += 3600000;
+      runTimeout(3600000);
+      assert.equal(oauth.isAuthorized(), false);
       assert.equal(timers.size, 0);
 
-      const missingScope = click();
-      tokenAttempt.callback({ ...granted, scope: `${scope}.readonly` });
-      await missingScope;
-      assert.equal(elements.authStatus.textContent, 'לא מחובר');
-      assert.match(elements.calendarMessage.textContent, /לא ניתנה הרשאה/);
-      assert.equal(oauth.getAccessToken(), '');
-      assert.equal(timers.size, 0);
-
+      // Stalled attempt recovers cleanly after 120s timeout and ignores late callback.
       respondToTokenRequest = () => {};
       const stalled = click();
-      const lateAttempt = tokenAttempt;
+      const stalledCallback = clientInstance.callback;
       assert.equal(elements.authStatus.textContent, 'מתחבר...');
-      assert.equal(elements.authorizeGoogle.disabled, true);
       runTimeout(120000);
       await stalled;
       assert.equal(elements.authStatus.textContent, 'לא מחובר');
       assert.match(elements.calendarMessage.textContent, /תם הזמן/);
       assert.equal(elements.authorizeGoogle.disabled, false);
-
-      const retry = click();
-      cancelledAttempt.callback(granted);
-      cancelledAttempt.error_callback({ type: 'popup_closed' });
-      lateAttempt.callback(granted);
+      stalledCallback(granted);
       assert.equal(oauth.isAuthorized(), false);
+
+      // Manual popup close followed by immediate retry supersedes the old attempt without UI regression.
+      const abandoned = click();
+      const abandonedCallback = clientInstance.callback;
+      const retry = click();
+      await abandoned;
       assert.equal(elements.authStatus.textContent, 'מתחבר...');
-      tokenAttempt.callback(granted);
-      tokenAttempt.error_callback({ type: 'popup_closed' });
+      assert.equal(elements.authorizeGoogle.disabled, false);
+      abandonedCallback(granted);
+      assert.equal(oauth.isAuthorized(), false);
+      clientInstance.callback(granted);
       await retry;
       assert.equal(elements.authStatus.textContent, 'מחובר');
-      assert.equal(elements.authorizeGoogle.disabled, false);
       assert.equal(oauth.getAccessToken(), 'mock-token');
+      assert.equal(calls.init, 1);
       assert.equal(timers.size, 1);
+
       now += 3600000;
       runTimeout(3600000);
       assert.equal(oauth.isAuthorized(), false);
@@ -273,7 +281,7 @@ async function main() {
 
       const shiftsForEmployee = calendar.shiftsForEmployee;
       calendar.shiftsForEmployee = () => { throw new Error('mock preview failure'); };
-      respondToTokenRequest = options => options.callback(granted);
+      respondToTokenRequest = client => client.callback(granted);
       await click();
       assert.equal(elements.authStatus.textContent, 'מחובר');
       assert.equal(oauth.isAuthorized(), true);
@@ -291,47 +299,8 @@ async function main() {
       assert.equal(elements.authStatus.textContent, 'לא מחובר');
       assert.equal(elements.addToCalendar.disabled, true);
       assert.equal(timers.size, 0);
-
-      const entries = diagnostics.value.split('\n').map(line => {
-        const [timestamp, event, ...details] = line.split(' ');
-        assert.ok(Number.isFinite(Date.parse(timestamp)));
-        return { event, details: details.length ? JSON.parse(details.join(' ')) : {} };
-      });
-      const namesFor = attempt => entries.filter(entry => entry.details.attempt === attempt).map(entry => entry.event);
-      const acceptedAfterClose = entries.find(entry => entry.event === 'token_accepted' &&
-        namesFor(entry.details.attempt).indexOf('popup_closed') < namesFor(entry.details.attempt).indexOf('token_accepted') &&
-        namesFor(entry.details.attempt).includes('popup_closed'));
-      assert.ok(acceptedAfterClose);
-      assert.deepEqual(namesFor(acceptedAfterClose.details.attempt), [
-        'connection_pending', 'popup_requested', 'popup_closed', 'token_callback', 'token_accepted', 'connection_connected'
-      ]);
-      assert.ok(entries.some(entry => entry.event === 'token_callback' && entry.details.tokenReceived &&
-        entry.details.requiredScopeGranted && entry.details.lifetimeValid));
-      assert.ok(entries.some(entry => entry.event === 'token_callback' && entry.details.tokenReceived &&
-        entry.details.requiredScopeGranted === false));
-      assert.ok(entries.some(entry => entry.details.oauthError === 'access_denied' && entry.details.tokenReceived === false));
-      assert.ok(entries.some(entry => entry.details.oauthError === 'other'));
-      assert.ok(entries.some(entry => entry.event === 'token_callback' && entry.details.attemptFinished));
-      for (const event of ['popup_close_grace_elapsed', 'timeout', 'connection_failed', 'preview_failed', 'connection_expired']) {
-        assert.ok(entries.some(entry => entry.event === event), `Missing diagnostic ${event}`);
-      }
-      assert.doesNotMatch(diagnostics.value, /mock-token|mock-client|private-account|https?:|mock preview failure/);
-      assert.deepEqual([...storage], storageBeforeDiagnostics);
-      assert.equal(calls.requests.length, requestsBeforeDiagnostics);
-      await copyDiagnostics();
-      assert.equal(copiedReport, diagnostics.value);
-
-      respondToTokenRequest = () => {};
-      const outstanding = click();
-      toggleDiagnostics(false);
-      assert.equal(diagnostics.value, '');
-      assert.equal(elements.oauthDiagnosticsPanel.hidden, true);
-      toggleDiagnostics(true);
-      tokenAttempt.callback(granted);
-      await outstanding;
-      assert.doesNotMatch(diagnostics.value, /token_callback|token_accepted|connection_connected/);
     }
-    console.log(`[PASS] ${mode.hostname}${mode.emulator ? ' (emulator)' : ''}: ${mode.blocked ? 'zero Google requests, authentication and writes blocked; Hebrew notice visible' : 'mock OAuth success, errors, timeouts, retry, expiry and Calendar export'}`);
+    console.log(`[PASS] ${mode.hostname}${mode.emulator ? ' (emulator)' : ''}: ${mode.blocked ? 'zero Google requests, authentication and writes blocked; Hebrew notice visible' : 'mock OAuth success, cached TokenClient, errors, timeouts, retry, expiry and Calendar export'}`);
   }
   delete global.window;
 }

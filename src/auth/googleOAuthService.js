@@ -1,15 +1,12 @@
 (function () {
   const AUTH_TIMEOUT_MS = 120000;
-  const POPUP_CLOSE_GRACE_MS = 1000;
   const AUTH_ERROR = "לא ניתן להתחבר ליומן Google. אפשר לנסות שוב.";
   const PERMISSION_ERROR = "לא ניתנה הרשאה ליומן Google. אפשר להתחבר שוב ולאשר גישה.";
-  const OAUTH_ERROR_CATEGORIES = new Set([
-    "access_denied", "invalid_request", "invalid_client", "invalid_scope",
-    "unauthorized_client", "interaction_required", "login_required",
-    "consent_required", "server_error", "temporarily_unavailable"
-  ]);
   let checkExportAllowed;
-  let pendingSignIn;
+  let tokenClient = null;
+  let pendingInit = null;
+  let activeAttempt = 0;
+  let cancelPendingAttempt = null;
   let accessToken = "";
   let expiresAt = 0;
 
@@ -48,118 +45,101 @@
   }
 
   async function initialize() {
-    const { assertCalendarExportAllowed } = await import("../calendarIsolation.js");
-    assertCalendarExportAllowed();
-    if (!hasConfiguredClient()) {
-      throw new Error("Google OAuth לא מוגדר. יש להגדיר Client ID בקובץ src/googleConfig.js.");
+    if (pendingInit) return pendingInit;
+    pendingInit = (async () => {
+      const { assertCalendarExportAllowed } = await import("../calendarIsolation.js");
+      assertCalendarExportAllowed();
+      if (!hasConfiguredClient()) {
+        throw new Error("Google OAuth לא מוגדר. יש להגדיר Client ID בקובץ src/googleConfig.js.");
+      }
+      await waitForGoogleIdentity();
+      checkExportAllowed = assertCalendarExportAllowed;
+      if (!tokenClient) {
+        tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: window.googleCalendarConfig.clientId,
+          scope: window.googleCalendarConfig.scope,
+          callback: () => {}
+        });
+      }
+    })();
+    try {
+      return await pendingInit;
+    } finally {
+      pendingInit = null;
     }
-    await waitForGoogleIdentity();
-    checkExportAllowed = assertCalendarExportAllowed;
   }
 
-  async function signIn(onDiagnostic) {
-    if (!checkExportAllowed) {
+  async function signIn() {
+    if (!checkExportAllowed || !tokenClient) {
       const { assertCalendarExportAllowed } = await import("../calendarIsolation.js");
       assertCalendarExportAllowed();
       throw new Error(AUTH_ERROR);
     }
     checkExportAllowed();
-    if (pendingSignIn) return pendingSignIn;
 
-    const report = (event, details) => {
-      try {
-        onDiagnostic?.(event, details);
-      } catch {
-        // Diagnostics must never change the outcome of authorization.
-      }
-    };
     const prompt = isAuthorized() ? "" : "consent";
     accessToken = "";
-    pendingSignIn = new Promise((resolve, reject) => {
+    expiresAt = 0;
+
+    const attempt = ++activeAttempt;
+    cancelPendingAttempt?.();
+
+    return new Promise((resolve, reject) => {
       let finished = false;
-      let popupCloseTimer;
+      let timer;
+
       const finish = (message, response, lifetimeSeconds) => {
         if (finished) return;
         finished = true;
         clearTimeout(timer);
-        clearTimeout(popupCloseTimer);
+        if (cancelPendingAttempt === cancel) {
+          cancelPendingAttempt = null;
+        }
+        if (attempt !== activeAttempt) {
+          reject(new Error(AUTH_ERROR));
+          return;
+        }
         if (message) {
-          report("authorization_rejected");
           reject(new Error(message));
         } else {
           accessToken = response.access_token;
           expiresAt = Date.now() + lifetimeSeconds * 1000;
-          report("token_accepted");
           resolve({ accessToken, expiresAt });
         }
       };
-      const timer = setTimeout(() => {
-        report("timeout");
+
+      const cancel = () => {
+        finish(AUTH_ERROR);
+      };
+      cancelPendingAttempt = cancel;
+
+      timer = setTimeout(() => {
         finish("תם הזמן להתחברות ל-Google. אפשר לנסות שוב.");
       }, AUTH_TIMEOUT_MS);
 
       try {
-        // Each attempt owns its callbacks so a late response cannot affect a retry.
         const scope = window.googleCalendarConfig.scope;
-        const tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: window.googleCalendarConfig.clientId,
-          scope,
-          callback: response => {
-            const lifetimeSeconds = Number(response?.expires_in);
-            const tokenReceived = Boolean(response?.access_token);
-            const lifetimeValid = Number.isFinite(lifetimeSeconds) && lifetimeSeconds > 0;
-            const requiredScopeGranted = typeof response?.scope === "string" && response.scope.split(/\s+/).includes(scope);
-            if (onDiagnostic) {
-              const error = response?.error;
-              report("token_callback", {
-                tokenReceived,
-                requiredScopeGranted,
-                lifetimeValid,
-                oauthError: OAUTH_ERROR_CATEGORIES.has(error) ? error : error ? "other" : "none",
-                attemptFinished: finished
-              });
-            }
-            if (response?.error === "access_denied") {
-              finish(PERMISSION_ERROR);
-            } else if (response?.error || !tokenReceived || !lifetimeValid) {
-              finish(AUTH_ERROR);
-            } else if (!requiredScopeGranted) {
-              finish(PERMISSION_ERROR);
-            } else {
-              finish("", response, lifetimeSeconds);
-            }
-          },
-          error_callback: error => {
-            const type = error?.type;
-            report(type === "popup_closed" || type === "popup_failed_to_open" ? type : "popup_error_unknown", {
-              attemptFinished: finished
-            });
-            if (finished) return;
-            if (type === "popup_closed") {
-              // The token callback can arrive just after the popup closes.
-              popupCloseTimer ??= setTimeout(() => {
-                report("popup_close_grace_elapsed");
-                finish("חלון ההתחברות נסגר לפני קבלת ההרשאה. אפשר לנסות שוב.");
-              }, POPUP_CLOSE_GRACE_MS);
-            } else if (type === "popup_failed_to_open") {
-              finish("לא ניתן לפתוח את חלון ההתחברות. יש לאפשר חלונות קופצים ולנסות שוב.");
-            } else {
-              finish(AUTH_ERROR);
-            }
+        tokenClient.callback = response => {
+          if (attempt !== activeAttempt) return;
+          const lifetimeSeconds = Number(response?.expires_in);
+          const tokenReceived = Boolean(response?.access_token);
+          const lifetimeValid = Number.isFinite(lifetimeSeconds) && lifetimeSeconds > 0;
+          const requiredScopeGranted = typeof response?.scope === "string" && response.scope.split(/\s+/).includes(scope);
+          if (response?.error === "access_denied") {
+            finish(PERMISSION_ERROR);
+          } else if (response?.error || !tokenReceived || !lifetimeValid) {
+            finish(AUTH_ERROR);
+          } else if (!requiredScopeGranted) {
+            finish(PERMISSION_ERROR);
+          } else {
+            finish("", response, lifetimeSeconds);
           }
-        });
-        report("popup_requested");
+        };
         tokenClient.requestAccessToken({ prompt });
       } catch {
-        report("oauth_client_exception");
         finish(AUTH_ERROR);
       }
     });
-    try {
-      return await pendingSignIn;
-    } finally {
-      pendingSignIn = null;
-    }
   }
 
   function getAccessToken() {
