@@ -496,12 +496,18 @@
           return cleanTitle;
         },
         holidayClosedReason(dayType) {
+          if (dayType?.status === "holiday" && dayType?.isWorkday === false) {
+            const holidayTitle = this.holidayShiftDisplayTitle(dayType.title);
+            return `חג${holidayTitle ? ` ${holidayTitle}` : ""} אין משמרת`;
+          }
           if (dayType?.status !== "holidayEve") return dayType?.status === "off" ? "אין משמרת" : "";
           const cleanTitle = this.holidayEveDisplayTitle(dayType.title);
           return `ערב${cleanTitle ? ` ${cleanTitle}` : " חג"} אין משמרת`;
         },
         closedDayReason(day) {
-          return day.dayType?.status === "holidayEve" ? this.holidayClosedReason(day.dayType) : (day.label || "אין משמרת");
+          return (day.dayType?.status === "holidayEve" || (day.dayType?.status === "holiday" && day.dayType?.isWorkday === false))
+            ? this.holidayClosedReason(day.dayType)
+            : (day.label || "אין משמרת");
         }
       };
     }
@@ -1631,7 +1637,7 @@
         specialDaysEl.innerHTML = "";
         return;
       }
-      const calendarClosedDays = days.filter(day => day.dayType.status === "holidayEve" && !state.special[day.iso]);
+      const calendarClosedDays = days.filter(day => !day.dayType.isWorkday && day.dayIndex !== 5 && !state.special[day.iso]);
       const manualDays = days.filter(day => state.special[day.iso]);
       const holidayText = calendarClosedDays.length
         ? calendarClosedDays.map(day => `
