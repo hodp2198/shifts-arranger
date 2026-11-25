@@ -3800,8 +3800,9 @@
         return "🟢";
       };
       const dayTag = day => {
-        const label = day.label || day.dayType.infoLabel || calendarStatusLabel(day.dayType.status);
-        if (!label || label === "יום רגיל") return "";
+        const rawLabel = (day.label === "יום עבודה" && !day.closed) ? "" : day.label;
+        const label = rawLabel || day.dayType.infoLabel || calendarStatusLabel(day.dayType.status);
+        if (!label || label === "יום רגיל" || label === "יום עבודה") return "";
         const status = day.dayType.status === "workday" && day.closed ? "off" : day.dayType.status;
         if (status === "holiday" && !day.dayType.isCalendarInfoOnly) return "";
         return `<span class="day-tag ${status}">${label === "אין עבודה" ? "לא משובץ" : label}</span>`;

@@ -467,6 +467,61 @@ test("5.2 Full 2020-2039 (20-year) audit: only restrictive holiday eves and Frid
   assert.strictEqual(checkedDays, 7305);
 });
 
+console.log("\n--- Group 6: Schedule Row Badge Rendering Regression ---");
+
+test("6.1 Ordinary workdays display no badge (including with legacy 'יום עבודה' override), while holiday badges are preserved", () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const match = indexHtml.match(
+    /const dayTag = day => \{[\s\S]*?const rowNote = day => dayTag\(day\) \|\| holidayRowLabel\(day\);/
+  );
+  assert.ok(match, "Could not locate dayTag / holidayRowLabel / rowNote in index.html");
+
+  const renderRowNote = new Function(
+    "calendarStatusLabel",
+    "holidayShiftDisplayTitle",
+    `${match[0]}\nreturn { dayTag, holidayRowLabel, rowNote };`
+  )(calendarRules.calendarStatusLabel, calendarRules.holidayShiftDisplayTitle);
+
+  const buildDay = (y, m, d, manual = null) => {
+    const dayType = evaluateDate(y, m, d);
+    const closed = manual ? Boolean(manual.closed) : !dayType.isWorkday;
+    const label = manual?.label || (closed ? dayType.reason : "");
+    return { dayType, closed, label };
+  };
+
+  // Ordinary workday (Dec 3, 2026): no override and legacy "יום עבודה" override must BOTH produce no badge
+  const dec3Normal = buildDay(2026, 12, 3);
+  assert.strictEqual(renderRowNote.rowNote(dec3Normal), "");
+
+  const dec3LegacyOverride = buildDay(2026, 12, 3, { closed: false, label: "יום עבודה" });
+  assert.strictEqual(renderRowNote.rowNote(dec3LegacyOverride), "");
+
+  // Informational holiday badges (Hanukkah, Purim, Tish'a B'Av) must be preserved
+  const hanukkahDay = buildDay(2026, 12, 5);
+  assert.strictEqual(renderRowNote.rowNote(hanukkahDay), '<span class="day-tag workday">חנוכה: ב׳ נרות</span>');
+
+  const purimDay = buildDay(2026, 3, 3);
+  assert.strictEqual(renderRowNote.rowNote(purimDay), '<span class="day-tag workday">פורים</span>');
+
+  const tishaBAv = buildDay(2026, 7, 23);
+  assert.strictEqual(renderRowNote.rowNote(tishaBAv), '<span class="day-tag workday">תשעה באב</span>');
+
+  // Even if an informational holiday had a legacy "יום עבודה" override, the holiday badge still renders cleanly
+  const hanukkahWithLegacy = buildDay(2026, 12, 5, { closed: false, label: "יום עבודה" });
+  assert.strictEqual(renderRowNote.rowNote(hanukkahWithLegacy), '<span class="day-tag workday">חנוכה: ב׳ נרות</span>');
+
+  // Actual holiday shift labels remain preserved
+  const pesach1 = buildDay(2026, 4, 2);
+  assert.strictEqual(renderRowNote.rowNote(pesach1), '<span class="holiday-row-label">משמרת חג פסח</span>');
+
+  const roshHashana2 = buildDay(2026, 9, 13);
+  assert.strictEqual(renderRowNote.rowNote(roshHashana2), '<span class="holiday-row-label">משמרת חג ראש השנה</span>');
+
+  // Actual closure reasons remain preserved
+  assert.strictEqual(calendarRules.closedDayReason(buildDay(2026, 4, 1)), "ערב פסח אין משמרת");
+  assert.strictEqual(calendarRules.closedDayReason(buildDay(2026, 9, 12)), "חג ראש השנה אין משמרת");
+});
+
 console.log("\n===============================================================================");
 console.log("Test Execution Summary:");
 console.log(`  Passed: ${passed}`);
